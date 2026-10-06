@@ -1,17 +1,26 @@
 # Documentation
 
-## Project rules
+## Shared engineering handbook
+
+SolusAgent consumes a pinned Solus Book submodule at `docs/shared/`. [Shared handbook adoption](00_project/shared-handbook.md) records initialization, updates, loading, and the local rules retained during deduplication.
+
+- [Collaboration](shared/standards/collaboration.md).
+- [Source of truth](shared/standards/source-of-truth.md).
+- [Pre-release engineering](shared/standards/pre-release-engineering.md).
+- [Contract lifecycle](shared/standards/contract-lifecycle.md).
+- [Conventions](shared/standards/conventions.md).
+- [Issue workflow](shared/standards/issue-workflow.md).
+- [Pull request workflow](shared/standards/pr-workflow.md).
+- [Validation](shared/standards/validation.md).
+
+## Project requirements
 
 - [Project context](00_project/project-context.md): purpose, current state, and accepted design direction.
-- [Conventions](00_project/conventions.md): code, text, and repository hygiene.
-- [Source of truth](00_project/source-of-truth.md): current behavior, selected design, and durable evidence.
-- [Pre-release engineering](00_project/pre-release-engineering.md): proportional workflow and one current draft implementation.
-- [Contract lifecycle](00_project/contract-lifecycle.md): draft changes, historical evidence, and real compatibility boundaries.
-
-## Workflows
-
-- [Issue workflow](10_workflow/issue-workflow.md).
-- [Pull request workflow](10_workflow/pr-workflow.md).
+- [Project conventions](00_project/conventions.md): language, publication restrictions, C# style, and repository hygiene.
+- [Runtime contract lifecycle](00_project/contract-lifecycle.md): local API and saved-context requirements.
+- [Issue requirements](10_workflow/issue-workflow.md): native types, architecture inputs, and bulk synchronization.
+- [Pull request requirements](10_workflow/pr-workflow.md): titles, review evidence, and merge authority.
+- [Project validation](00_project/validation.md): current commands and their actual scope.
 
 ## Architecture
 
@@ -21,20 +30,20 @@
 
 ## Agent collaboration
 
-- [Agent context](50_ai/agent-context.md).
-- [Collaboration layers](50_ai/collaboration-layers.md).
-- [Architecture design refinement](50_ai/skills/architecture-design-refinement.md).
-- [Issue refinement](50_ai/skills/issue-refinement.md).
-- [Issue publishing](50_ai/skills/issue-publishing.md).
-- [Pull request publishing](50_ai/skills/pr-publishing.md).
-- [Validation](50_ai/skills/test-validation.md).
+[Agent context](50_ai/agent-context.md) combines project context with the shared [Context model](shared/agents/context-model.md) and [Task routing](shared/agents/task-routing.md). Common procedures have one maintained body in the handbook:
+
+- [Design refinement](shared/skills/design-refinement/SKILL.md).
+- [Issue refinement](shared/skills/issue-refinement/SKILL.md).
+- [Issue publishing](shared/skills/issue-publishing/SKILL.md).
+- [Pull request publishing](shared/skills/pr-publishing/SKILL.md).
+- [Test validation](shared/skills/test-validation/SKILL.md).
 
 ## Roadmap
 
-- [First consumable prerelease](90_roadmap/roadmap.md): M0 initialization and M1-M5 delivery outcomes, reuse strategy, validation, prerelease compatibility, and the downstream migration boundary.
+[First consumable prerelease](90_roadmap/roadmap.md) owns M0 initialization and M1-M5 delivery outcomes, reuse strategy, prerelease compatibility, and the downstream migration boundary.
 
-## Documentation origin
+## Ownership
 
-The collaboration structure and applicable workflow rules are adapted from [agentic-pr-review](https://github.com/SolusQuest/agentic-pr-review/tree/main/docs) and [ContractScribe](https://github.com/SolusQuest/contract-scribe/tree/main/docs). SolusAgent owns the adapted rules in this repository; downstream documents are background, not runtime dependencies or additional task authority.
+Solus Book owns shared standards, context guidance, procedures, and templates. SolusAgent owns its adoption and project requirements. Downstream project documents remain background; they do not silently amend SolusAgent's contracts or authorize work in another repository.
 
-The roadmap selects delivery outcomes; it does not implement them. Detailed CI, test infrastructure, package distribution, and release designs are refined with their owning milestone work. Actual cross-repository migration plans remain downstream work after a consumable prerelease is available.
+The roadmap selects outcomes rather than implementing them. Detailed CI, tests, distribution, and release designs are refined with their owning work. Actual product migration remains downstream work after a consumable prerelease is available.

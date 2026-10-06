@@ -21,6 +21,16 @@ The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery mileston
 
 Project, assembly, and root namespace names match. Package metadata and publication policy will be defined separately when distribution is planned.
 
+## Checkout
+
+The shared engineering handbook is a pinned Git submodule. After checkout, initialize it with:
+
+```text
+git submodule update --init --recursive
+```
+
+A fresh clone can use `git clone --recurse-submodules <repository-url>`. See [shared handbook adoption](docs/00_project/shared-handbook.md) for the selected revision, loading, and updates.
+
 ## Local build
 
 Use the .NET SDK selected by `global.json`. From the repository root:

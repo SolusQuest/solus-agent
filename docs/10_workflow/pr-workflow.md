@@ -1,36 +1,19 @@
-# Pull request workflow
+# Project pull request requirements
 
-After the maintainer establishes the initial Git baseline, substantive changes normally use a branch and a draft pull request. Respect any task instruction to keep work local or uncommitted. Local preparation, commit, push, and pull request publication are separate actions with their own task authorization.
+Use the shared [Pull request workflow](../shared/standards/pr-workflow.md) and [Pull request publishing](../shared/skills/pr-publishing/SKILL.md) with the following project requirements.
 
-## Reviewable changes
+## Branches and review text
 
-Use a conventional title and a self-contained body that explains:
+Substantive changes normally use a branch and a draft pull request. Respect a task instruction to keep work local or uncommitted.
 
-- the concrete problem and resulting behavior;
-- the tracking issue, or `None` with a short no-issue justification;
-- validation actually performed and its scope;
-- material limitations, open findings, and breaking behavior when relevant.
+Use English and the conventional title format `<type>(<scope>): <summary>`. The body explains the final problem and resulting behavior, actual validation and material limitations. Identify the tracking issue, or `None` with a short no-issue justification under the shared no-issue conditions. Apply [project conventions](../00_project/conventions.md) to all staged and published content.
 
-Do not claim passing tests, CI, release readiness, or consumer compatibility without the corresponding evidence. Do not copy raw prompts, private source, live provider responses, credentials, or machine-local records into the body.
+## Project evidence
 
-## No-issue path
+Use [Project validation](../00_project/validation.md) together with shared validation rules. For project changes, show the resulting reference graph and classify introduced dependencies. For contract changes, identify actual affected producers, consumers, and persisted or supported compatibility boundaries under [Runtime contract lifecycle](../00_project/contract-lifecycle.md).
 
-A change can proceed without a separate issue when it is bounded, complete in one review cycle, requires no independent scheduling or coordination, and contains no unresolved product decision, external commitment, authority change, dependency-graph change, or multi-PR outcome.
+Local checks, current-head CI, independent review, and release qualification support different claims. Keep required checks, feedback, and finding history attached to the actual reviewed head under the shared workflow.
 
-An explicitly authorized initialization or focused maintenance correction can fit that path. If the work expands beyond it, refine the new scope before marking the pull request ready.
+## Merge authority
 
-## Validation and review
-
-Follow [Validation](../50_ai/skills/test-validation.md). Validate the changed failure surface and related invariants. Reuse evidence for unchanged inputs; after a fix, refresh what it invalidates rather than repeating unrelated checks.
-
-For project changes, show the resulting reference graph and classify introduced dependencies. For contract changes, identify the actually affected producers, consumers, and persisted or supported compatibility boundary. Update current documentation coherently.
-
-Review findings should be resolved across their admitted behavior and neighboring affected cases, not only the cited example. Preserve the finding history and distinguish an accepted fix from a proposed or incomplete one. Read back current remote head, checks, and feedback before reporting remote readiness.
-
-Apply [Pre-release engineering](../00_project/pre-release-engineering.md) when an extra review, validation mechanism, compatibility path, or mutation stage is proposed. Ordinary changes do not need an additional process checklist.
-
-## Authority
-
-Agents do not merge pull requests. The maintainer owns merge and release decisions. Publishing a pull request does not authorize release, deployment, tracker closure, or repository settings changes.
-
-Use [Pull request publishing](../50_ai/skills/pr-publishing.md) when publication is authorized.
+Agents do not merge pull requests. The maintainer owns merge and release decisions. Publication does not authorize release, deployment, tracker closure, or repository settings changes.

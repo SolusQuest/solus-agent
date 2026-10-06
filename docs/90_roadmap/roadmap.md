@@ -8,7 +8,7 @@ Deliver a versioned 0.x experimental prerelease that agentic-pr-review (APR) and
 
 The release boundary is downstream consumability. Actual migration, product acceptance, product defaults, and downstream releases remain owned by each downstream repository. The first SolusAgent release does not establish that either product has migrated or that the public APIs are stable.
 
-Follow the selected [architecture](../20_architecture/architecture.md), [project structure](../20_architecture/project-structure.md), [security boundary](../20_architecture/security-boundary.md), [contract lifecycle](../00_project/contract-lifecycle.md), and [pre-release engineering](../00_project/pre-release-engineering.md).
+Follow the selected [architecture](../20_architecture/architecture.md), [project structure](../20_architecture/project-structure.md), [security boundary](../20_architecture/security-boundary.md), [contract lifecycle](../00_project/contract-lifecycle.md), and [pre-release engineering](../shared/standards/pre-release-engineering.md).
 
 ## Milestone overview
 

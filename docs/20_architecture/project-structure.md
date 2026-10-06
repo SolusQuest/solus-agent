@@ -17,7 +17,10 @@ docs/
     20_architecture/
     50_ai/
     90_roadmap/
+    shared/             # Pinned Solus Book submodule
 ```
+
+Shared engineering guidance and its resources are loaded from the handbook submodule. [Shared handbook adoption](../00_project/shared-handbook.md) owns initialization and the selected revision; the remaining documentation directories retain project requirements.
 
 The XML solution format follows ContractScribe's .NET solution layout. All four projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
 
