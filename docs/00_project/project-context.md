@@ -29,6 +29,8 @@ Products retain trusted task identities, repository snapshot selection, business
 
 Read [Architecture](../20_architecture/architecture.md) and [Security boundary](../20_architecture/security-boundary.md) before implementation.
 
-## Deferred planning
+## Delivery planning
 
-Roadmap milestones, detailed migration timing, test infrastructure, CI, NuGet and release policy, additional agent implementations, and source generators will be refined separately. The initial projects reserve the agreed current boundaries only; they do not authorize implementing those later features.
+The [roadmap](../90_roadmap/roadmap.md) selects M0 initialization and M1-M5 delivery toward a first consumable 0.x experimental prerelease. Draft contracts evolve with implementation; ordinary validation uses a Scripted Provider, while one actual provider adapter is included; the first release declares prerelease compatibility policy and verified support scope without a compatibility freeze. It enables the two downstream repositories to begin migration rather than requiring their migrations to close SolusAgent's release milestone.
+
+Detailed public signatures, context formats, test infrastructure, CI, package layout, and release mechanics are refined with their owning work. Additional agent implementations and source generators remain later work. The current skeleton does not implement the roadmap, and a planning task does not authorize implementing or publishing those features.

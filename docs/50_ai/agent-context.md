@@ -6,7 +6,7 @@ You are working on SolusAgent, a shared .NET agent API and self-owned runtime pr
 
 Read [Project context](../00_project/project-context.md), [Architecture](../20_architecture/architecture.md), and [Project structure](../20_architecture/project-structure.md) before planning or changing implementation.
 
-The current tree is a documentation and four-library initialization skeleton. Public API signatures and runtime behavior have not been implemented. CI, test infrastructure, packaging policy, detailed roadmap, and downstream migration will be planned separately. Do not silently expand an initialization task into those workstreams.
+The current tree is a documentation and four-library initialization skeleton. Public API signatures and runtime behavior have not been implemented. The [roadmap](../90_roadmap/roadmap.md) selects M0 plus M1-M5 delivery toward a consumable experimental prerelease. CI, tests, packaging, runtime implementation, and downstream migration have not been delivered. Read the roadmap before delivery planning; distinguish its planned outcomes from current behavior and follow the current task's scope.
 
 `SolusAgent.Api` is independent of the self-owned runtime. `SolusAgent.Tools.Api` is independently reusable across supporting agent implementations. `SolusAgent.Runtime.Api` owns self-owned extension contracts. `SolusAgent.Runtime` supplies the initial implementation when developed.
 

@@ -16,6 +16,7 @@ docs/
     10_workflow/
     20_architecture/
     50_ai/
+    90_roadmap/
 ```
 
 The XML solution format follows ContractScribe's .NET solution layout. All four projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.

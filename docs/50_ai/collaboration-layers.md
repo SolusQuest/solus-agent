@@ -4,7 +4,7 @@ The repository uses the same three-layer collaboration structure as its initial 
 
 ## 1. Project rules
 
-Rules shared by humans and agents live under `docs/00_project`, `docs/10_workflow`, and `docs/20_architecture`. Future roadmap rules will live under `docs/90_roadmap` when that planning is performed.
+Rules shared by humans and agents live under `docs/00_project`, `docs/10_workflow`, and `docs/20_architecture`. The [roadmap](../90_roadmap/roadmap.md) lives under `docs/90_roadmap` and owns selected delivery outcomes and sequencing.
 
 These documents own project purpose, conventions, workflow, architecture, security, and compatibility principles. They distinguish selected requirements from available implementation.
 

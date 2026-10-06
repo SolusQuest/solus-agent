@@ -58,4 +58,4 @@ The startup layer constructs the chosen implementation and injects the outer age
 
 Use ordinary managed .NET as the default. The selected interface boundaries do not require dynamic plugin discovery, a separate worker process, or multiple default build matrices. Add such mechanisms only for an observed extension, isolation, or distribution need.
 
-The first runtime and provider implementations will be derived from the two real consumers after roadmap refinement. Keep that migration work separate from this initialization. Apply [Pre-release engineering](../00_project/pre-release-engineering.md) and [Security boundary](security-boundary.md) when refining it.
+The first runtime and provider implementations will be derived from the two real consumers under the [roadmap](../90_roadmap/roadmap.md), with synthetic consumer probes protecting the shared contracts. Shared implementation and downstream product migration have separate completion boundaries. Apply [Pre-release engineering](../00_project/pre-release-engineering.md) and [Security boundary](security-boundary.md) when refining them.

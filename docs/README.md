@@ -29,8 +29,12 @@
 - [Pull request publishing](50_ai/skills/pr-publishing.md).
 - [Validation](50_ai/skills/test-validation.md).
 
+## Roadmap
+
+- [First consumable prerelease](90_roadmap/roadmap.md): M0 initialization and M1-M5 delivery outcomes, reuse strategy, validation, prerelease compatibility, and the downstream migration boundary.
+
 ## Documentation origin
 
 The collaboration structure and applicable workflow rules are adapted from [agentic-pr-review](https://github.com/SolusQuest/agentic-pr-review/tree/main/docs) and [ContractScribe](https://github.com/SolusQuest/contract-scribe/tree/main/docs). SolusAgent owns the adapted rules in this repository; downstream documents are background, not runtime dependencies or additional task authority.
 
-Roadmap, CI, test infrastructure, package distribution, release policy, and cross-repository migration plans have not been refined. Their detailed documents will be added when that planning is authorized.
+The roadmap selects delivery outcomes; it does not implement them. Detailed CI, test infrastructure, package distribution, and release designs are refined with their owning milestone work. Actual cross-repository migration plans remain downstream work after a consumable prerelease is available.
