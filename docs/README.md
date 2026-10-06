@@ -4,14 +4,16 @@
 
 SolusAgent consumes a pinned Solus Book submodule at `docs/shared/`. [Shared handbook adoption](00_project/shared-handbook.md) records initialization, updates, loading, and the local rules retained during deduplication.
 
-- [Collaboration](shared/standards/collaboration.md).
-- [Source of truth](shared/standards/source-of-truth.md).
-- [Pre-release engineering](shared/standards/pre-release-engineering.md).
-- [Contract lifecycle](shared/standards/contract-lifecycle.md).
-- [Conventions](shared/standards/conventions.md).
-- [Issue workflow](shared/standards/issue-workflow.md).
-- [Pull request workflow](shared/standards/pr-workflow.md).
-- [Validation](shared/standards/validation.md).
+Shared links below open the adopted Book commit on GitHub. In an initialized checkout, place the URL's path after the commit under `docs/shared/` to read the same file locally.
+
+- [Collaboration](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/collaboration.md).
+- [Source of truth](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/source-of-truth.md).
+- [Pre-release engineering](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pre-release-engineering.md).
+- [Contract lifecycle](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/contract-lifecycle.md).
+- [Conventions](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/conventions.md).
+- [Issue workflow](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/issue-workflow.md).
+- [Pull request workflow](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pr-workflow.md).
+- [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/validation.md).
 
 ## Project requirements
 
@@ -30,13 +32,13 @@ SolusAgent consumes a pinned Solus Book submodule at `docs/shared/`. [Shared han
 
 ## Agent collaboration
 
-[Agent context](50_ai/agent-context.md) combines project context with the shared [Context model](shared/agents/context-model.md) and [Task routing](shared/agents/task-routing.md). Common procedures have one maintained body in the handbook:
+[Agent context](50_ai/agent-context.md) combines project context with the shared [Context model](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/context-model.md) and [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md). Common procedures have one maintained body in the handbook:
 
-- [Design refinement](shared/skills/design-refinement/SKILL.md).
-- [Issue refinement](shared/skills/issue-refinement/SKILL.md).
-- [Issue publishing](shared/skills/issue-publishing/SKILL.md).
-- [Pull request publishing](shared/skills/pr-publishing/SKILL.md).
-- [Test validation](shared/skills/test-validation/SKILL.md).
+- [Design refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/design-refinement/SKILL.md).
+- [Issue refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-refinement/SKILL.md).
+- [Issue publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-publishing/SKILL.md).
+- [Pull request publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/pr-publishing/SKILL.md).
+- [Test validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/test-validation/SKILL.md).
 
 ## Roadmap
 

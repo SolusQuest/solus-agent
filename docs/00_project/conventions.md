@@ -1,6 +1,6 @@
 # Project conventions
 
-Apply the shared [Conventions](../shared/standards/conventions.md) and [Collaboration](../shared/standards/collaboration.md) with the following SolusAgent requirements.
+Apply the shared [Conventions](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/conventions.md) and [Collaboration](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/collaboration.md) with the following SolusAgent requirements.
 
 ## Repository content
 

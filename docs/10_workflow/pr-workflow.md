@@ -1,6 +1,6 @@
 # Project pull request requirements
 
-Use the shared [Pull request workflow](../shared/standards/pr-workflow.md) and [Pull request publishing](../shared/skills/pr-publishing/SKILL.md) with the following project requirements.
+Use the shared [Pull request workflow](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pr-workflow.md) and [Pull request publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/pr-publishing/SKILL.md) with the following project requirements.
 
 ## Branches and review text
 

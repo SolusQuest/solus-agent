@@ -1,6 +1,6 @@
 # Agent context
 
-You are working on SolusAgent, a shared .NET agent API and self-owned runtime project. Read this document after root `AGENTS.md`, then load the shared [Context model](../shared/agents/context-model.md), applicable rules, and relevant task procedure.
+You are working on SolusAgent, a shared .NET agent API and self-owned runtime project. Read this document after root `AGENTS.md`, then load the shared [Context model](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/context-model.md), applicable rules, and relevant task procedure.
 
 ## Current baseline
 
@@ -12,23 +12,25 @@ The current tree is a documentation and four-library initialization skeleton. Pu
 
 ## Shared loading and ownership
 
-[Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](../shared/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.
+[Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.
+
+Shared links target the adopted upstream commit for GitHub readers. In an initialized checkout, read the local source paths in root `AGENTS.md` and the table below. Map other shared URLs by placing the path after the commit under `docs/shared/`; shared task routing itself is `docs/shared/agents/task-routing.md`. Both routes select the same content.
 
 Shared rules belong to Solus Book. Product requirements and commands remain in `docs/00_project`, `docs/10_workflow`, `docs/20_architecture`, and `docs/90_roadmap`. Project-specific agent context belongs here; an additional local procedure or platform entrypoint needs an actual maintained use. Keep machine-local notes and task records in ignored locations.
 
 ## Read by task
 
-Shared [Collaboration](../shared/standards/collaboration.md), [Source of truth](../shared/standards/source-of-truth.md), and [Conventions](../shared/standards/conventions.md) apply with [project conventions](../00_project/conventions.md). Select additional reading from the affected work:
+Shared [Collaboration](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/collaboration.md), [Source of truth](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/source-of-truth.md), and [Conventions](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/conventions.md) apply with [project conventions](../00_project/conventions.md). Select additional reading from the affected work:
 
-| Task | Shared procedure or rule | Project inputs |
-| --- | --- | --- |
-| Resolve a material design choice | [Design refinement](../shared/skills/design-refinement/SKILL.md); [Pre-release engineering](../shared/standards/pre-release-engineering.md). | Architecture, project structure, security boundary, and [Runtime contract lifecycle](../00_project/contract-lifecycle.md) where affected. |
-| Refine scope or an issue | [Issue refinement](../shared/skills/issue-refinement/SKILL.md). | [Issue requirements](../10_workflow/issue-workflow.md), accepted architecture, and roadmap. |
-| Publish or update an issue | [Issue publishing](../shared/skills/issue-publishing/SKILL.md). | Issue requirements and the exact authorized target and fields. |
-| Implement or change documentation | [Pre-release engineering](../shared/standards/pre-release-engineering.md) and affected shared contracts. | Project conventions and affected current specifications; project structure before project changes. |
-| Validate | [Test validation](../shared/skills/test-validation/SKILL.md); [Validation](../shared/standards/validation.md). | [Project validation](../00_project/validation.md), actual task acceptance, and affected consumers. |
-| Prepare or publish a PR | [Pull request publishing](../shared/skills/pr-publishing/SKILL.md). | [PR requirements](../10_workflow/pr-workflow.md), project validation, and authorized publication scope. |
-| Update handbook adoption | [Downstream adoption](../shared/docs/downstream-adoption.md). | Shared handbook adoption, current local requirements, and the selected source revision. |
+| Task | Shared procedure or rule | Local shared source under `docs/shared/` | Project inputs |
+| --- | --- | --- | --- |
+| Resolve a material design choice | [Design refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/design-refinement/SKILL.md); [Pre-release engineering](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pre-release-engineering.md). | `skills/design-refinement/SKILL.md`; `standards/pre-release-engineering.md`. | Architecture, project structure, security boundary, and [Runtime contract lifecycle](../00_project/contract-lifecycle.md) where affected. |
+| Refine scope or an issue | [Issue refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-refinement/SKILL.md). | `skills/issue-refinement/SKILL.md`. | [Issue requirements](../10_workflow/issue-workflow.md), accepted architecture, and roadmap. |
+| Publish or update an issue | [Issue publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-publishing/SKILL.md). | `skills/issue-publishing/SKILL.md`. | Issue requirements and the exact authorized target and fields. |
+| Implement or change documentation | [Pre-release engineering](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pre-release-engineering.md) and affected shared contracts. | `standards/pre-release-engineering.md` and affected contracts. | Project conventions and affected current specifications; project structure before project changes. |
+| Validate | [Test validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/test-validation/SKILL.md); [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/validation.md). | `skills/test-validation/SKILL.md`; `standards/validation.md`. | [Project validation](../00_project/validation.md), actual task acceptance, and affected consumers. |
+| Prepare or publish a PR | [Pull request publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/pr-publishing/SKILL.md). | `skills/pr-publishing/SKILL.md`. | [PR requirements](../10_workflow/pr-workflow.md), project validation, and authorized publication scope. |
+| Update handbook adoption | [Downstream adoption](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/docs/downstream-adoption.md). | `docs/downstream-adoption.md`. | Shared handbook adoption, current local requirements, and the selected source revision. |
 
 Read [Security boundary](../20_architecture/security-boundary.md) before changing providers, context, tool admission, diagnostic visibility, or external authority. Read the runtime contract lifecycle before designing public contracts or saved state. Use shared pre-release and lifecycle rules for decomposition, compatibility, review, and closure decisions.
 

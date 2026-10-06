@@ -1,6 +1,6 @@
 # Project issue requirements
 
-Use the shared [Issue workflow](../shared/standards/issue-workflow.md), [Issue refinement](../shared/skills/issue-refinement/SKILL.md), and [Issue publishing](../shared/skills/issue-publishing/SKILL.md). Apply [project conventions](../00_project/conventions.md) to issue language and publication content.
+Use the shared [Issue workflow](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/issue-workflow.md), [Issue refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-refinement/SKILL.md), and [Issue publishing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/issue-publishing/SKILL.md). Apply [project conventions](../00_project/conventions.md) to issue language and publication content.
 
 ## Native types
 
@@ -17,7 +17,7 @@ Keep titles outcome-focused. A title-, body-, or relationship-only update preser
 
 ## Project design and acceptance
 
-For public APIs, saved context, provider boundaries, tool semantics, budgets, and side-effect authority, use [Design refinement](../shared/skills/design-refinement/SKILL.md) with the project inputs selected by [Agent context](../50_ai/agent-context.md#read-by-task).
+For public APIs, saved context, provider boundaries, tool semantics, budgets, and side-effect authority, use [Design refinement](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/skills/design-refinement/SKILL.md) with the project inputs selected by [Agent context](../50_ai/agent-context.md#read-by-task).
 
 Project-boundary work identifies the allowed reference graph and introduced dependencies under [Project structure](../20_architecture/project-structure.md). Contract work identifies actual producers, consumers, and retained or supported compatibility boundaries under [Runtime contract lifecycle](../00_project/contract-lifecycle.md). Include these inputs in the issue's acceptance and implementation notes where affected.
 

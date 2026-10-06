@@ -1,6 +1,6 @@
 # Runtime contract lifecycle
 
-Apply the shared [Contract lifecycle](../shared/standards/contract-lifecycle.md) and [Pre-release engineering](../shared/standards/pre-release-engineering.md) to SolusAgent's outer agent API, shared tool API, runtime extension API, and saved-context boundaries.
+Apply the shared [Contract lifecycle](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/contract-lifecycle.md) and [Pre-release engineering](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/standards/pre-release-engineering.md) to SolusAgent's outer agent API, shared tool API, runtime extension API, and saved-context boundaries.
 
 ## Current draft surfaces
 

@@ -10,10 +10,14 @@ SolusAgent consumes Solus Book for common engineering standards, agent context g
 | Location and acquisition | Git submodule `solus-book` at `docs/shared/`, configured in [`.gitmodules`](../../.gitmodules). |
 | Adopted revision | `c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67`. The Gitlink pins the content; ordinary checkout does not select upstream's latest branch. |
 | Entrypoint | Root [AGENTS.md](../../AGENTS.md), followed by [project agent context](../50_ai/agent-context.md) and shared context/rules. |
-| Skill loading | Explicit links in project task routing and shared [Task routing](../shared/agents/task-routing.md) load the five canonical `SKILL.md` sources. Resources resolve from their handbook directories. |
+| Skill loading | Explicit links in project task routing and shared [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) load the five canonical `SKILL.md` sources. Resources resolve from their handbook directories. |
 | Project checks | [Project validation](validation.md) owns commands and available acceptance claims. |
 
 ## Checkout and updates
+
+Shared Markdown links in SolusAgent-owned documents open files at the adopted Solus Book commit. GitHub does not expose files beneath this repository's submodule Gitlink through parent `blob`, raw, or Contents API paths. Pinned upstream links provide the published reading route.
+
+After initialization, local readers use `docs/shared/<upstream-path>` for a shared URL ending in `/blob/<adopted-revision>/<upstream-path>`. Root `AGENTS.md` spells out the common-rule paths, and project task routing lists the selected local procedure paths. Links within Book remain relative to their owning Book files, both locally and on GitHub.
 
 After an ordinary clone or checkout, run from the repository root:
 
@@ -23,9 +27,9 @@ git submodule update --init --recursive
 
 A new clone can use `git clone --recurse-submodules <repository-url>`. The initialized handbook and all skill resources are available without another local checkout. Local uncommitted changes remain working-tree preparation until the maintainer authorizes commit or publication.
 
-For an authorized handbook update, fetch the source, inspect the selected full commit and relevant semantic/path changes, and check out that commit in `docs/shared/`. Update the Gitlink and this adopted revision together. Recheck local exceptions, incoming links, resource loading, and representative affected workflows. Keep imported rule bodies maintained upstream rather than editing an independent local copy. Source selection and updates retain the task's scope and authority.
+For an authorized handbook update, fetch the source, inspect the selected full commit and relevant semantic/path changes, and check out that commit in `docs/shared/`. Update the Gitlink, this adopted revision, and all pinned upstream links in SolusAgent-owned documents together. Recheck local exceptions, published and local reading paths, resource loading, and representative affected workflows. Keep imported rule bodies maintained upstream rather than editing an independent local copy. Source selection and updates retain the task's scope and authority.
 
-If initialization or a required resource fails, follow shared [Loading failures](../shared/agents/context-model.md#loading-failures). Obtain the selected source or missing guidance before dependent operations; continue independent work covered by available applicable rules.
+If initialization or a required resource fails, follow shared [Loading failures](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/context-model.md#loading-failures). Obtain the selected source or missing guidance before dependent operations; continue independent work covered by available applicable rules.
 
 ## Local requirements and deduplication
 
@@ -45,9 +49,10 @@ No product or authority requirement is intentionally changed by deduplication. S
 Local validation on 2026-10-06 used PowerShell 7.6.5 and Git 2.52.0.windows.1 on the adoption working tree:
 
 - The submodule checkout and parent Gitlink matched the selected full commit, and the handbook working tree was clean.
-- UTF-8/LF/final-newline and whitespace checks passed for 45 text files. All 284 local Markdown links outside code examples resolved, including 32 anchor references across 40 Markdown files.
+- UTF-8/LF/final-newline and whitespace checks passed for 45 text files. Across 40 Markdown files, all 235 relative links and 49 pinned shared links outside code examples resolved to local files, including 32 anchor references.
+- All 49 pinned shared links selected the same Book commit as the Gitlink. Their 16 distinct file targets matched the complete upstream Git tree and local blob identities; each published GitHub file URL returned HTTP 200. Parent-owned Markdown no longer linked through the submodule's child paths.
 - Project task routing exposed all five canonical skills. Their basic metadata and all 16 referenced resources were readable from the selected source location. This Codex session read the root entrypoint, project context, and five shared skill bodies through file tools.
 - A disposable local clone received the proposed parent working-tree files and Gitlink without creating a commit. Running `git submodule update --init --recursive` obtained the selected handbook commit from its published remote. The same link, text, routing, and resource checks passed there without a sibling source checkout.
 - Semantic review accounted for the deleted common documents and retained local requirements. Source, solution, build configuration, project references, and product security requirements were unchanged; architecture and roadmap changes only updated shared-document links and documentation layout.
 
-These checks validate the explicit entrypoint/task-routing arrangement and its source acquisition. Native skill-catalog discovery, automatic loading in a fresh conversation, other harnesses, and other platforms were not exercised. No runtime build, tests, CI, remote PR review, or release readiness is claimed for this documentation-only change. Raw local evidence remains in ignored locations.
+These checks validate the explicit entrypoint/task-routing arrangement, source acquisition, and published link targets. Native skill-catalog discovery, automatic loading in a fresh conversation, other harnesses, and other platforms were not exercised. These local checks do not establish independent PR review, runtime build or test results, CI, or release readiness. Raw local evidence remains in ignored locations.
