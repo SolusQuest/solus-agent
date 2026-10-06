@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SolusAgent.Api/SolusAgent.Api.csproj" />
+    <Project Path="src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
+    <Project Path="src/SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" />
+    <Project Path="src/SolusAgent.Runtime/SolusAgent.Runtime.csproj" />
+  </Folder>
+</Solution>

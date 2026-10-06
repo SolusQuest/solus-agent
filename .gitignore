@@ -1,0 +1,28 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+
+# IDE and user-specific files
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local validation output
+TestResults/
+coverage/
+artifacts/
+
+# Machine-local agent and workflow records
+.codex/
+.claude/
+.local/
+.tmp/
+.worktrees/
+.task-*/
+workflow-artifacts/
+
+# Local credentials and environment files
+.env
+.env.*
+!.env.example
