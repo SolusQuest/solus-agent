@@ -56,13 +56,13 @@ public sealed class ScriptedUsageAgent : IAgent
             if (index == steps.Length) return Outcome(AgentTerminationReason.Completed);
             if (cancellationToken.IsCancellationRequested) return Outcome(AgentTerminationReason.Cancelled);
             if (completed >= request.Bounds.MaximumWorkUnits) return Outcome(AgentTerminationReason.ResourceLimit);
-            var thresholdStop = ThresholdStop();
-            if (thresholdStop is AgentTerminationReason stop) return Outcome(stop);
             var step = steps[index];
             var newLogical = currentLogical != step.LogicalCallId;
             if (request.UsageLimits?.MaximumPhysicalDispatches is int maximumDispatches && attempts.Count >= maximumDispatches
                 || newLogical && request.UsageLimits?.MaximumLogicalCalls is int maximumCalls && logicalCalls >= maximumCalls)
                 return Outcome(AgentTerminationReason.ResourceLimit);
+            var thresholdStop = ThresholdStop();
+            if (thresholdStop is AgentTerminationReason stop) return Outcome(stop);
             if (newLogical)
             {
                 logicalCalls++;

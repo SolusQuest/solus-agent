@@ -40,11 +40,14 @@ public sealed class ProviderTokenCounter
 {
     /// <summary>Creates a nonnegative or explicitly unknown counter.</summary>
     /// <exception cref="ArgumentOutOfRangeException">An enum is undefined or the count is negative.</exception>
+    /// <exception cref="ArgumentException">An intrinsically input counter is declared as an output subset.</exception>
     public ProviderTokenCounter(ProviderTokenCounterKind kind, long? value, TokenCounterRelationship relationship)
     {
         if (!Enum.IsDefined(kind)) throw new ArgumentOutOfRangeException(nameof(kind));
         if (!Enum.IsDefined(relationship)) throw new ArgumentOutOfRangeException(nameof(relationship));
         if (value is < 0) throw new ArgumentOutOfRangeException(nameof(value));
+        if (kind == ProviderTokenCounterKind.UncachedInput && relationship == TokenCounterRelationship.IncludedInOutput)
+            throw new ArgumentException("An uncached input counter cannot be an output subset.", nameof(relationship));
         Kind = kind;
         Value = value;
         Relationship = relationship;
