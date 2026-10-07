@@ -6,6 +6,7 @@
     <Project Path="src/SolusAgent.Runtime/SolusAgent.Runtime.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SolusAgent.ApiOnlyConsumer/SolusAgent.ApiOnlyConsumer.csproj" />
     <Project Path="tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj" />
   </Folder>
   <Folder Name="/tests/ConsumerProbes/">

@@ -1,6 +1,6 @@
 # Security boundary
 
-These rules guide future implementation. The initial projects do not yet implement authentication, context protection, provider transport, or tool admission.
+These rules govern the current execution and function-tool drafts and future implementation. Synthetic tests exercise Host control/data separation, ordinary diagnostic confinement, effect-free tool preparation and narrow capability-authorized invocation. The production runtime, authentication, context protection, provider transport and runtime batch admission remain unimplemented.
 
 ## Host authority
 

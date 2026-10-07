@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries represent the selected boundaries. `Tools.Api` implements the [prepared function-tool draft](drafts/function-tools.md); the other libraries remain buildable skeletons. The sole managed test runner holds evaluated Architecture tests and executable Tools tests, while the real CustomTools consumer probe is a separate test-only compilation boundary. No provider, runtime adapter or generator is included.
+The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); the runtime libraries remain skeletons. Under `tests/`, one managed runner holds Architecture, Execution and Tools tests, while separate Api-only custom-agent and CustomTools libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
 
 ## Layout
 
@@ -12,6 +12,7 @@ src/
     SolusAgent.Runtime.Api/
     SolusAgent.Runtime/
 tests/
+    SolusAgent.ApiOnlyConsumer/
     SolusAgent.ContractTests/
     ConsumerProbes/
         CustomTools/
@@ -58,7 +59,9 @@ flowchart TD
 
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
-`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references Tools.Api plus the test-only CustomTools probe for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph exact. Future focused tests use this same runner and add only dependencies required by implemented tests.
+`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api`, `SolusAgent.Tools.Api` and the two test-only consumer libraries for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph and current test registrations exact. Execution and Tools tests call actual contract types. Future focused tests use this same runner and add only dependencies required by implemented tests.
+
+`tests/SolusAgent.ApiOnlyConsumer` is a non-packable test library with Api as its only production reference and no packages; it contains both a synthetic agent and consumer orchestration through `IAgent`. Evaluated graph and compiled assembly checks preserve this independent boundary even though the common runner also references Tools.Api.
 
 `tests/ConsumerProbes/CustomTools` is a real test-only library, registered in the solution, with Tools.Api as its sole production reference and no package dependencies. It implements a synthetic counter tool and narrow capability. Evaluated architecture assertions check its exact edge, managed target and repository-contained compile inputs. Its effects are confined to test memory; it is not a production tool adapter or another test runner.
 
