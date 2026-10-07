@@ -8,6 +8,8 @@ Apply the shared [Contract lifecycle](https://github.com/SolusQuest/solus-book/b
 
 This document does not select package versions, persistence codecs, or release policy. The [roadmap](../90_roadmap/roadmap.md) owns the first experimental prerelease and its migration-entry scope. Supported package and saved-context commitments can have different boundaries.
 
+The outer [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) is another current member family, exercised by the Api-only producer/Host consumer and Candidates tests. Its signatures and producers/consumers evolve together; no persisted Host progress format, effect transaction or supported API version is selected.
+
 ## Saved context
 
 The self-owned runtime must support complete restoration of its own runtime context. Context compatibility is scoped to its agent implementation and applicable runtime, provider, model, and format constraints.

@@ -4,6 +4,8 @@ This document records the selected architecture. The four production libraries r
 
 ## Agent and model boundaries
 
+The executable outer [candidate-feedback draft](drafts/candidate-feedback.md) selects an optional `ICandidateAgent` and separate Host payload/feedback channel. Safe completion observations retain independent receipts across stops without importing Host domain validation, effect authority or durable storage.
+
 The outer agent API describes how a product requests execution, observes progress and outcomes, and supplies or receives implementation-scoped context. It must accommodate incremental candidate submission and host acknowledgement where the product needs them.
 
 The self-owned runtime is the initial implementation. Future open-source or hosted agent integrations can implement the same outer contract without adopting its internal loop or model-provider API.
