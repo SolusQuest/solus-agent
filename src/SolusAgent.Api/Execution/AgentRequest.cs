@@ -1,3 +1,4 @@
+using SolusAgent.Api.Usage;
 using SolusAgent.Api.Capabilities;
 
 namespace SolusAgent.Api.Execution;
@@ -15,7 +16,8 @@ public sealed class AgentRequest
         string instructions,
         IReadOnlyList<AgentInput> data,
         AgentExecutionBounds bounds,
-        AgentCapability requiredCapabilities)
+        AgentCapability requiredCapabilities,
+        AgentUsageLimits? usageLimits = null)
     {
         if (executionId == Guid.Empty)
         {
@@ -38,6 +40,7 @@ public sealed class AgentRequest
         Data = Array.AsReadOnly(snapshot);
         Bounds = bounds;
         RequiredCapabilities = requiredCapabilities;
+        UsageLimits = usageLimits;
     }
 
     /// <summary>Gets the Host-supplied association retained by every progress observation and terminal outcome.</summary>
@@ -54,6 +57,9 @@ public sealed class AgentRequest
 
     /// <summary>Gets guarantees that must be supported or explicitly rejected before work or progress.</summary>
     public AgentCapability RequiredCapabilities { get; }
+
+    /// <summary>Gets optional requested usage limits; their presence alone does not promise enforcement.</summary>
+    public AgentUsageLimits? UsageLimits { get; }
 
     /// <summary>Returns only structural information; excludes instructions and data text.</summary>
     public override string ToString() => $"AgentRequest {{ DataCount = {Data.Count}, RequiredCapabilities = {RequiredCapabilities} }}";

@@ -227,7 +227,7 @@ public sealed class ExecutionTests
             Assert.Throws<ArgumentNullException>(() => new AgentRequest(ExecutionId, "Host", null!, bounds, AgentCapability.None)),
             Assert.Throws<ArgumentNullException>(() => new AgentRequest(ExecutionId, "Host", [], null!, AgentCapability.None)),
             Assert.Throws<ArgumentException>(() => new AgentRequest(ExecutionId, "Host", [null!], bounds, AgentCapability.None)),
-            Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRequest(ExecutionId, "Host", [], bounds, (AgentCapability)8)),
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRequest(ExecutionId, "Host", [], bounds, (AgentCapability)(1 << 30))),
             Assert.Throws<ArgumentOutOfRangeException>(() => new AgentInput((AgentInputSource)99, "private-input-canary")),
             Assert.Throws<ArgumentNullException>(() => new AgentInput(AgentInputSource.Tool, null!)),
             await Assert.ThrowsAsync<ArgumentNullException>(() => agent.ExecuteAsync(null!).AsTask()),
@@ -317,7 +317,7 @@ public sealed class ExecutionTests
         Assert.Throws<ArgumentException>(() => new AgentOutcome(ExecutionId, AgentTerminationReason.Completed, 1, failureCode: AgentFailureCode.ExecutionFailed));
         Assert.Throws<ArgumentOutOfRangeException>(() => new AgentOutcome(ExecutionId, (AgentTerminationReason)99, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new AgentOutcome(ExecutionId, AgentTerminationReason.Failed, 0, failureCode: (AgentFailureCode)99));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new AgentOutcome(ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, (AgentCapability)8));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AgentOutcome(ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, (AgentCapability)(1 << 30)));
         Assert.Throws<ArgumentOutOfRangeException>(() => new AgentProgress(ExecutionId, -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => new AgentOutcome(ExecutionId, AgentTerminationReason.Partial, -1));
         Assert.Throws<ArgumentException>(() => new AgentProgress(Guid.Empty, 0));
@@ -325,7 +325,7 @@ public sealed class ExecutionTests
         foreach (var type in new[] { typeof(AgentProgress), typeof(AgentOutcome) })
         {
             Assert.All(type.GetProperties(), property => Assert.True(
-                property.PropertyType.IsEnum || property.PropertyType == typeof(Guid) || property.PropertyType == typeof(int) || property.PropertyType == typeof(bool),
+                property.PropertyType.IsEnum || property.PropertyType == typeof(Guid) || property.PropertyType == typeof(int) || property.PropertyType == typeof(bool) || property.PropertyType == typeof(SolusAgent.Api.Usage.AgentRunUsage),
                 $"Unexpected ordinary diagnostic payload: {property.Name}"));
         }
     }
