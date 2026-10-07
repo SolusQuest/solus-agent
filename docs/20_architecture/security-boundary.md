@@ -36,4 +36,4 @@ Ordinary validation uses synthetic fixtures, fake transports, and test-only capa
 
 Publishing, release, deployment, tracker mutation, and destructive operations remain under the applicable task's authority. A successful build, passing test, generated candidate, or restored context does not grant that authority.
 
-When CI is later introduced, ordinary `pull_request` and `push` checks must not require provider secrets. Any `pull_request_target` design requires an explicit security review before adoption.
+Ordinary `pull_request` and `push` checks must not require provider secrets. Any `pull_request_target` design requires an explicit security review before adoption.

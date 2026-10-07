@@ -5,4 +5,7 @@
     <Project Path="src/SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" />
     <Project Path="src/SolusAgent.Runtime/SolusAgent.Runtime.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj" />
+  </Folder>
 </Solution>

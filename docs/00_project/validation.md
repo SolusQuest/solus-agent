@@ -4,16 +4,31 @@ Use shared [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d19
 
 ## Current available checks
 
-The solution contains four library skeletons and no test projects, executable host, providers, or tools. From the repository root, use the SDK selected by `global.json`:
+The solution contains four library skeletons and one managed test project, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. From the repository root, use the SDK selected by `global.json`:
 
 ```text
 dotnet restore SolusAgent.slnx
 dotnet build SolusAgent.slnx --configuration Release --no-restore
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-Inspect solution membership and direct project references against [Project structure](../20_architecture/project-structure.md). Build success proves compilation only; it does not demonstrate an agent execution path, tools, restoration, tests, platform support, CI, package installation, or release readiness. An empty `dotnet test` run is not acceptance evidence.
+The test project runs xUnit through `Microsoft.NET.Test.Sdk`, `xunit`, and `xunit.runner.visualstudio` with private runner assets, and it currently references no production project. Its Architecture tests evaluate the real production project files through `dotnet msbuild` JSON output, including imported and conditioned items, instead of consuming production types. Future focused tests use this same real runner and add only the production reference that implemented test code actually needs.
+
+Focused runs select the same runner with a filter, for example:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Architecture"
+```
+
+The Architecture tests check evaluated project boundaries only: the exact four-library reference graph, package independence of `SolusAgent.Api` and `SolusAgent.Tools.Api`, managed `net10.0` targets, and evaluated compile inputs that stay inside the repository. Synthetic negative checks mutate an owned temporary Api-only consumer with forbidden `Runtime` and `Runtime.Api` reference edges and an out-of-root linked source, then require the same boundary assertions to fail for the specific offending edge. Confirm nonzero executed test counts and named negative checks; an empty `dotnet test` run is not acceptance evidence.
+
+These checks do not demonstrate agent execution behavior, public API contracts, tools, providers, context restoration, packaging, installation, or release readiness, and a passing local run does not establish CI results or platform support. Inspect solution membership and direct project references against [Project structure](../20_architecture/project-structure.md).
 
 Use `--no-restore` only after a successful applicable restore; repeat restore after SDK, framework, project, reference, package, source, or restore-property changes. Use `--no-build` only after a successful build of the same inputs, SDK, configuration, and tree; rebuild after source, project, solution, build configuration, or generator changes.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).
 
 ## Documentation and handbook checks
 

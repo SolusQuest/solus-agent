@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries represent the boundaries explicitly selected for initialization. They are buildable skeletons, not implemented APIs. No placeholder public types, tests, providers, adapters, or generators are included.
+The four production libraries represent the boundaries explicitly selected for initialization. They are buildable skeletons, not implemented APIs. No placeholder public types, providers, adapters, or generators are included; the managed test project under `tests/` holds Architecture tests that evaluate the production project files and references no production project.
 
 ## Layout
 
@@ -11,6 +11,10 @@ src/
     SolusAgent.Tools.Api/
     SolusAgent.Runtime.Api/
     SolusAgent.Runtime/
+tests/
+    SolusAgent.ContractTests/
+.github/
+    workflows/          # Ordinary CI
 docs/
     00_project/
     10_workflow/
@@ -52,6 +56,8 @@ flowchart TD
 
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
+`tests/SolusAgent.ContractTests` is the sole managed test project and classifies as test-only: it declares the current test runner packages with private runner assets and no production project references, because its Architecture tests evaluate production project paths rather than production types. Future focused tests use that same runner and add only the production reference that implemented test code actually requires.
+
 ## Downstream consumption
 
 - Product agent orchestration depends on `SolusAgent.Api`.
@@ -66,4 +72,4 @@ A single downstream project can begin with these source-level responsibilities. 
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
-Provider packages, additional agent implementations, tool implementations, generators, tests, and convenience hosting packages remain future work. The four initial skeletons do not imply that those packages are required for first implementation.
+Provider packages, additional agent implementations, tool implementations, generators, further test projects, and convenience hosting packages remain future work. The four initial skeletons do not imply that those packages are required for first implementation.

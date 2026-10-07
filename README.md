@@ -6,9 +6,9 @@ The selected design separates the application-facing agent API, reusable tool co
 
 ## Current state
 
-The repository contains collaboration documentation and a buildable four-project skeleton. Public interface signatures and executable agent behavior have not been implemented. The architectural requirements below are the selected design, not claims of available functionality.
+The repository contains collaboration documentation, a buildable four-project skeleton, one managed architecture test project, and an ordinary push/pull_request CI workflow. Public interface signatures and executable agent behavior have not been implemented. The architectural requirements below are the selected design, not claims of available functionality.
 
-The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. Runtime implementation, CI, tests, packaging, and release work remain future work; actual product migration belongs to the downstream repositories.
+The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. The architecture tests and CI check compilation and project boundaries only; runtime implementation, packaging, and release work remain future work, and actual product migration belongs to the downstream repositories.
 
 ## Projects
 
@@ -38,9 +38,10 @@ Use the .NET SDK selected by `global.json`. From the repository root:
 ```text
 dotnet restore SolusAgent.slnx
 dotnet build SolusAgent.slnx --configuration Release --no-restore
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-These commands require no model credentials. There is no test suite or CI workflow at this stage; a successful build proves project construction and compilation only.
+These commands require no model credentials. A successful build proves project construction and compilation only, and the Architecture tests check evaluated project boundaries rather than agent behavior. `.github/workflows/ci.yml` runs the same commands on push and pull_request. See [project validation](docs/00_project/validation.md) for the exact scope and limits.
 
 ## Documentation
 
