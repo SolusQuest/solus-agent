@@ -3,7 +3,7 @@ using Xunit;
 
 namespace SolusAgent.ContractTests.Architecture;
 
-/// <summary>Architecture tests over the evaluated production project graph and the sole test project registration.</summary>
+/// <summary>Architecture tests over the evaluated production graph and current test-only project registration.</summary>
 public sealed class ProductionProjectGraphTests
 {
     private static readonly IReadOnlyList<string> ProductionProjectNames =
@@ -43,7 +43,7 @@ public sealed class ProductionProjectGraphTests
     ];
 
     [Fact]
-    public void SolutionRegistersTheFourProductionProjectsAndTheSoleTestProject()
+    public void SolutionRegistersTheFourProductionProjectsRunnerAndCurrentConsumerProbe()
     {
         var registeredPaths = XDocument.Load(RepositoryLayout.SolutionPath)
             .Descendants("Project")
@@ -56,6 +56,7 @@ public sealed class ProductionProjectGraphTests
         var expectedPaths = ProductionProjectNames
             .Select(RepositoryLayout.ProductionProjectPath)
             .Append(RepositoryLayout.TestProjectPath)
+            .Append(CustomToolsProjectPath)
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -65,7 +66,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Single(registeredTestProjects);
+        Assert.Equal(2, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -107,11 +108,12 @@ public sealed class ProductionProjectGraphTests
     }
 
     [Fact]
-    public void TestProjectEvaluatesOnlyCurrentTestPackagesAndNoProductionProjectReferences()
+    public void TestProjectEvaluatesOnlyCurrentPackagesAndImplementedTestReferences()
     {
         var evaluation = MsbuildProjectEvaluation.Evaluate(RepositoryLayout.TestProjectPath);
 
-        Assert.Empty(evaluation.ProjectReferenceItems);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+            [RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api"), CustomToolsProjectPath]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
         Assert.Equal(
@@ -122,4 +124,19 @@ public sealed class ProductionProjectGraphTests
             string.Equals(item["Identity"], "xunit.runner.visualstudio", StringComparison.Ordinal));
         Assert.Equal("all", runnerPackage.TryGetValue("PrivateAssets", out var privateAssets) ? privateAssets : string.Empty);
     }
+
+    [Fact]
+    public void CustomToolsProbeEvaluatesOnlyToolsApiAndRepositoryOwnedCompileInputs()
+    {
+        var evaluation = MsbuildProjectEvaluation.Evaluate(CustomToolsProjectPath);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+            [RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api")]);
+        ProjectBoundaryAssertions.AssertNoPackages(evaluation);
+        ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
+        ProjectBoundaryAssertions.AssertCompileSourcesWithinRoot(evaluation, RepositoryLayout.Root);
+        Assert.NotEmpty(evaluation.CompileItems);
+    }
+
+    private static string CustomToolsProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomTools", "CustomTools.csproj");
 }

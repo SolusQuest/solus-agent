@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <ProjectReference Include="../../../src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
+    </ItemGroup>
+</Project>

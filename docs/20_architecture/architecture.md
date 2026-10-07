@@ -1,6 +1,6 @@
 # Architecture
 
-This document records the selected architecture. The current implementation is the four-project skeleton described in [Project structure](project-structure.md). Interface signatures, serialization details, and executable behavior have not been implemented.
+This document records the selected architecture. The four production libraries are described in [Project structure](project-structure.md). `Tools.Api` supplies executable [prepared function-tool draft contracts](drafts/function-tools.md) with a synthetic consumer; the outer agent, runtime, providers and their serialization remain unimplemented.
 
 ## Agent and model boundaries
 

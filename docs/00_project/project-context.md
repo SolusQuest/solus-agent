@@ -8,7 +8,7 @@ The repository owns its implementation, shared contracts, documentation, and fut
 
 ## Current position
 
-The current tree is an initialization skeleton: four .NET libraries, their selected dependency graph, collaboration documentation, one managed architecture test project, and an ordinary push/pull_request CI workflow. It contains no public API types, executable agent loop, model provider, tool implementation, or released distribution. The architecture tests evaluate project boundaries only, and build or test success is not evidence that the selected runtime behavior exists.
+The current tree contains four .NET libraries with the selected dependency graph, collaboration documentation, one managed test runner and ordinary push/pull_request CI. `SolusAgent.Tools.Api` now supplies executable [prepared function-tool draft contracts](../20_architecture/drafts/function-tools.md), exercised by a standalone synthetic CustomTools consumer. Tests cover project boundaries and actual tool preparation/invocation semantics. There is no executable agent loop, model provider, production tool adapter or released distribution, and this tool proof does not establish the selected runtime behavior.
 
 ## Accepted design direction
 
@@ -33,4 +33,4 @@ Read [Architecture](../20_architecture/architecture.md) and [Security boundary](
 
 The [roadmap](../90_roadmap/roadmap.md) selects M0 initialization and M1-M5 delivery toward a first consumable 0.x experimental prerelease. Draft contracts evolve with implementation; ordinary validation uses a Scripted Provider, while one actual provider adapter is included; the first release declares prerelease compatibility policy and verified support scope without a compatibility freeze. It enables the two downstream repositories to begin migration rather than requiring their migrations to close SolusAgent's release milestone.
 
-Detailed public signatures, context formats, test infrastructure, CI, package layout, and release mechanics are refined with their owning work. Additional agent implementations and source generators remain later work. The current skeleton does not implement the roadmap, and a planning task does not authorize implementing or publishing those features.
+Tool signatures are current executable drafts; other public signatures, context formats, package layout and release mechanics are refined with their owning work. Additional agent implementations and source generators remain later work. The current tree does not deliver all roadmap outcomes, and a planning task does not authorize implementing or publishing those features.
