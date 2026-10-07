@@ -76,7 +76,7 @@ public enum CandidateStopReason
 }
 
 /// <summary>An immutable safe completion observation retaining independent receipts without payloads or effect claims.</summary>
-/// <remarks>These are in-process observations, not a durable Host ledger. Implementations must derive acceptance only from correlated acknowledged feedback; constructors cannot authenticate that provenance.</remarks>
+/// <remarks>Named feedback stops must agree with the last receipt. These are in-process observations, not a durable Host ledger. Implementations must derive acceptance only from correlated acknowledged feedback; constructors cannot authenticate that provenance.</remarks>
 public sealed class CandidateExecutionResult
 {
     /// <summary>Creates a consistent terminal result and snapshots its safe per-submission observations.</summary>
@@ -116,6 +116,24 @@ public sealed class CandidateExecutionResult
             || (outcome.Reason == AgentTerminationReason.Failed && outcome.FailureCode != (stopReason == CandidateStopReason.ProgressObserverFailed ? AgentFailureCode.ProgressObserverFailed : AgentFailureCode.ExecutionFailed)))
         {
             throw new ArgumentException("The stop reason must agree with the ordinary outcome.", nameof(stopReason));
+        }
+
+        var terminal = snapshot.LastOrDefault();
+        var coherentTerminal = stopReason switch
+        {
+            CandidateStopReason.MissingAcknowledgement => terminal?.Acknowledgement == CandidateAcknowledgement.Missing,
+            CandidateStopReason.FailedAcknowledgement => terminal?.Acknowledgement == CandidateAcknowledgement.Failed,
+            CandidateStopReason.UnknownAcknowledgement => terminal?.Acknowledgement == CandidateAcknowledgement.Unknown,
+            CandidateStopReason.MismatchedFeedback => terminal?.Acknowledgement == CandidateAcknowledgement.Mismatched,
+            CandidateStopReason.DuplicateFeedback => terminal?.Acknowledgement == CandidateAcknowledgement.Duplicate,
+            CandidateStopReason.HostEnded => terminal?.Acknowledgement == CandidateAcknowledgement.Acknowledged && terminal.Continuation == CandidateContinuation.End,
+            CandidateStopReason.ProductionExhausted or CandidateStopReason.RepairLimit => terminal?.Decision == CandidateDecision.Reject && terminal.Continuation == CandidateContinuation.Continue,
+            CandidateStopReason.ContinuationLimit => terminal?.IsAccepted == true && terminal.Continuation == CandidateContinuation.Continue,
+            _ => true,
+        };
+        if (!coherentTerminal)
+        {
+            throw new ArgumentException("The stop reason must agree with the terminal receipt.", nameof(stopReason));
         }
 
         Outcome = outcome;
