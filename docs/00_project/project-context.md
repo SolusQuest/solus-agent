@@ -8,7 +8,7 @@ The repository owns its implementation, shared contracts, documentation, and fut
 
 ## Current position
 
-The current tree is an initialization skeleton: four .NET libraries, their selected dependency graph, and collaboration documentation. It contains no public API types, executable agent loop, model provider, tool implementation, tests, or released distribution. Build success is not evidence that the selected runtime behavior exists.
+The current tree is an initialization skeleton: four .NET libraries, their selected dependency graph, collaboration documentation, one managed architecture test project, and an ordinary push/pull_request CI workflow. It contains no public API types, executable agent loop, model provider, tool implementation, or released distribution. The architecture tests evaluate project boundaries only, and build or test success is not evidence that the selected runtime behavior exists.
 
 ## Accepted design direction
 
