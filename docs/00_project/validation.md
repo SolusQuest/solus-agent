@@ -51,6 +51,12 @@ RuntimeConfiguration tests exercise the actual independent CustomProvider config
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.RuntimeConfiguration"
 ```
 
+Apr tests exercise the Api-only APR-shaped business Host and the finite test-only scenario that composes the actual CustomTools counter tool and the actual guarded CustomProvider provider through `RuntimeConfiguration`, `ConfigurationConsumer` and the Host exposure hooks. They cover supplied prior context admission and rejection, correction through `RepairsSubmissionId`, accepted continuation with explicit completion, partial/resource/cancellation stops with retained progress, missing/unknown/failed/wrong feedback, whole-batch admission before effects, honest known/partial/unavailable usage, ordered exposure and same-attempt closure, and restricted payload and credential confinement, plus the AprHost evaluated and compiled boundary. These checks are synthetic M1 consumption evidence under the [APR-shaped draft consumption document](../20_architecture/drafts/apr-consumption.md), not production runtime, budget enforcement, restoration or downstream migration. Use the existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Apr"
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).

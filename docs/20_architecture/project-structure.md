@@ -23,6 +23,7 @@ tests/
     ConsumerProbes/
         CustomTools/
         CustomProvider/
+        AprHost/
 .github/
     workflows/          # Ordinary CI
 docs/
@@ -73,6 +74,8 @@ Downstream product source, repository snapshots, fixtures, and machine-local pat
 `tests/ConsumerProbes/CustomTools` is a real test-only library, registered in the solution, with Tools.Api as its sole production reference and no package dependencies. It implements a synthetic counter tool and narrow capability. Evaluated architecture assertions check its exact edge, managed target and repository-contained compile inputs. Its effects are confined to test memory; it is not a production tool adapter or another test runner.
 
 `tests/ConsumerProbes/CustomProvider` is a non-packable test-only library with Runtime.Api as its sole direct production reference and no packages. It uses the accepted Tools/Usage types transitively through Runtime.Api and never references Runtime. Providers tests exercise its finite model/tool exchange and actual all-member tool admission; Architecture checks evaluate its exact graph, compiled references and repository-contained sources. Runtime.Api generates XML documentation with warnings-as-errors for the [provider exchange draft](drafts/provider-exchange.md).
+
+`tests/ConsumerProbes/AprHost` is a non-packable test-only library with Api as its only production reference and no packages. It contains the APR-shaped synthetic business Host and its minimized synthetic item, acceptance and effect types with XML documentation, and it references neither Runtime.Api, Runtime, the tool or provider fixtures nor any downstream product source. The [APR-shaped draft consumption document](drafts/apr-consumption.md) owns its seams, synthetic policies and evidence matrix; its evaluated and compiled boundary checks run with the Apr tests in the existing runner.
 
 ## Downstream consumption
 

@@ -59,6 +59,7 @@ public sealed class ProductionProjectGraphTests
             .Append(Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"))
             .Append(CustomToolsProjectPath)
             .Append(CustomProviderProjectPath)
+            .Append(AprHostProjectPath)
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -68,7 +69,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Equal(4, registeredTestProjects.Length);
+        Assert.Equal(5, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -122,6 +123,7 @@ public sealed class ProductionProjectGraphTests
             CustomToolsProjectPath,
             RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
             CustomProviderProjectPath,
+            AprHostProjectPath,
         ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
@@ -166,4 +168,7 @@ public sealed class ProductionProjectGraphTests
 
     private static string CustomProviderProjectPath =>
         Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomProvider", "CustomProvider.csproj");
+
+    private static string AprHostProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "AprHost", "AprHost.csproj");
 }
