@@ -10,6 +10,8 @@ The current tree retains four production libraries with an executable outer [exe
 
 `SolusAgent.Api` is independent of the self-owned runtime. `SolusAgent.Tools.Api` is reusable across supporting agent implementations. `SolusAgent.Runtime.Api` owns self-owned extension contracts; `SolusAgent.Runtime` will supply the initial implementation. Products retain domain acceptance and platform side effects. Complete runtime context restoration is selected; the product chooses fresh versus restored execution.
 
+The outer [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) is also executable through the existing Api-only producer/Host consumer and Candidates tests. It demonstrates correlation, independent acknowledgement retention, bounded follow-on work and diagnostic separation without production runtime or Host domain/effect implementations.
+
 ## Shared loading and ownership
 
 [Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.

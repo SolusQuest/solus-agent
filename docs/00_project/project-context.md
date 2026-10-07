@@ -10,6 +10,8 @@ The repository owns its implementation, shared contracts, documentation, and fut
 
 The current tree contains four .NET production libraries in their selected dependency graph, an executable outer [execution draft](../20_architecture/drafts/agent-execution.md) and [prepared function-tool draft](../20_architecture/drafts/function-tools.md), separate Api-only custom-agent and CustomTools consumer libraries, one managed contract test runner, and ordinary push/pull_request CI. Execution tests demonstrate synthetic bounded work, capability admission, terminal outcomes and diagnostic separation. Tools tests exercise actual preparation/invocation semantics, and architecture tests evaluate the project boundaries. There is no production agent loop, model provider, production tool adapter or released distribution. These drafts and synthetic checks do not establish the selected runtime's later guarantees.
 
+The executable [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) extends the outer boundary with individually correlated Host exchanges and bounded repairs/continuations. Its Api-only synthetic producer/Host consumer demonstrates independent acknowledgement retention and diagnostic confinement; it supplies no production loop or Host domain policy.
+
 ## Accepted design direction
 
 - Use the name `SolusAgent` and the four projects defined in [Project structure](../20_architecture/project-structure.md).
