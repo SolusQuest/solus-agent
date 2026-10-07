@@ -58,6 +58,7 @@ public sealed class ProductionProjectGraphTests
             .Append(RepositoryLayout.TestProjectPath)
             .Append(Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"))
             .Append(CustomToolsProjectPath)
+            .Append(CustomProviderProjectPath)
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -67,7 +68,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Equal(3, registeredTestProjects.Length);
+        Assert.Equal(4, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -119,6 +120,8 @@ public sealed class ProductionProjectGraphTests
             Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"),
             RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api"),
             CustomToolsProjectPath,
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
+            CustomProviderProjectPath,
         ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
@@ -145,4 +148,22 @@ public sealed class ProductionProjectGraphTests
 
     private static string CustomToolsProjectPath =>
         Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomTools", "CustomTools.csproj");
+
+    [Fact]
+    public void CustomProviderProbeEvaluatesOnlyRuntimeApiAndRepositoryOwnedCompileInputs()
+    {
+        var evaluation = MsbuildProjectEvaluation.Evaluate(CustomProviderProjectPath);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+            [RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api")]);
+        ProjectBoundaryAssertions.AssertNoPackages(evaluation);
+        ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
+        ProjectBoundaryAssertions.AssertCompileSourcesWithinRoot(evaluation, RepositoryLayout.Root);
+        Assert.NotEmpty(evaluation.CompileItems);
+        var references = typeof(SolusAgent.ConsumerProbes.CustomProvider.DelegateProvider).Assembly.GetReferencedAssemblies();
+        Assert.Contains(references, reference => reference.Name == "SolusAgent.Runtime.Api");
+        Assert.DoesNotContain(references, reference => reference.Name == "SolusAgent.Runtime");
+    }
+
+    private static string CustomProviderProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomProvider", "CustomProvider.csproj");
 }

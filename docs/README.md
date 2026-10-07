@@ -31,6 +31,7 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Security boundary](20_architecture/security-boundary.md).
 - [Candidate feedback draft](20_architecture/drafts/candidate-feedback.md): individually correlated Host submissions and retained acknowledgement observations.
 - [Run limits and usage draft](20_architecture/drafts/usage.md).
+- [Provider exchange draft](20_architecture/drafts/provider-exchange.md).
 
 ## Agent collaboration
 
