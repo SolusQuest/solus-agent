@@ -16,6 +16,8 @@ The [provider exchange draft](../20_architecture/drafts/provider-exchange.md) is
 
 The executable [context envelope draft](../20_architecture/drafts/context-envelope.md) adds implementation-scoped opaque state, explicit fresh/new-run/continuation choices and fail-closed admission. Its actual Api-only producer/Host consumer proves restricted call-scoped capture and current Host control/data separation; it supplies no runtime restoration codec or recovery guarantee.
 
+The executable [runtime configuration and exposure draft](../20_architecture/drafts/runtime-configuration.md) adds live Host provider/interface-tool bindings and correlated pre-dispatch acknowledgement and post-attempt closure in Runtime.Api. Its independent CustomProvider consumer demonstrates cancellation cuts, explicit retries, retained usage and control/data separation. Current AgentRequest controls remain authoritative; Host durable claims are not storage proof, and the production Runtime remains a skeleton.
+
 ## Accepted design direction
 
 - Use the name `SolusAgent` and the four projects defined in [Project structure](../20_architecture/project-structure.md).

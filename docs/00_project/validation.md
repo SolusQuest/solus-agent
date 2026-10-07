@@ -45,6 +45,12 @@ Context tests exercise the actual Api-only producer/Host consumer for explicit i
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Context"
 ```
 
+RuntimeConfiguration tests exercise the actual independent CustomProvider configuration consumer, base-derived and interface-only tools, full acknowledgement/settlement association, held callbacks, explicit retries, cancellation cuts, retained usage after failure, optional Host controls, finite registry/count neighbors and canary confinement. They prove the [runtime configuration and exposure draft](../20_architecture/drafts/runtime-configuration.md) in memory, without production storage, strict work/duration/token enforcement, automatic retry or a restoration codec. Use the existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.RuntimeConfiguration"
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).

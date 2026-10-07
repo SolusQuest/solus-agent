@@ -32,6 +32,7 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Candidate feedback draft](20_architecture/drafts/candidate-feedback.md): individually correlated Host submissions and retained acknowledgement observations.
 - [Run limits and usage draft](20_architecture/drafts/usage.md).
 - [Provider exchange draft](20_architecture/drafts/provider-exchange.md).
+- [Runtime configuration and exposure draft](20_architecture/drafts/runtime-configuration.md): live Host bindings and ordered same-attempt acknowledgement/closure.
 
 - [Context envelope draft](20_architecture/drafts/context-envelope.md): explicit intent/admission and call-scoped restricted capture with Host-owned retention.
 

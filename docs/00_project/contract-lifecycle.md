@@ -12,6 +12,8 @@ The outer [candidate-feedback draft](../20_architecture/drafts/candidate-feedbac
 
 The outer [context envelope draft](../20_architecture/drafts/context-envelope.md) is executable through the existing Api-only producer/Host consumer. Its optional interface, explicit intent/admission and restricted sink evolve together without changing accepted ordinary execution semantics. The Host owns capture retention; there is no agent lookup by execution identity or selected durable saved format.
 
+The [runtime configuration and exposure draft](../20_architecture/drafts/runtime-configuration.md) is another executable Runtime.Api member family. Live configuration, receipt values and the actual independent CustomProvider consumer evolve together. It retains the existing AgentRequest, ProviderAttempt and UsageAttemptObservation authorities and selects no durable exposure format, runtime restoration codec or supported API version.
+
 ## Saved context
 
 The self-owned runtime must support complete restoration of its own runtime context. Context compatibility is scoped to its agent implementation and applicable runtime, provider, model, and format constraints.
