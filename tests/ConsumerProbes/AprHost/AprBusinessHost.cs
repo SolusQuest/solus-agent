@@ -138,10 +138,13 @@ public sealed class AprBusinessHost
     /// <summary>
     /// Coordinates one business run over the separate existing seams: context admission runs first,
     /// and candidate production or submission never starts when admission was rejected or not
-    /// attempted. The two API calls keep their own request and result types; this method adds no
-    /// combined request, durable restoration or fresh fallback after rejection.
+    /// attempted. Both requests must carry the same execution association, which is checked before
+    /// any context execution, capture, provider/tool effect or candidate submission. The two API
+    /// calls keep their own request and result types; this method adds no combined request, durable
+    /// restoration or fresh fallback after rejection.
     /// </summary>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <exception cref="ArgumentException">The context and candidate requests disagree on their execution association.</exception>
     public async ValueTask<AprHostRun> RunAsync(ContextExecutionRequest contextRequest, IRestrictedContextSink? contextSink,
         CandidateExecutionRequest candidateRequest, ICandidateHost feedback, IProgress<AgentProgress>? progress = null,
         CancellationToken cancellationToken = default)
@@ -149,6 +152,11 @@ public sealed class AprBusinessHost
         ArgumentNullException.ThrowIfNull(contextRequest);
         ArgumentNullException.ThrowIfNull(candidateRequest);
         ArgumentNullException.ThrowIfNull(feedback);
+        if (contextRequest.Request.ExecutionId != candidateRequest.Execution.ExecutionId)
+        {
+            throw new ArgumentException("Context and candidate requests must share one execution association.", nameof(candidateRequest));
+        }
+
         var context = await ExecuteWithContextAsync(contextRequest, contextSink, progress, cancellationToken).ConfigureAwait(false);
         if (context.Admission is ContextAdmission.Rejected or ContextAdmission.NotAttempted)
         {

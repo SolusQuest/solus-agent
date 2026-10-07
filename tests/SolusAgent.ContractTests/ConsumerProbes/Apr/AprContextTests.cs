@@ -212,6 +212,41 @@ public sealed class AprContextTests
         Assert.Equal(0, startup.ProviderEffects);
     }
 
+    [Fact]
+    public async Task RequiredWorkUnitLimitIsAdmittedOnTheContextSeam()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetWorkUnits = 5 });
+        var execution = AprFixtures.Request(maximumWorkUnits: 1, required: AgentCapability.WorkUnitLimit);
+
+        var result = await AprFixtures.WithTimeout(startup.Host.ExecuteWithContextAsync(AprFixtures.Fresh(execution)));
+
+        Assert.Equal(ContextAdmission.Fresh, result.Admission);
+        Assert.Equal(AgentTerminationReason.ResourceLimit, result.Outcome!.Reason);
+        Assert.Equal(1, result.Outcome.CompletedWorkUnits);
+        Assert.Equal(2, startup.ProviderEffects);
+    }
+
+    [Fact]
+    public async Task NonAuthorizingSettlementInContextWorkStopsDeliberatelyWithRetainedUsage()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetWorkUnits = 2 });
+        var execution = AprFixtures.Request();
+        var sink = new AprFixtures.CollectingSink();
+        startup.Hooks.Settlement = (settlement, _) => ValueTask.FromResult<SettlementAcknowledgement?>(
+            new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop));
+
+        var result = await AprFixtures.WithTimeout(startup.Host.ExecuteWithContextAsync(AprFixtures.Fresh(execution), sink));
+
+        // An acknowledged Host Stop stops the work deliberately while retaining attempt evidence.
+        Assert.Equal(ContextAdmission.Fresh, result.Admission);
+        Assert.Equal(AgentTerminationReason.Partial, result.Outcome!.Reason);
+        Assert.Equal(0, result.Outcome.CompletedWorkUnits);
+        var usage = result.Outcome.Usage;
+        Assert.NotNull(usage);
+        Assert.Single(usage!.Attempts);
+        Assert.Equal(ContextCaptureStatus.Delivered, result.CaptureStatus);
+    }
+
     private static ScriptedAprFeedback HappyFeedback() => new((submission, index, _) =>
         ValueTask.FromResult<CandidateFeedback?>(index == 0
             ? AprDecisions.RejectWithCorrection(submission.ExecutionId, submission.SubmissionId, 7)

@@ -39,9 +39,10 @@ public sealed class AprUsageExposureTests
     {
         var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3, Usage = AprUsageMode.Partial });
         var execution = AprFixtures.Request();
+        var progress = new List<AgentProgress>();
 
-        var result = await AprFixtures.WithTimeout(
-            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), AlwaysAccept()));
+        var result = await AprFixtures.WithTimeout(startup.Host.ExecuteCandidatesAsync(
+            AprFixtures.Candidates(execution), AlwaysAccept(), new AprFixtures.InlineProgress(progress.Add)));
 
         var usage = result.Outcome.Usage;
         Assert.NotNull(usage);
@@ -49,6 +50,14 @@ public sealed class AprUsageExposureTests
         Assert.All(usage.Attempts, attempt => Assert.Equal(11, attempt.Usage.InputTokens));
         // The unknown output measurement stays unknown instead of becoming zero.
         Assert.All(usage.Attempts, attempt => Assert.Null(attempt.Usage.OutputTokens));
+
+        // The partial observation also travels through the ordinary progress surface.
+        Assert.NotEmpty(progress);
+        var progressAttempts = progress.SelectMany(observation => observation.Usage!.Attempts).ToArray();
+        Assert.NotEmpty(progressAttempts);
+        Assert.All(progressAttempts, attempt => Assert.Equal(UsageCompleteness.Partial, attempt.Usage.Completeness));
+        Assert.All(progressAttempts, attempt => Assert.Equal(11, attempt.Usage.InputTokens));
+        Assert.All(progressAttempts, attempt => Assert.Null(attempt.Usage.OutputTokens));
     }
 
     [Fact]
@@ -56,9 +65,10 @@ public sealed class AprUsageExposureTests
     {
         var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3, Usage = AprUsageMode.Unavailable });
         var execution = AprFixtures.Request();
+        var progress = new List<AgentProgress>();
 
-        var result = await AprFixtures.WithTimeout(
-            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), AlwaysAccept()));
+        var result = await AprFixtures.WithTimeout(startup.Host.ExecuteCandidatesAsync(
+            AprFixtures.Candidates(execution), AlwaysAccept(), new AprFixtures.InlineProgress(progress.Add)));
 
         var usage = result.Outcome.Usage;
         Assert.NotNull(usage);
@@ -68,6 +78,14 @@ public sealed class AprUsageExposureTests
         // Dispatch knowledge and accounting stay independent of measurement availability.
         Assert.All(usage.Attempts, attempt => Assert.Equal(DispatchExposure.Dispatched, attempt.Exposure));
         Assert.All(usage.Attempts, attempt => Assert.Null(attempt.Accounting));
+
+        // The unavailable observation also travels through the ordinary progress surface.
+        Assert.NotEmpty(progress);
+        var progressAttempts = progress.SelectMany(observation => observation.Usage!.Attempts).ToArray();
+        Assert.NotEmpty(progressAttempts);
+        Assert.All(progressAttempts, attempt => Assert.Equal(UsageCompleteness.Unavailable, attempt.Usage.Completeness));
+        Assert.All(progressAttempts, attempt => Assert.Null(attempt.Usage.InputTokens));
+        Assert.All(progressAttempts, attempt => Assert.Null(attempt.Usage.OutputTokens));
     }
 
     [Fact]
@@ -249,6 +267,90 @@ public sealed class AprUsageExposureTests
 
         Assert.Equal(RuntimeStop.SettlementUnknown, second.AdmissionStop);
         Assert.Null(second.Provider);
+    }
+
+    [Fact]
+    public async Task NonAuthorizingOpeningSettlementStopsBeforeToolInvocationAndSubmission()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3 });
+        var execution = AprFixtures.Request();
+        var settlements = 0;
+        startup.Hooks.Settlement = (settlement, _) =>
+        {
+            settlements++;
+            return ValueTask.FromResult<SettlementAcknowledgement?>(settlements == 1
+                ? new(settlement.Exposure, RuntimeHookStatus.Failed)
+                : new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue));
+        };
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        // A non-authorizing settlement on the opening attempt terminates the production chain.
+        Assert.Equal(CandidateStopReason.ProductionFailed, result.StopReason);
+        Assert.Empty(feedback.Submissions);
+        Assert.Empty(result.Receipts);
+        Assert.Equal(0, startup.ToolEffects);
+        Assert.False(startup.Tool.Started.Task.IsCompleted);
+        var usage = result.Outcome.Usage;
+        Assert.NotNull(usage);
+        Assert.Single(usage!.Attempts);
+        Assert.Equal(DispatchExposure.Dispatched, usage.Attempts[0].Exposure);
+    }
+
+    [Fact]
+    public async Task NonAuthorizingClosingSettlementStopsBeforeCandidateSubmission()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3 });
+        var execution = AprFixtures.Request();
+        var settlements = 0;
+        startup.Hooks.Settlement = (settlement, _) =>
+        {
+            settlements++;
+            return ValueTask.FromResult<SettlementAcknowledgement?>(settlements == 2
+                ? new(settlement.Exposure, RuntimeHookStatus.Unknown)
+                : new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue));
+        };
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        // The tool round ran under an authorizing opening settlement, but the uncertain closing
+        // settlement stops the chain before any candidate submission.
+        Assert.Equal(CandidateStopReason.ProductionFailed, result.StopReason);
+        Assert.Empty(feedback.Submissions);
+        Assert.Empty(result.Receipts);
+        Assert.Equal(1, startup.ToolEffects);
+        Assert.True(startup.Tool.Started.Task.IsCompleted);
+        Assert.Equal(RuntimeStop.SettlementUnknown, startup.Scenario.RecordedAttempts[1].SettlementStop);
+        Assert.Equal(2, result.Outcome.Usage!.Attempts.Count);
+    }
+
+    [Fact]
+    public async Task AcknowledgedStopSettlementStopsTheProductionChain()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3 });
+        var execution = AprFixtures.Request();
+        var settlements = 0;
+        startup.Hooks.Settlement = (settlement, _) =>
+        {
+            settlements++;
+            return ValueTask.FromResult<SettlementAcknowledgement?>(settlements == 2
+                ? new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop)
+                : new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue));
+        };
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        // An acknowledged Host Stop instruction is honored: no candidate is submitted afterwards.
+        Assert.Equal(CandidateStopReason.ProductionFailed, result.StopReason);
+        Assert.Empty(feedback.Submissions);
+        Assert.Equal(RuntimeStop.HostStopped, startup.Scenario.RecordedAttempts[1].SettlementStop);
+        Assert.Equal(1, startup.ToolEffects);
     }
 
     private static ScriptedAprFeedback AlwaysAccept() => new((submission, _, _) =>

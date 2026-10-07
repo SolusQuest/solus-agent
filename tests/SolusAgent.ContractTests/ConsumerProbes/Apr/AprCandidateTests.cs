@@ -1,4 +1,5 @@
 using CustomTools;
+using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
 using Xunit;
@@ -373,6 +374,79 @@ public sealed class AprCandidateTests
         // The guarded tool honestly reports its started effect while admitting no candidate.
         Assert.Equal(1, startup.ToolEffects);
         Assert.True(startup.Tool.Started.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task RequiredWorkUnitLimitIsAdmittedAndEnforcedAtTheOuterBound()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 5 });
+        var execution = AprFixtures.Request(maximumWorkUnits: 2, required: AgentCapability.WorkUnitLimit | AgentCapability.Cancellation);
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        // The advertised work-unit guarantee is honored end to end instead of breaking inside the
+        // composed provider-dispatch consumer as a generic production failure.
+        Assert.Equal(CandidateStopReason.WorkUnitLimit, result.StopReason);
+        Assert.Equal(AgentTerminationReason.ResourceLimit, result.Outcome.Reason);
+        Assert.Equal(2, feedback.Submissions.Count);
+        Assert.Equal(2, startup.ToolEffects);
+    }
+
+    [Fact]
+    public async Task UnsupportedRequiredGuaranteeIsRejectedBeforeWork()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3 });
+        var execution = AprFixtures.Request(required: AgentCapability.UsageThresholds);
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        Assert.Equal(CandidateStopReason.UnsupportedCapability, result.StopReason);
+        Assert.Equal(AgentTerminationReason.UnsupportedCapability, result.Outcome.Reason);
+        Assert.Equal(AgentCapability.UsageThresholds, result.Outcome.UnsupportedCapabilities);
+        Assert.Equal(0, startup.ProviderEffects);
+        Assert.Equal(0, startup.ToolEffects);
+        Assert.Empty(startup.Scenario.RecordedAttempts);
+        Assert.Empty(feedback.Submissions);
+    }
+
+    [Fact]
+    public async Task RequiredDispatchLimitsIsRejectedBeforeWork()
+    {
+        var startup = AprStartup.Create(new AprStartupOptions { TargetProductions = 3 });
+        var execution = AprFixtures.Request(required: AgentCapability.DispatchLimits);
+        var feedback = AlwaysAccept();
+
+        var result = await AprFixtures.WithTimeout(
+            startup.Host.ExecuteCandidatesAsync(AprFixtures.Candidates(execution), feedback));
+
+        // Configured dispatch limits stay fixture-internal policy, so the unadvertised guarantee
+        // rejects before work instead of promising semantics the scenario cannot report truthfully.
+        Assert.Equal(CandidateStopReason.UnsupportedCapability, result.StopReason);
+        Assert.Equal(AgentCapability.DispatchLimits, result.Outcome.UnsupportedCapabilities);
+        Assert.Equal(0, startup.ProviderEffects);
+    }
+
+    [Fact]
+    public async Task MismatchedExecutionAssociationIsRejectedBeforeAnyWork()
+    {
+        var startup = AprStartup.Create();
+        var contextExecution = AprFixtures.Request();
+        var candidateExecution = AprFixtures.Request();
+        var sink = new AprFixtures.CollectingSink();
+        var feedback = AlwaysAccept();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => AprFixtures.WithTimeout(startup.Host.RunAsync(
+            AprFixtures.Fresh(contextExecution), sink, AprFixtures.Candidates(candidateExecution), feedback)));
+
+        Assert.Equal(0, startup.ProviderEffects);
+        Assert.Equal(0, startup.ToolEffects);
+        Assert.Equal(0, sink.CaptureCount);
+        Assert.Empty(feedback.Submissions);
+        Assert.Empty(startup.Scenario.RecordedAttempts);
     }
 
     private static ScriptedAprFeedback AlwaysAccept() => new((submission, _, _) =>

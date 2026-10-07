@@ -58,9 +58,12 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
         capability = configuration.Tools[0].Capability;
     }
 
-    /// <summary>Gets the guarantees this finite scenario honors on every seam.</summary>
-    public AgentCapability SupportedCapabilities =>
-        AgentCapability.WorkUnitLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting | AgentCapability.DispatchLimits;
+    /// <summary>
+    /// Gets the guarantees this finite scenario honors end-to-end on every seam. Outer-owned
+    /// guarantees are enforced here and projected away from the inner configuration consumer;
+    /// configured dispatch limits remain fixture-internal policy and are not advertised.
+    /// </summary>
+    public AgentCapability SupportedCapabilities => AgentCapability.WorkUnitLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting;
 
     /// <summary>Gets every configuration attempt observed through the composed Runtime.Api seam.</summary>
     public IReadOnlyList<ConfigurationAttempt> RecordedAttempts
@@ -119,6 +122,11 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
             try
             {
                 await ProduceAsync(request, null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (AprProductionException failure)
+            {
+                var (reason, code) = MapConfigurationStop(failure.Stop);
+                return Outcome(request.ExecutionId, reason, completed, code);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -232,6 +240,11 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
             try
             {
                 await ProduceAsync(request, null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (AprProductionException failure)
+            {
+                var (reason, code) = MapConfigurationStop(failure.Stop);
+                return await FinishAsync(reason, completedUnits, code).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -358,12 +371,19 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
             {
                 item = (await ProduceAsync(execution, previous?.CorrectionText, cancellationToken).ConfigureAwait(false)).Item;
             }
+            catch (AprProductionException failure) when (failure.Stop == RuntimeStop.Cancelled)
+            {
+                return Stop(CandidateStopReason.Cancelled);
+            }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return Stop(CandidateStopReason.Cancelled);
             }
             catch (Exception)
             {
+                // The closed candidate protocol reports an unfinished production as a production
+                // failure; refusal, uncertain closure and resource stops stay visible on the attempt
+                // diagnostics and never authorize a submission or fabricate a decision.
                 return Stop(CandidateStopReason.ProductionFailed);
             }
 
@@ -492,7 +512,15 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
             cancellationToken).ConfigureAwait(false);
         if (exchange.AdmissionStop != RuntimeStop.None)
         {
-            throw new AprProductionException();
+            throw new AprProductionException(exchange.AdmissionStop);
+        }
+
+        // Only an authorizing same-attempt settlement lets the production continue; a missing,
+        // failed, unknown, mismatched or deliberate Stop receipt terminates this causal chain
+        // before any later tool, provider or candidate work while retaining attempt evidence.
+        if (exchange.SettlementStop != RuntimeStop.None)
+        {
+            throw new AprProductionException(exchange.SettlementStop);
         }
 
         if (exchange.Provider?.Outcome != ProviderOutcome.Succeeded || exchange.Provider.Response is not { } first)
@@ -526,8 +554,17 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
         }
 
         var closed = await RunAttemptAsync(consumer, configuration.CreateRequest(closing, closingInputs), cancellationToken).ConfigureAwait(false);
-        if (closed.AdmissionStop != RuntimeStop.None || closed.Provider?.Outcome != ProviderOutcome.Succeeded
-            || closed.Provider.Response is not { Finish: ProviderFinish.Final })
+        if (closed.AdmissionStop != RuntimeStop.None)
+        {
+            throw new AprProductionException(closed.AdmissionStop);
+        }
+
+        if (closed.SettlementStop != RuntimeStop.None)
+        {
+            throw new AprProductionException(closed.SettlementStop);
+        }
+
+        if (closed.Provider?.Outcome != ProviderOutcome.Succeeded || closed.Provider.Response is not { Finish: ProviderFinish.Final })
         {
             throw new AprProductionException();
         }
@@ -651,7 +688,11 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
         {
             if (!consumers.TryGetValue(request.ExecutionId, out var consumer))
             {
-                consumers[request.ExecutionId] = consumer = new ConfigurationConsumer(configuration, request);
+                // The outer seam has already admitted or rejected every required guarantee it owns;
+                // the inner provider-dispatch consumer only sees the guarantees it can honor itself.
+                var projected = new AgentRequest(request.ExecutionId, request.Instructions, request.Data, request.Bounds,
+                    request.RequiredCapabilities & ConfigurationConsumer.Support.SupportedCapabilities, request.UsageLimits);
+                consumers[request.ExecutionId] = consumer = new ConfigurationConsumer(configuration, projected);
             }
 
             return consumer;
@@ -685,6 +726,26 @@ internal sealed class AprScenarioAgent : ICandidateAgent, IContextAgent
 
     private sealed record PreparedBatchMember(CounterTool Tool, ToolCall Call, PreparedToolInvocation Prepared, CounterCapability Capability);
 
-    /// <summary>Fixed content-free production failure; it carries no provider, tool or payload detail.</summary>
-    private sealed class AprProductionException : Exception;
+    /// <summary>
+    /// Fixed content-free production failure carrying at most a closed configuration stop, so the
+    /// outer seams can report refusal, resource and cancellation stops truthfully instead of a
+    /// manufactured acceptance or a flattened failure.
+    /// </summary>
+    private sealed class AprProductionException(RuntimeStop? stop = null) : Exception
+    {
+        public RuntimeStop? Stop { get; } = stop;
+    }
+
+    /// <summary>Maps a closed configuration stop to ordinary outcome categories without inventing facts.</summary>
+    private static (AgentTerminationReason Reason, AgentFailureCode Failure) MapConfigurationStop(RuntimeStop? stop) => stop switch
+    {
+        RuntimeStop.Cancelled => (AgentTerminationReason.Cancelled, AgentFailureCode.None),
+        RuntimeStop.ResourceLimit => (AgentTerminationReason.ResourceLimit, AgentFailureCode.None),
+        // A deliberate refusal or withheld, uncertain or Stop authorization stops deliberately with incomplete work.
+        RuntimeStop.HostStopped or RuntimeStop.ExposureDenied or RuntimeStop.ExposureMissing or RuntimeStop.ExposureUnknown
+            or RuntimeStop.ExposureMismatch or RuntimeStop.DurableAcknowledgementRequired
+            or RuntimeStop.SettlementMissing or RuntimeStop.SettlementUnknown or RuntimeStop.SettlementMismatch
+            => (AgentTerminationReason.Partial, AgentFailureCode.None),
+        _ => (AgentTerminationReason.Failed, AgentFailureCode.ExecutionFailed),
+    };
 }
