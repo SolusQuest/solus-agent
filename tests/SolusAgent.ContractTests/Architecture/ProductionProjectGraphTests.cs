@@ -57,6 +57,7 @@ public sealed class ProductionProjectGraphTests
             .Select(RepositoryLayout.ProductionProjectPath)
             .Append(RepositoryLayout.TestProjectPath)
             .Append(Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"))
+            .Append(CustomToolsProjectPath)
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -66,7 +67,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Equal(2, registeredTestProjects.Length);
+        Assert.Equal(3, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -116,6 +117,8 @@ public sealed class ProductionProjectGraphTests
         [
             RepositoryLayout.ProductionProjectPath("SolusAgent.Api"),
             Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"),
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api"),
+            CustomToolsProjectPath,
         ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
@@ -127,4 +130,19 @@ public sealed class ProductionProjectGraphTests
             string.Equals(item["Identity"], "xunit.runner.visualstudio", StringComparison.Ordinal));
         Assert.Equal("all", runnerPackage.TryGetValue("PrivateAssets", out var privateAssets) ? privateAssets : string.Empty);
     }
+
+    [Fact]
+    public void CustomToolsProbeEvaluatesOnlyToolsApiAndRepositoryOwnedCompileInputs()
+    {
+        var evaluation = MsbuildProjectEvaluation.Evaluate(CustomToolsProjectPath);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+            [RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api")]);
+        ProjectBoundaryAssertions.AssertNoPackages(evaluation);
+        ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
+        ProjectBoundaryAssertions.AssertCompileSourcesWithinRoot(evaluation, RepositoryLayout.Root);
+        Assert.NotEmpty(evaluation.CompileItems);
+    }
+
+    private static string CustomToolsProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomTools", "CustomTools.csproj");
 }

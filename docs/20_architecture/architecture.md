@@ -1,6 +1,6 @@
 # Architecture
 
-This document records the selected architecture. The four production libraries retain the boundaries described in [Project structure](project-structure.md). The outer [execution draft](drafts/agent-execution.md) has public contracts and an executable test-only Api consumer; the production runtime, provider/tool implementation and restoration remain future work. Draft signatures can evolve coherently with their actual producers and consumers.
+This document records the selected architecture. The four production libraries retain the boundaries described in [Project structure](project-structure.md). The outer [execution draft](drafts/agent-execution.md) and [prepared function-tool draft](drafts/function-tools.md) have public contracts and separately compiled synthetic consumers. The production runtime, providers, tool adapters and restoration remain future work. Draft signatures can evolve coherently with their actual producers and consumers.
 
 ## Agent and model boundaries
 

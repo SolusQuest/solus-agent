@@ -6,9 +6,9 @@ The selected design separates the application-facing agent API, reusable tool co
 
 ## Current state
 
-The repository contains four production libraries in the selected dependency graph, an executable outer [execution draft](docs/20_architecture/drafts/agent-execution.md), a test-only Api-only custom agent and calling consumer, one managed contract test runner, and ordinary push/pull_request CI. The draft expresses bounded requests, capabilities, correlated progress and truthful terminal outcomes. Production runtime behavior and other selected API member families remain future work.
+The repository contains four production libraries in the selected dependency graph, an executable outer [execution draft](docs/20_architecture/drafts/agent-execution.md) and [prepared function-tool draft](docs/20_architecture/drafts/function-tools.md), separate Api-only custom-agent and CustomTools consumer libraries, one managed contract test runner, and ordinary push/pull_request CI. The execution draft expresses bounded requests, capabilities, correlated progress and truthful terminal outcomes. The tool draft supplies bounded metadata, effect-free preparation and explicit capability-authorized invocation. Production runtime behavior, providers/tool adapters, other selected API member families and distribution remain future work.
 
-The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. Current tests check compilation, project boundaries and synthetic outer execution; runtime implementation, packaging and release work remain future work, and actual product migration belongs to the downstream repositories.
+The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. Current tests check compilation, evaluated project boundaries, synthetic outer execution and actual synthetic function-tool semantics; runtime implementation, packaging and release work remain future work, and actual product migration belongs to the downstream repositories.
 
 ## Projects
 
@@ -41,7 +41,7 @@ dotnet build SolusAgent.slnx --configuration Release --no-restore
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-These commands require no model credentials. A successful build proves compilation, including the actual Api-only consumer. Architecture tests check evaluated project boundaries; Execution tests check the current synthetic contract path. `.github/workflows/ci.yml` runs the same commands on push and pull_request. See [project validation](docs/00_project/validation.md) for the exact scope and limits.
+These commands require no model credentials. A successful build proves compilation, including both independent consumer libraries. Architecture tests check evaluated project boundaries; Execution and Tools tests check their actual synthetic contract paths. `.github/workflows/ci.yml` runs the same commands on push and pull_request. See [project validation](docs/00_project/validation.md) for the exact scope and limits.
 
 ## Documentation
 

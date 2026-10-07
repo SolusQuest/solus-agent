@@ -9,6 +9,8 @@
     <ItemGroup>
         <ProjectReference Include="../../src/SolusAgent.Api/SolusAgent.Api.csproj" />
         <ProjectReference Include="../SolusAgent.ApiOnlyConsumer/SolusAgent.ApiOnlyConsumer.csproj" />
+        <ProjectReference Include="../../src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
+        <ProjectReference Include="../ConsumerProbes/CustomTools/CustomTools.csproj" />
     </ItemGroup>
 
 </Project>
