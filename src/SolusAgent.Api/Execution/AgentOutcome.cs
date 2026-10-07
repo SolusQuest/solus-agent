@@ -104,9 +104,9 @@ public sealed class AgentOutcome
     /// <summary>Gets a fixed failure category for Failed outcomes; otherwise none.</summary>
     public AgentFailureCode FailureCode { get; }
 
-    /// <summary>Gets whether the implementation's task work completed; this is not product acceptance.</summary>
+    /// <summary>Gets whether execution ended with successful task completion; this is not product acceptance.</summary>
     public bool IsCompleted => Reason == AgentTerminationReason.Completed;
 
-    /// <summary>Gets whether completed work remains in an incomplete execution.</summary>
+    /// <summary>Gets whether completed work was preserved in a non-completed execution.</summary>
     public bool HasPartialProgress => !IsCompleted && CompletedWorkUnits > 0;
 }

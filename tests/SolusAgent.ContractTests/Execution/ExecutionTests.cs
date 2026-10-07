@@ -155,6 +155,54 @@ public sealed class ExecutionTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task CancellationDuringFinalSuccessfulWorkStillCompletes(int target)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var agent = new SyntheticAgent(target, performWork: (unit, _) =>
+        {
+            if (unit == target)
+            {
+                cancellation.Cancel();
+            }
+
+            return ValueTask.CompletedTask;
+        });
+        var execution = await AgentConsumer.RunAsync(agent, Request(target), cancellation.Token);
+        Assert.Equal(AgentTerminationReason.Completed, execution.Outcome.Reason);
+        Assert.True(execution.Outcome.IsCompleted);
+        Assert.False(execution.Outcome.HasPartialProgress);
+        Assert.Equal(target, execution.Outcome.CompletedWorkUnits);
+        Assert.Equal(target, agent.TotalWorkStarted);
+        Assert.Equal(Enumerable.Range(1, target), execution.Progress.Select(value => value.CompletedWorkUnits));
+        AssertCorrelated(execution);
+    }
+
+    [Fact]
+    public async Task CancellationFromFinalProgressObserverCannotUndoCompletion()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var observed = new List<AgentProgress>();
+        var agent = new SyntheticAgent(2);
+        var outcome = await agent.ExecuteAsync(Request(2), new InlineProgress(value =>
+        {
+            observed.Add(value);
+            if (value.CompletedWorkUnits == 2)
+            {
+                cancellation.Cancel();
+            }
+        }), cancellation.Token);
+        Assert.Equal(AgentTerminationReason.Completed, outcome.Reason);
+        Assert.True(outcome.IsCompleted);
+        Assert.False(outcome.HasPartialProgress);
+        Assert.Equal(2, outcome.CompletedWorkUnits);
+        Assert.Equal(ExecutionId, outcome.ExecutionId);
+        Assert.Equal([1, 2], observed.Select(value => value.CompletedWorkUnits));
+        Assert.All(observed, value => Assert.Equal(ExecutionId, value.ExecutionId));
+    }
+
+    [Theory]
     [InlineData(0, 1)]
     [InlineData(-1, 1)]
     [InlineData(1, 0)]
@@ -232,11 +280,13 @@ public sealed class ExecutionTests
         Assert.All(canaries, canary => Assert.DoesNotContain(canary, JsonSerializer.Serialize(rejection), StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task ObserverFailureReturnsFixedCodeAndRetainsCompletedWork()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task ObserverFailureReturnsFixedCodeAndRetainsCompletedWork(int target)
     {
         var request = Request();
-        var agent = new SyntheticAgent(3);
+        var agent = new SyntheticAgent(target);
         var outcome = await agent.ExecuteAsync(request, new InlineProgress(_ => throw new InvalidOperationException("observer-restricted-canary")));
         Assert.Equal(AgentTerminationReason.Failed, outcome.Reason);
         Assert.Equal(AgentFailureCode.ProgressObserverFailed, outcome.FailureCode);

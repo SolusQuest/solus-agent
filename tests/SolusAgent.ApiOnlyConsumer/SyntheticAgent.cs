@@ -46,14 +46,14 @@ public sealed class SyntheticAgent : IAgent
         var completed = 0;
         while (true)
         {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return Outcome(AgentTerminationReason.Cancelled);
-            }
-
             if (completed == targetWorkUnits)
             {
                 return Outcome(AgentTerminationReason.Completed);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Outcome(AgentTerminationReason.Cancelled);
             }
 
             if (completed == request.Bounds.MaximumWorkUnits)
