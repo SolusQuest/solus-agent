@@ -2,6 +2,8 @@
 
 This document records the selected architecture. The four production libraries retain the boundaries described in [Project structure](project-structure.md). The outer [execution draft](drafts/agent-execution.md) and [prepared function-tool draft](drafts/function-tools.md) have public contracts and separately compiled synthetic consumers. The production runtime, providers, tool adapters and restoration remain future work. The outer [usage draft](drafts/usage.md) has immutable public values and actual synthetic exchange through Api; production budget enforcement remains future work. Draft signatures can evolve coherently with their actual producers and consumers.
 
+The [provider exchange draft](drafts/provider-exchange.md) supplies an executable Runtime.Api extension seam and synthetic CustomProvider consumer. It proves in-memory correlation, classified inputs, usage retention and restricted continuation; actual projection/transport/parser and restoration remain later proof.
+
 ## Agent and model boundaries
 
 The executable outer [candidate-feedback draft](drafts/candidate-feedback.md) selects an optional `ICandidateAgent` and separate Host payload/feedback channel. Safe completion observations retain independent receipts across stops without importing Host domain validation, effect authority or durable storage.
