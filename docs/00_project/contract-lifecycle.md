@@ -10,6 +10,8 @@ This document does not select package versions, persistence codecs, or release p
 
 The outer [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) is another current member family, exercised by the Api-only producer/Host consumer and Candidates tests. Its signatures and producers/consumers evolve together; no persisted Host progress format, effect transaction or supported API version is selected.
 
+The outer [context envelope draft](../20_architecture/drafts/context-envelope.md) is executable through the existing Api-only producer/Host consumer. Its optional interface, explicit intent/admission and restricted sink evolve together without changing accepted ordinary execution semantics. The Host owns capture retention; there is no agent lookup by execution identity or selected durable saved format.
+
 ## Saved context
 
 The self-owned runtime must support complete restoration of its own runtime context. Context compatibility is scoped to its agent implementation and applicable runtime, provider, model, and format constraints.

@@ -10,6 +10,8 @@ The repository contains four production libraries in the selected dependency gra
 
 The outer [candidate-feedback draft](docs/20_architecture/drafts/candidate-feedback.md) adds individually correlated submissions, independent Host decisions and continuation instructions, bounded follow-on work and retained acknowledgement observations. Its actual Api-only synthetic producer/Host consumer and Candidates tests keep candidate payloads separate from ordinary diagnostics and completion. Host domain acceptance and effects remain downstream.
 
+The outer [context envelope draft](docs/20_architecture/drafts/context-envelope.md) adds explicit fresh, supplied new-run and unfinished-continuation intent, effect-free context admission rejection and a separate call-scoped restricted capture channel. Actual Api-only probes keep state outside ordinary observations while the Host owns storage and retention; complete runtime restoration remains future work.
+
 The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. Current tests check compilation, evaluated project boundaries, synthetic outer execution and actual synthetic function-tool semantics; runtime implementation, packaging and release work remain future work, and actual product migration belongs to the downstream repositories.
 
 ## Projects

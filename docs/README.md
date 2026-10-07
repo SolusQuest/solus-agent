@@ -32,6 +32,8 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Candidate feedback draft](20_architecture/drafts/candidate-feedback.md): individually correlated Host submissions and retained acknowledgement observations.
 - [Run limits and usage draft](20_architecture/drafts/usage.md).
 
+- [Context envelope draft](20_architecture/drafts/context-envelope.md): explicit intent/admission and call-scoped restricted capture with Host-owned retention.
+
 ## Agent collaboration
 
 [Agent context](50_ai/agent-context.md) combines project context with the shared [Context model](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/context-model.md) and [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md). Common procedures have one maintained body in the handbook:

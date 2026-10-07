@@ -37,6 +37,12 @@ Use `--no-restore` only after a successful applicable restore; repeat restore af
 
 Candidates tests exercise the actual Api-only producer and Host consumer through `ICandidateAgent`: independent correlation/decisions, rejected corrections and accepted continuation, explicit termination, partial progress, bounded follow-on admissions, missing/failed/unknown feedback, wrong/duplicate association, pending cancellation and late-response non-admission. They also prove pre-work required-capability rejection, observer-failure ordering, immutable safe receipts and payload/correction/error canary confinement. Use the same runner with `--filter "FullyQualifiedName~SolusAgent.ContractTests.Candidates"` for a focused run. The [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) states the exact synthetic policies and limits; in-memory Host effects are independently observed and never replayed automatically.
 
+Context tests exercise the actual Api-only producer/Host consumer for explicit intent, implementation/format/compatibility/grammar/transition rejection before effects, no fresh fallback, Host control/capability reinjection, immutable restricted copies and safe canary confinement. Call-scoped capture and overlapping same-correlation sinks demonstrate Host retention without agent lookup; capture failure stays separate from work outcomes. These checks cover the [context envelope draft](../20_architecture/drafts/context-envelope.md), not production restoration or a durable codec. Use the existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Context"
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).

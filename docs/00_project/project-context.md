@@ -12,6 +12,8 @@ The current tree contains four .NET production libraries in their selected depen
 
 The executable [candidate-feedback draft](../20_architecture/drafts/candidate-feedback.md) extends the outer boundary with individually correlated Host exchanges and bounded repairs/continuations. Its Api-only synthetic producer/Host consumer demonstrates independent acknowledgement retention and diagnostic confinement; it supplies no production loop or Host domain policy.
 
+The executable [context envelope draft](../20_architecture/drafts/context-envelope.md) adds implementation-scoped opaque state, explicit fresh/new-run/continuation choices and fail-closed admission. Its actual Api-only producer/Host consumer proves restricted call-scoped capture and current Host control/data separation; it supplies no runtime restoration codec or recovery guarantee.
+
 ## Accepted design direction
 
 - Use the name `SolusAgent` and the four projects defined in [Project structure](../20_architecture/project-structure.md).

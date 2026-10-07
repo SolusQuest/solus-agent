@@ -38,6 +38,8 @@ Saved context excludes credentials, live clients, delegates, and tool instances.
 
 The outer envelope identifies the owning implementation and applicable format. It does not make context portable between unrelated agent implementations. The host owns storage, visibility, protection, retention, and deletion. Context is restricted state, not an ordinary log or publication result.
 
+The current [context envelope draft](drafts/context-envelope.md) implements only the outer admission and restricted-access boundary through optional `IContextAgent`. Rejected state has no fabricated work outcome; a separate call-scoped sink transfers state under Host retention policy. Actual Api-only synthetic policies demonstrate the distinction between supplied new-run and unfinished-continuation intent without selecting a runtime codec or universal execution-ID lifecycle.
+
 ## Budgets and usage
 
 Share run-level admission, enforcement, observation, and accounting mechanics. Products supply policy and defaults and retain campaign-level or cross-attempt business accounting.
