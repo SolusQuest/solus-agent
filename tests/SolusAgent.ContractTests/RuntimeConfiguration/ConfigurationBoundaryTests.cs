@@ -138,6 +138,74 @@ public sealed class ConfigurationBoundaryTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new SettlementAcknowledgement(exposure, RuntimeHookStatus.Acknowledged, (RuntimeContinuation)99));
     }
 
+    public static TheoryData<RuntimeStop, bool, bool> PhaseCases => new()
+    {
+        { RuntimeStop.None, true, false },
+        { RuntimeStop.Cancelled, true, true },
+        { RuntimeStop.UnsupportedCapability, false, true },
+        { RuntimeStop.MissingHooks, false, true },
+        { RuntimeStop.InvalidAssociation, false, true },
+        { RuntimeStop.ResourceLimit, false, true },
+        { RuntimeStop.ExposureDenied, false, true },
+        { RuntimeStop.ExposureMissing, false, true },
+        { RuntimeStop.ExposureFailed, false, true },
+        { RuntimeStop.ExposureUnknown, false, true },
+        { RuntimeStop.ExposureMismatch, false, true },
+        { RuntimeStop.DurableAcknowledgementRequired, false, true },
+        { RuntimeStop.SettlementMissing, false, false },
+        { RuntimeStop.SettlementFailed, false, false },
+        { RuntimeStop.SettlementUnknown, false, false },
+        { RuntimeStop.SettlementMismatch, false, false },
+        { RuntimeStop.HostStopped, false, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(PhaseCases))]
+    public void SettlementStopCannotContradictProviderInvocation(RuntimeStop stop, bool invokedAllowed, bool noProviderAllowed)
+    {
+        _ = noProviderAllowed;
+        var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Volatile);
+        var dispatched = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1,
+            DispatchExposure.Dispatched, new(1, 1));
+        var unknown = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1,
+            DispatchExposure.Unknown, new());
+        if (invokedAllowed)
+        {
+            Assert.Same(dispatched, new RuntimeSettlement(exposure, dispatched, stop, ProviderOutcome.Succeeded, ProviderError.None).Observation);
+            Assert.Same(unknown, new RuntimeSettlement(exposure, unknown, stop, ProviderOutcome.Failed, ProviderError.ProviderFailed).Observation);
+        }
+        else
+        {
+            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, dispatched, stop, ProviderOutcome.Succeeded, ProviderError.None));
+            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, unknown, stop, ProviderOutcome.Failed, ProviderError.ProviderFailed));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(PhaseCases))]
+    public void SettlementStopMustDescribePhaseBeforeItsOwnDelivery(RuntimeStop stop, bool invokedAllowed, bool noProviderAllowed)
+    {
+        _ = invokedAllowed;
+        var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Volatile);
+        var observation = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1,
+            DispatchExposure.NotDispatched, new());
+        if (noProviderAllowed)
+        {
+            var settlement = new RuntimeSettlement(exposure, observation, stop);
+            Assert.Null(settlement.ProviderOutcome); Assert.Same(observation, settlement.Observation);
+        }
+        else Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, stop));
+    }
+
+    [Fact]
+    public void NeverInvokedProviderHasNoMeasuredUsage()
+    {
+        var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Volatile);
+        var observation = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1,
+            DispatchExposure.NotDispatched, new(0, 0));
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.Cancelled));
+    }
+
     private sealed class ThrowingCapability : SolusAgent.Tools.Api.IToolCapability
     { public string CapabilityId => throw new InvalidOperationException(ConfigurationCapability.CredentialCanary); }
 

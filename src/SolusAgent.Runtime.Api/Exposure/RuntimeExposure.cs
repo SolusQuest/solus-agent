@@ -143,7 +143,7 @@ public sealed class ExposureAcknowledgement
 /// <summary>Same-attempt closure retaining honest observations independently of Host receipt delivery.</summary>
 public sealed class RuntimeSettlement
 {
-    /// <summary>Validates full observation association and optional actual provider exchange outcome; does not implement accounting.</summary>
+    /// <summary>Validates full association, original admission/provider phase and optional exchange outcome; does not implement accounting.</summary>
     public RuntimeSettlement(RuntimeExposure exposure, UsageAttemptObservation observation, RuntimeStop stop,
         ProviderOutcome? providerOutcome = null, ProviderError? providerError = null)
     {
@@ -155,9 +155,13 @@ public sealed class RuntimeSettlement
         if (attempt.ExecutionId != observation.ExecutionId || attempt.LogicalCallId != observation.LogicalCallId
             || attempt.PhysicalAttemptId != observation.PhysicalAttemptId || attempt.AttemptNumber != observation.AttemptNumber)
             throw new ArgumentException("The settlement association is invalid.");
-        if (providerOutcome.HasValue != providerError.HasValue
+        var deliveryStop = stop is RuntimeStop.SettlementMissing or RuntimeStop.SettlementFailed or RuntimeStop.SettlementUnknown
+            or RuntimeStop.SettlementMismatch or RuntimeStop.HostStopped;
+        if (deliveryStop || (providerOutcome.HasValue && stop is not (RuntimeStop.None or RuntimeStop.Cancelled))
+            || providerOutcome.HasValue != providerError.HasValue
             || (providerOutcome.HasValue && ((providerOutcome == Providers.ProviderOutcome.Succeeded) != (providerError == Providers.ProviderError.None)))
-            || (!providerOutcome.HasValue && (observation.Exposure != DispatchExposure.NotDispatched || stop == RuntimeStop.None)))
+            || (!providerOutcome.HasValue && (observation.Exposure != DispatchExposure.NotDispatched || stop == RuntimeStop.None
+                || observation.Usage.Completeness != UsageCompleteness.Unavailable)))
             throw new ArgumentException("The settlement outcome is incoherent.");
         Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError;
     }
@@ -165,7 +169,7 @@ public sealed class RuntimeSettlement
     public RuntimeExposure Exposure { get; }
     /// <summary>Gets existing normalized exposure/measurement/accounting, never implicit zero or rollback.</summary>
     public UsageAttemptObservation Observation { get; }
-    /// <summary>Gets the prior admission/cancellation stop independently from later settlement delivery.</summary>
+    /// <summary>Gets prior admission/cancellation state; later settlement delivery and HostStopped cannot inhabit this field.</summary>
     public RuntimeStop Stop { get; }
     /// <summary>Gets actual provider outcome only when its exchange was invoked.</summary>
     public ProviderOutcome? ProviderOutcome { get; }
