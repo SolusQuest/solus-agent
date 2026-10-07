@@ -11,5 +11,6 @@
   </Folder>
   <Folder Name="/tests/ConsumerProbes/">
     <Project Path="tests/ConsumerProbes/CustomTools/CustomTools.csproj" />
+    <Project Path="tests/ConsumerProbes/CustomProvider/CustomProvider.csproj" />
   </Folder>
 </Solution>
