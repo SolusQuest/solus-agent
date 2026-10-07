@@ -92,8 +92,10 @@ internal static class ProviderBoundary
     internal static T[] Copy<T>(IReadOnlyList<T> values, int limit) where T : class
     {
         ArgumentNullException.ThrowIfNull(values);
-        Require(values.Count <= limit, ProviderError.LimitExceeded);
-        var copy = new T[values.Count];
+        var count = values.Count;
+        Require(count >= 0, ProviderError.InvalidInput);
+        Require(count <= limit, ProviderError.LimitExceeded);
+        var copy = new T[count];
         for (var i = 0; i < copy.Length; i++) copy[i] = values[i] ?? throw new ProviderContractException(ProviderError.InvalidInput);
         return copy;
     }

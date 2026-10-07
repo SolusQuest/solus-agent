@@ -157,6 +157,51 @@ public sealed class ProviderBoundsTests
         Assert.DoesNotContain("CANARY", JsonSerializer.Serialize(result.Diagnostic));
     }
 
+    [Theory]
+    [InlineData("inputs")]
+    [InlineData("definitions")]
+    [InlineData("calls")]
+    public void EvolvingCollectionCountCannotExceedTheAdmittedSnapshot(string dimension)
+    {
+        var scope = new ProviderScope("p", "m");
+        var attempt = ProviderExchangeTests.Attempt();
+        if (dimension == "inputs")
+        {
+            var source = new EvolvingList<ProviderInput>(ProviderLimits.Inputs, _ => ProviderInput.Data("x"));
+            var request = new ProviderRequest(scope, attempt, source);
+            Assert.Equal(ProviderLimits.Inputs, request.Inputs.Count);
+        }
+        else if (dimension == "definitions")
+        {
+            var source = new EvolvingList<ToolDescriptor>(ProviderLimits.Tools, i => new ProbeTool("echo_" + i).Descriptor);
+            var request = new ProviderRequest(scope, attempt, [], source);
+            Assert.Equal(ProviderLimits.Tools, request.Tools.Count);
+        }
+        else
+        {
+            var source = new EvolvingList<ToolCall>(ProviderLimits.Tools, i => new("id" + i, "echo_a", "{\"text\":\"x\"}"));
+            var response = new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null, source);
+            Assert.Equal(ProviderLimits.Tools, response.Calls.Count);
+        }
+    }
+
+    [Fact]
+    public void NegativeCollectionCountRejectsBeforeIndexingOrAllocation()
+    {
+        var source = new EvolvingList<ProviderInput>(-1, _ => throw new InvalidOperationException("Must not index."));
+        Assert.Equal(ProviderError.InvalidInput, Assert.Throws<ProviderContractException>(() =>
+            new ProviderRequest(ProviderExchangeTests.Scope, ProviderExchangeTests.Attempt(), source)).Error);
+    }
+
+    private sealed class EvolvingList<T>(int initialCount, Func<int, T> value) : IReadOnlyList<T>
+    {
+        private int reads;
+        public int Count => ++reads == 1 ? initialCount : initialCount + 1;
+        public T this[int index] => value(index);
+        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private sealed class OversizedInputs : IReadOnlyList<ProviderInput>
     {
         public int Count => ProviderLimits.Inputs + 1;
