@@ -4,7 +4,7 @@ Apply the shared [Contract lifecycle](https://github.com/SolusQuest/solus-book/b
 
 ## Current draft surfaces
 
-The initial API projects contain no public types. Their responsibilities and reference graph are selected, while signatures and data formats remain to be designed. Maintain one current production implementation per selected path; intentional agent/provider alternatives and synthetic test implementations are legitimate alternatives.
+`Tools.Api` contains the current executable [function-tool draft](../20_architecture/drafts/function-tools.md) and a synthetic consumer. The other API projects remain skeletons; responsibilities and reference graph are selected while their signatures and data formats remain to be designed. Revise tool contracts with their actual synthetic producer, validators, tests and consumer. Maintain one current production implementation per selected path; intentional agent/provider alternatives and synthetic test implementations are legitimate alternatives.
 
 This document does not select package versions, persistence codecs, or release policy. The [roadmap](../90_roadmap/roadmap.md) owns the first experimental prerelease and its migration-entry scope. Supported package and saved-context commitments can have different boundaries.
 

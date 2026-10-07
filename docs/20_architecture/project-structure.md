@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries represent the boundaries explicitly selected for initialization. They are buildable skeletons, not implemented APIs. No placeholder public types, providers, adapters, or generators are included; the managed test project under `tests/` holds Architecture tests that evaluate the production project files and references no production project.
+The four production libraries represent the selected boundaries. `Tools.Api` implements the [prepared function-tool draft](drafts/function-tools.md); the other libraries remain buildable skeletons. The sole managed test runner holds evaluated Architecture tests and executable Tools tests, while the real CustomTools consumer probe is a separate test-only compilation boundary. No provider, runtime adapter or generator is included.
 
 ## Layout
 
@@ -13,6 +13,8 @@ src/
     SolusAgent.Runtime/
 tests/
     SolusAgent.ContractTests/
+    ConsumerProbes/
+        CustomTools/
 .github/
     workflows/          # Ordinary CI
 docs/
@@ -56,7 +58,9 @@ flowchart TD
 
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
-`tests/SolusAgent.ContractTests` is the sole managed test project and classifies as test-only: it declares the current test runner packages with private runner assets and no production project references, because its Architecture tests evaluate production project paths rather than production types. Future focused tests use that same runner and add only the production reference that implemented test code actually requires.
+`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references Tools.Api plus the test-only CustomTools probe for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph exact. Future focused tests use this same runner and add only dependencies required by implemented tests.
+
+`tests/ConsumerProbes/CustomTools` is a real test-only library, registered in the solution, with Tools.Api as its sole production reference and no package dependencies. It implements a synthetic counter tool and narrow capability. Evaluated architecture assertions check its exact edge, managed target and repository-contained compile inputs. Its effects are confined to test memory; it is not a production tool adapter or another test runner.
 
 ## Downstream consumption
 
@@ -72,4 +76,4 @@ A single downstream project can begin with these source-level responsibilities. 
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
-Provider packages, additional agent implementations, tool implementations, generators, further test projects, and convenience hosting packages remain future work. The four initial skeletons do not imply that those packages are required for first implementation.
+Provider packages, additional agent implementations, production tool adapters, generators, further test runners and convenience hosting packages remain future work. The four selected libraries do not imply that those packages are required for first implementation.

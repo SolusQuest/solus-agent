@@ -8,4 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj" />
   </Folder>
+  <Folder Name="/tests/ConsumerProbes/">
+    <Project Path="tests/ConsumerProbes/CustomTools/CustomTools.csproj" />
+  </Folder>
 </Solution>

@@ -4,7 +4,7 @@ Use shared [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d19
 
 ## Current available checks
 
-The solution contains four library skeletons and one managed test project, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. From the repository root, use the SDK selected by `global.json`:
+The solution contains four production libraries, the compiled CustomTools consumer probe and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. Tools.Api implements the current function-tool draft; the other production libraries remain skeletons. From the repository root, use the SDK selected by `global.json`:
 
 ```text
 dotnet restore SolusAgent.slnx
@@ -12,7 +12,7 @@ dotnet build SolusAgent.slnx --configuration Release --no-restore
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-The test project runs xUnit through `Microsoft.NET.Test.Sdk`, `xunit`, and `xunit.runner.visualstudio` with private runner assets, and it currently references no production project. Its Architecture tests evaluate the real production project files through `dotnet msbuild` JSON output, including imported and conditioned items, instead of consuming production types. Future focused tests use this same real runner and add only the production reference that implemented test code actually needs.
+The runner uses xUnit through `Microsoft.NET.Test.Sdk`, `xunit` and `xunit.runner.visualstudio` with private runner assets. It references Tools.Api and the test-only CustomTools probe for actual behavioral tests. Architecture tests evaluate the real production and consumer project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this same runner and add only dependencies required by implemented test code.
 
 Focused runs select the same runner with a filter, for example:
 
@@ -20,9 +20,11 @@ Focused runs select the same runner with a filter, for example:
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Architecture"
 ```
 
-The Architecture tests check evaluated project boundaries only: the exact four-library reference graph, package independence of `SolusAgent.Api` and `SolusAgent.Tools.Api`, managed `net10.0` targets, and evaluated compile inputs that stay inside the repository. Synthetic negative checks mutate an owned temporary Api-only consumer with forbidden `Runtime` and `Runtime.Api` reference edges and an out-of-root linked source, then require the same boundary assertions to fail for the specific offending edge. Confirm nonzero executed test counts and named negative checks; an empty `dotnet test` run is not acceptance evidence.
+The Architecture tests check the exact four-library reference graph, package independence of `SolusAgent.Api` and `SolusAgent.Tools.Api`, exact current solution/test dependencies, managed `net10.0` targets and evaluated compile inputs that stay inside the repository. CustomTools must have Tools.Api as its sole production edge and no packages. Synthetic negative checks mutate an owned temporary Api-only consumer with forbidden `Runtime` and `Runtime.Api` reference edges and an out-of-root linked source, then require the same boundary assertions to fail for the specific offending edge. Confirm nonzero executed test counts and named negative checks; an empty `dotnet test` run is not acceptance evidence.
 
-These checks do not demonstrate agent execution behavior, public API contracts, tools, providers, context restoration, packaging, installation, or release readiness, and a passing local run does not establish CI results or platform support. Inspect solution membership and direct project references against [Project structure](../20_architecture/project-structure.md).
+Tools tests run the actual synthetic consumer through public contracts and prove bounded metadata/schema/arguments/results, zero preparation effects, explicit narrow capability admission, call/output association, single-use concurrent invocation and honest cancellation/failure outcomes. Select them with the same command and `--filter "FullyQualifiedName~SolusAgent.ContractTests.Tools"`, then run the full small suite after shared signature or registration changes. Tools.Api also generates XML documentation with missing public documentation treated as a build warning/error.
+
+These checks do not demonstrate agent/runtime execution, providers, context restoration, packaging, installation, production external effects or release readiness. A passing local run does not establish CI results or platform support. Inspect solution membership and direct project references against [Project structure](../20_architecture/project-structure.md).
 
 Use `--no-restore` only after a successful applicable restore; repeat restore after SDK, framework, project, reference, package, source, or restore-property changes. Use `--no-build` only after a successful build of the same inputs, SDK, configuration, and tree; rebuild after source, project, solution, build configuration, or generator changes.
 
