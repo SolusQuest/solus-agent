@@ -8,7 +8,7 @@ The selected design separates the application-facing agent API, reusable tool co
 
 The repository contains collaboration documentation and a buildable four-project skeleton. Public interface signatures and executable agent behavior have not been implemented. The architectural requirements below are the selected design, not claims of available functionality.
 
-CI, test infrastructure, package distribution, version policy, roadmap milestones, downstream migration, additional agent implementations, and tool source generators remain for subsequent planning.
+The [roadmap](docs/90_roadmap/roadmap.md) selects M0 plus five delivery milestones toward the first downstream-consumable 0.x experimental prerelease. M1 contracts remain drafts, M2 separates deterministic Scripted Provider validation from the actual provider adapter, and M5 records prerelease compatibility policy and verified support scope without freezing the API. Runtime implementation, CI, tests, packaging, and release work remain future work; actual product migration belongs to the downstream repositories.
 
 ## Projects
 
@@ -20,6 +20,16 @@ CI, test infrastructure, package distribution, version policy, roadmap milestone
 | `SolusAgent.Runtime` | Self-owned agent execution and integration with the shared tool contracts. |
 
 Project, assembly, and root namespace names match. Package metadata and publication policy will be defined separately when distribution is planned.
+
+## Checkout
+
+The shared engineering handbook is a pinned Git submodule. After checkout, initialize it with:
+
+```text
+git submodule update --init --recursive
+```
+
+A fresh clone can use `git clone --recurse-submodules <repository-url>`. See [shared handbook adoption](docs/00_project/shared-handbook.md) for the selected revision, loading, and updates.
 
 ## Local build
 
@@ -34,6 +44,6 @@ These commands require no model credentials. There is no test suite or CI workfl
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), [project context](docs/00_project/project-context.md), [architecture](docs/20_architecture/architecture.md), and [project structure](docs/20_architecture/project-structure.md).
+Start with the [documentation index](docs/README.md), [project context](docs/00_project/project-context.md), [architecture](docs/20_architecture/architecture.md), [project structure](docs/20_architecture/project-structure.md), and [roadmap](docs/90_roadmap/roadmap.md).
 
 Agents start at [AGENTS.md](AGENTS.md).
