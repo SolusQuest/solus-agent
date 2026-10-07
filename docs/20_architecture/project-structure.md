@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools and Providers tests, while separate Api-only custom-agent, CustomTools and CustomProvider libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
+The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools and Providers tests, while separate Api-only custom-agent, CustomTools, CustomProvider and ScribeHost libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
 
 ## Layout
 
@@ -23,6 +23,7 @@ tests/
     ConsumerProbes/
         CustomTools/
         CustomProvider/
+        ScribeHost/
 .github/
     workflows/          # Ordinary CI
 docs/
@@ -73,6 +74,8 @@ Downstream product source, repository snapshots, fixtures, and machine-local pat
 `tests/ConsumerProbes/CustomTools` is a real test-only library, registered in the solution, with Tools.Api as its sole production reference and no package dependencies. It implements a synthetic counter tool and narrow capability. Evaluated architecture assertions check its exact edge, managed target and repository-contained compile inputs. Its effects are confined to test memory; it is not a production tool adapter or another test runner.
 
 `tests/ConsumerProbes/CustomProvider` is a non-packable test-only library with Runtime.Api as its sole direct production reference and no packages. It uses the accepted Tools/Usage types transitively through Runtime.Api and never references Runtime. Providers tests exercise its finite model/tool exchange and actual all-member tool admission; Architecture checks evaluate its exact graph, compiled references and repository-contained sources. Runtime.Api generates XML documentation with warnings-as-errors for the [provider exchange draft](drafts/provider-exchange.md).
+
+`tests/ConsumerProbes/ScribeHost` is a non-packable test-only library, registered in the solution, with Api as its sole production reference and no packages. It contains the synthetic business Host, manifest and validated progress of the [Scribe consumption draft](drafts/scribe-consumption.md); the runner's `ConsumerProbes/Scribe` tests compose it with the existing producer and configuration fixtures. Evaluated assertions check its exact Api-only edge and compile inputs confined to its own project directory.
 
 ## Downstream consumption
 

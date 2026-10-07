@@ -13,6 +13,7 @@
         <ProjectReference Include="../ConsumerProbes/CustomTools/CustomTools.csproj" />
         <ProjectReference Include="../../src/SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" />
         <ProjectReference Include="../ConsumerProbes/CustomProvider/CustomProvider.csproj" />
+        <ProjectReference Include="../ConsumerProbes/ScribeHost/ScribeHost.csproj" />
     </ItemGroup>
 
 </Project>
