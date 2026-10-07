@@ -16,6 +16,8 @@ The Runtime.Api [provider exchange draft](../20_architecture/drafts/provider-exc
 
 The outer [context envelope draft](../20_architecture/drafts/context-envelope.md) is executable through the existing Api-only producer/Host consumer and Context tests. It covers explicit fresh/supplied new-run/unfinished-continuation intent, admission rejection and call-scoped restricted capture. Host-owned retention and later runtime restoration obligations remain distinct.
 
+The Runtime.Api [runtime configuration and exposure draft](../20_architecture/drafts/runtime-configuration.md) is executable through the independent CustomProvider fixture and RuntimeConfiguration tests. It covers live interface bindings, current AgentRequest authority, ordered Host permission, same-attempt closure, cancellation cuts and retained usage. Host durable claims and the finite memory-only protocol do not establish production storage, enforcement or restoration.
+
 ## Shared loading and ownership
 
 [Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.

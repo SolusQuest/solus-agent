@@ -6,6 +6,8 @@ The [provider exchange draft](drafts/provider-exchange.md) supplies an executabl
 
 ## Agent and model boundaries
 
+The [runtime configuration and exposure draft](drafts/runtime-configuration.md) supplies live Host bindings and ordered exposure/closure in Runtime.Api, with actual synthetic consumer proof. Current AgentRequest run controls remain separate and authoritative. Correlated Host permission precedes dispatch; closure retains known or unknown effects and usage independently of acknowledgement delivery. Durable acknowledgement is a Host claim, with production enforcement/storage/recovery still future work.
+
 The executable outer [candidate-feedback draft](drafts/candidate-feedback.md) selects an optional `ICandidateAgent` and separate Host payload/feedback channel. Safe completion observations retain independent receipts across stops without importing Host domain validation, effect authority or durable storage.
 
 The outer agent API describes how a product requests execution, observes progress and outcomes, and supplies or receives implementation-scoped context. It must accommodate incremental candidate submission and host acknowledgement where the product needs them.
