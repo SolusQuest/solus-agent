@@ -17,11 +17,20 @@ public enum AgentCapability
     /// <summary>The implementation cooperatively observes caller cancellation.</summary>
     /// <remarks>Observation does not prove that remote work has stopped.</remarks>
     Cancellation = 4,
+
+    /// <summary>Reports truthful nullable usage and retains observations across later failures; complete provider metrics are not promised.</summary>
+    UsageReporting = 8,
+
+    /// <summary>Enforces configured logical-call and physical-dispatch limits before dispatch.</summary>
+    DispatchLimits = 16,
+
+    /// <summary>Checks configured token thresholds after responses to stop subsequent work; not a strict pre-dispatch ceiling.</summary>
+    UsageThresholds = 32,
 }
 
 internal static class CapabilityValidation
 {
-    private const AgentCapability All = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation;
+    private const AgentCapability All = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds;
 
     internal static void Validate(AgentCapability capabilities, string parameterName)
     {

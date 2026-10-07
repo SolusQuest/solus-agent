@@ -29,6 +29,7 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Architecture](20_architecture/architecture.md).
 - [Project structure](20_architecture/project-structure.md).
 - [Security boundary](20_architecture/security-boundary.md).
+- [Run limits and usage draft](20_architecture/drafts/usage.md).
 
 ## Agent collaboration
 
