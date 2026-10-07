@@ -3,7 +3,7 @@ using Xunit;
 
 namespace SolusAgent.ContractTests.Architecture;
 
-/// <summary>Architecture tests over the evaluated production project graph and the sole test project registration.</summary>
+/// <summary>Architecture tests over the evaluated production graph and current test-only project registrations.</summary>
 public sealed class ProductionProjectGraphTests
 {
     private static readonly IReadOnlyList<string> ProductionProjectNames =
@@ -43,7 +43,7 @@ public sealed class ProductionProjectGraphTests
     ];
 
     [Fact]
-    public void SolutionRegistersTheFourProductionProjectsAndTheSoleTestProject()
+    public void SolutionRegistersTheFourProductionProjectsAndCurrentTestOnlyProjects()
     {
         var registeredPaths = XDocument.Load(RepositoryLayout.SolutionPath)
             .Descendants("Project")
@@ -56,6 +56,7 @@ public sealed class ProductionProjectGraphTests
         var expectedPaths = ProductionProjectNames
             .Select(RepositoryLayout.ProductionProjectPath)
             .Append(RepositoryLayout.TestProjectPath)
+            .Append(Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"))
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -65,7 +66,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Single(registeredTestProjects);
+        Assert.Equal(2, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -107,11 +108,15 @@ public sealed class ProductionProjectGraphTests
     }
 
     [Fact]
-    public void TestProjectEvaluatesOnlyCurrentTestPackagesAndNoProductionProjectReferences()
+    public void TestProjectEvaluatesOnlyCurrentTestPackagesAndRequiredConsumerReferences()
     {
         var evaluation = MsbuildProjectEvaluation.Evaluate(RepositoryLayout.TestProjectPath);
 
-        Assert.Empty(evaluation.ProjectReferenceItems);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+        [
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Api"),
+            Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"),
+        ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
         Assert.Equal(

@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries represent the boundaries explicitly selected for initialization. They are buildable skeletons, not implemented APIs. No placeholder public types, providers, adapters, or generators are included; the managed test project under `tests/` holds Architecture tests that evaluate the production project files and references no production project.
+The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md); the other production libraries remain skeletons. Under `tests/`, one managed runner holds Architecture and Execution tests, and a separate test-only consumer library provides the actual Api-only compile boundary. No production providers, adapters, generators or runtime loop are included.
 
 ## Layout
 
@@ -12,6 +12,7 @@ src/
     SolusAgent.Runtime.Api/
     SolusAgent.Runtime/
 tests/
+    SolusAgent.ApiOnlyConsumer/
     SolusAgent.ContractTests/
 .github/
     workflows/          # Ordinary CI
@@ -56,7 +57,7 @@ flowchart TD
 
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
-`tests/SolusAgent.ContractTests` is the sole managed test project and classifies as test-only: it declares the current test runner packages with private runner assets and no production project references, because its Architecture tests evaluate production project paths rather than production types. Future focused tests use that same runner and add only the production reference that implemented test code actually requires.
+`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api` plus the test-only `SolusAgent.ApiOnlyConsumer`. Its Architecture tests evaluate real project paths; Execution tests call actual types. `SolusAgent.ApiOnlyConsumer` is a non-packable test library with Api as its only production reference and no packages; it contains both a synthetic agent and consumer orchestration through `IAgent`. This separate compile boundary remains meaningful when sibling tests need their own production references. Future focused tests use the same runner and add only references their implemented code needs.
 
 ## Downstream consumption
 

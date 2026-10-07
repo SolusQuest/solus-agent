@@ -4,7 +4,7 @@ Use shared [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d19
 
 ## Current available checks
 
-The solution contains four library skeletons and one managed test project, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. From the repository root, use the SDK selected by `global.json`:
+The solution contains four production libraries, a test-only Api-only custom-agent consumer library, and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. From the repository root, use the SDK selected by `global.json`:
 
 ```text
 dotnet restore SolusAgent.slnx
@@ -12,17 +12,20 @@ dotnet build SolusAgent.slnx --configuration Release --no-restore
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-The test project runs xUnit through `Microsoft.NET.Test.Sdk`, `xunit`, and `xunit.runner.visualstudio` with private runner assets, and it currently references no production project. Its Architecture tests evaluate the real production project files through `dotnet msbuild` JSON output, including imported and conditioned items, instead of consuming production types. Future focused tests use this same real runner and add only the production reference that implemented test code actually needs.
+The test project runs xUnit through `Microsoft.NET.Test.Sdk`, `xunit`, and `xunit.runner.visualstudio` with private runner assets. It references `SolusAgent.Api` and the test-only `SolusAgent.ApiOnlyConsumer`; that separately compiled consumer references only Api and has no packages. Its Execution tests invoke the actual consumer/agent through `IAgent`. Architecture tests evaluate real production project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this runner and add only references their implemented code needs. Api generates XML documentation with warnings-as-errors during the normal build.
 
 Focused runs select the same runner with a filter, for example:
 
 ```text
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Architecture"
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Execution"
 ```
 
 The Architecture tests check evaluated project boundaries only: the exact four-library reference graph, package independence of `SolusAgent.Api` and `SolusAgent.Tools.Api`, managed `net10.0` targets, and evaluated compile inputs that stay inside the repository. Synthetic negative checks mutate an owned temporary Api-only consumer with forbidden `Runtime` and `Runtime.Api` reference edges and an out-of-root linked source, then require the same boundary assertions to fail for the specific offending edge. Confirm nonzero executed test counts and named negative checks; an empty `dotnet test` run is not acceptance evidence.
 
-These checks do not demonstrate agent execution behavior, public API contracts, tools, providers, context restoration, packaging, installation, or release readiness, and a passing local run does not establish CI results or platform support. Inspect solution membership and direct project references against [Project structure](../20_architecture/project-structure.md).
+Execution tests demonstrate the current outer contract through the actual Api-only consumer: bounded normal/partial/resource/cancel/failure outcomes, pre-work invalid/unsupported rejection, correlation, immutable control/data separation and restricted diagnostic canaries. They check the consumer's evaluated exact Api-only graph and compiled assembly references. The [execution draft](../20_architecture/drafts/agent-execution.md) states these guarantees and limits.
+
+These checks do not demonstrate a production loop, tools/providers, duration or budget enforcement, context restoration, packaging, installation or release readiness. A passing local run does not establish CI results or platform support. Inspect solution membership and direct references against [Project structure](../20_architecture/project-structure.md).
 
 Use `--no-restore` only after a successful applicable restore; repeat restore after SDK, framework, project, reference, package, source, or restore-property changes. Use `--no-build` only after a successful build of the same inputs, SDK, configuration, and tree; rebuild after source, project, solution, build configuration, or generator changes.
 

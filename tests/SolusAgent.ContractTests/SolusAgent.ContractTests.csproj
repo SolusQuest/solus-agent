@@ -6,4 +6,9 @@
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" PrivateAssets="all" />
     </ItemGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="../../src/SolusAgent.Api/SolusAgent.Api.csproj" />
+        <ProjectReference Include="../SolusAgent.ApiOnlyConsumer/SolusAgent.ApiOnlyConsumer.csproj" />
+    </ItemGroup>
+
 </Project>

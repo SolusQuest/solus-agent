@@ -1,6 +1,6 @@
 # Architecture
 
-This document records the selected architecture. The current implementation is the four-project skeleton described in [Project structure](project-structure.md). Interface signatures, serialization details, and executable behavior have not been implemented.
+This document records the selected architecture. The four production libraries retain the boundaries described in [Project structure](project-structure.md). The outer [execution draft](drafts/agent-execution.md) has public contracts and an executable test-only Api consumer; the production runtime, provider/tool implementation and restoration remain future work. Draft signatures can evolve coherently with their actual producers and consumers.
 
 ## Agent and model boundaries
 

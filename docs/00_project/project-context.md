@@ -8,7 +8,7 @@ The repository owns its implementation, shared contracts, documentation, and fut
 
 ## Current position
 
-The current tree is an initialization skeleton: four .NET libraries, their selected dependency graph, collaboration documentation, one managed architecture test project, and an ordinary push/pull_request CI workflow. It contains no public API types, executable agent loop, model provider, tool implementation, or released distribution. The architecture tests evaluate project boundaries only, and build or test success is not evidence that the selected runtime behavior exists.
+The current tree contains four .NET production libraries in their selected dependency graph, an executable outer-agent execution draft, a test-only Api-only custom agent and calling consumer, one managed contract test runner, and ordinary push/pull_request CI. Execution tests demonstrate synthetic bounded work, capability admission, terminal outcomes and diagnostic separation; architecture tests evaluate the project boundaries. There is no production agent loop, model provider, tool implementation or released distribution. These checks do not establish the selected runtime's later guarantees. The [execution draft](../20_architecture/drafts/agent-execution.md) describes the current contract and its limits.
 
 ## Accepted design direction
 
@@ -33,4 +33,4 @@ Read [Architecture](../20_architecture/architecture.md) and [Security boundary](
 
 The [roadmap](../90_roadmap/roadmap.md) selects M0 initialization and M1-M5 delivery toward a first consumable 0.x experimental prerelease. Draft contracts evolve with implementation; ordinary validation uses a Scripted Provider, while one actual provider adapter is included; the first release declares prerelease compatibility policy and verified support scope without a compatibility freeze. It enables the two downstream repositories to begin migration rather than requiring their migrations to close SolusAgent's release milestone.
 
-Detailed public signatures, context formats, test infrastructure, CI, package layout, and release mechanics are refined with their owning work. Additional agent implementations and source generators remain later work. The current skeleton does not implement the roadmap, and a planning task does not authorize implementing or publishing those features.
+Detailed public signatures, context formats, test infrastructure, CI, package layout and release mechanics are refined with their owning work. Additional agent implementations and source generators remain later work. The current execution draft does not establish the complete roadmap, and a planning task does not authorize implementing or publishing those features.
