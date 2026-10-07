@@ -1,3 +1,4 @@
+using SolusAgent.Api.Usage;
 using SolusAgent.Api.Capabilities;
 
 namespace SolusAgent.Api.Execution;
@@ -33,7 +34,7 @@ public enum AgentFailureCode
     /// <summary>An implementation's work operation failed.</summary>
     ExecutionFailed,
 
-    /// <summary>An ordinary progress observer threw while reporting completed work.</summary>
+    /// <summary>An ordinary progress observer threw while reporting an ordinary observation.</summary>
     ProgressObserverFailed,
 }
 
@@ -41,14 +42,15 @@ public enum AgentFailureCode
 public sealed class AgentOutcome
 {
     /// <summary>Creates a correlated terminal outcome with coherent rejection and failure metadata.</summary>
-    /// <exception cref="ArgumentException">The identity or reason/metadata combination is invalid.</exception>
+    /// <exception cref="ArgumentException">The identity, reason/metadata combination or usage association is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A count, reason, failure code or capability flags are invalid.</exception>
     public AgentOutcome(
         Guid executionId,
         AgentTerminationReason reason,
         int completedWorkUnits,
         AgentCapability unsupportedCapabilities = AgentCapability.None,
-        AgentFailureCode failureCode = AgentFailureCode.None)
+        AgentFailureCode failureCode = AgentFailureCode.None,
+        AgentRunUsage? usage = null)
     {
         if (executionId == Guid.Empty)
         {
@@ -82,12 +84,22 @@ public sealed class AgentOutcome
             throw new ArgumentException("Failure reason and code must agree.", nameof(failureCode));
         }
 
+        if (reason == AgentTerminationReason.UnsupportedCapability && usage is not null && (usage.Coverage != UsageInventoryCoverage.Complete || usage.Attempts.Count != 0))
+            throw new ArgumentException("Pre-work rejection cannot assert execution attempts.", nameof(usage));
+
+        if (usage is not null && usage.ExecutionId != executionId)
+            throw new ArgumentException("Usage must belong to the same execution.", nameof(usage));
+
         ExecutionId = executionId;
         Reason = reason;
         CompletedWorkUnits = completedWorkUnits;
+        Usage = usage;
         UnsupportedCapabilities = unsupportedCapabilities;
         FailureCode = failureCode;
     }
+
+    /// <summary>Gets an optional immutable usage snapshot, independent of task completion and measurement availability.</summary>
+    public AgentRunUsage? Usage { get; }
 
     /// <summary>Gets the original Host-supplied execution identity.</summary>
     public Guid ExecutionId { get; }

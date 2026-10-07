@@ -1,6 +1,7 @@
 using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
+using SolusAgent.Api.Usage;
 using SolusAgent.ApiOnlyConsumer.Candidates;
 using Xunit;
 
@@ -172,7 +173,7 @@ public sealed class CandidateContractTests
     [Fact]
     public void OrdinaryResultTypeGraphHasNoFreeTextOrHostPayloadReferences()
     {
-        var allowed = new HashSet<Type> { typeof(Guid), typeof(int), typeof(bool) };
+        var allowed = new HashSet<Type> { typeof(Guid), typeof(int), typeof(bool), typeof(long), typeof(decimal) };
         var visited = new HashSet<Type>();
         Inspect(typeof(CandidateExecutionResult));
         return;
@@ -182,10 +183,17 @@ public sealed class CandidateContractTests
             if (allowed.Contains(type) || type.IsEnum || !visited.Add(type)) { return; }
             if (Nullable.GetUnderlyingType(type) is Type underlying) { Inspect(underlying); return; }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)) { Inspect(type.GenericTypeArguments[0]); return; }
-            Assert.Contains(type, new[] { typeof(CandidateExecutionResult), typeof(CandidateReceipt), typeof(AgentOutcome) });
+            Assert.Contains(type, new[] { typeof(CandidateExecutionResult), typeof(CandidateReceipt), typeof(AgentOutcome),
+                typeof(AgentRunUsage), typeof(UsageAttemptObservation), typeof(UsageObservation), typeof(ProviderTokenCounter),
+                typeof(UsageAccounting), typeof(UsageTokenAmounts), typeof(UsageCostEstimate) });
             Assert.All(type.GetProperties(), property =>
             {
                 Assert.Null(property.SetMethod);
+                if (type == typeof(UsageCostEstimate) && property.Name == nameof(UsageCostEstimate.Currency))
+                {
+                    Assert.Equal(typeof(string), property.PropertyType); // Accepted bounded three-uppercase-letter label only.
+                    return;
+                }
                 Inspect(property.PropertyType);
             });
         }

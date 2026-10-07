@@ -14,13 +14,13 @@ Credentials and restricted state have no request fields in this draft. Host tran
 
 `AgentExecutionBounds` carries positive maximum work units and a positive finite `TimeSpan` duration. Work-unit meaning belongs to the chosen implementation. `SupportedCapabilities` advertises work-unit enforcement, duration enforcement and cooperative cancellation as distinct guarantees. `RequiredCapabilities` must be honored or explicitly rejected before work and progress; the rejection outcome names the unsupported flags and contains zero completed work.
 
-A requested bound is not evidence of enforcement. A Host that requires duration enforcement must require `DurationLimit`, and similarly for work-unit enforcement or cancellation observation. An optional unsupported guarantee remains advisory. This draft has no token, cost, provider-dispatch, reservation or cumulative-budget contract.
+A requested bound is not evidence of enforcement. A Host that requires duration enforcement must require `DurationLimit`, and similarly for work-unit enforcement or cancellation observation. An optional unsupported guarantee remains advisory. The separate [usage draft](usage.md) attaches optional configured limits and snapshots, with independently negotiated reporting, pre-dispatch count limits and post-response thresholds; production cumulative-budget enforcement remains future work.
 
 The synthetic agent defines a work unit as one successfully awaited test operation. It supports `WorkUnitLimit` and `Cancellation`, and always applies the work-unit bound. It does not enforce duration; requiring `DurationLimit` rejects before work, while an advisory duration does not imply enforcement. M2-M3 own production stopping, resource admission, deadline, retry and accounting behavior.
 
 ## Progress and terminal outcomes
 
-`AgentProgress` contains only the original execution identity and a monotonic completed-work count. An implementation calls `IProgress.Report` in execution order. Observer delivery may be scheduled by the observer, including after the terminal result; consumers that need immediate ordered delivery can use a synchronous observer, as the supplied consumer does. No cross-process event delivery or durable acknowledgement is promised.
+`AgentProgress` contains the original execution identity, a monotonic completed-work count and an optional same-execution immutable usage snapshot. An implementation calls `IProgress.Report` in execution order. Observer delivery may be scheduled by the observer, including after the terminal result; consumers that need immediate ordered delivery can use a synchronous observer, as the supplied consumer does. No cross-process event delivery or durable acknowledgement is promised.
 
 `AgentOutcome` preserves the same execution identity and completed-work count. Its closed terminal vocabulary is:
 
@@ -39,6 +39,6 @@ The synthetic implementation checks required capabilities first. In its loop it 
 
 ## Ordinary diagnostics and evidence
 
-Progress and outcomes have no free-form text, exceptions, input references, candidate payloads, credentials, continuation, context or generic object/dictionary fields. Request/data `ToString()` excludes content. Their input-bearing properties remain sensitive: redacted `ToString()` does not authorize logging or serializing the request or data themselves. Candidate submission/Host feedback, usage and restricted context remain separate owning member families.
+Progress and outcomes have no free-form text, exceptions, input references, candidate payloads, credentials, continuation, context or generic object/dictionary fields. Request/data `ToString()` excludes content. Their input-bearing properties remain sensitive: redacted `ToString()` does not authorize logging or serializing the request or data themselves. Usage snapshots contain only the closed ordinary metadata documented by their [owning draft](usage.md); candidate submission/Host feedback and restricted context remain separate owning member families.
 
 The [project validation](../../00_project/validation.md) runner executes the actual Api-only implementation/consumer and tests normal completion, resource exhaustion, intentional partial completion, pre-work rejection, cancellation during execution, preserved work, safe failures, control/data separation, defensive copying and synthetic diagnostic canaries. The consumer's real evaluated project graph and compiled assembly references establish the Api-only boundary while the existing production-graph and negative mutation probes remain active. No downstream private source, live provider calls or product acceptance evidence is inherited.

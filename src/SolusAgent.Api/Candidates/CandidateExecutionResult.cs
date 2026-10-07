@@ -136,6 +136,13 @@ public sealed class CandidateExecutionResult
             throw new ArgumentException("The stop reason must agree with the terminal receipt.", nameof(stopReason));
         }
 
+        // The terminal Continue for this named limit was denied, rather than admitted.
+        if ((stopReason == CandidateStopReason.RepairLimit && repairsAdmitted >= snapshot.Count(receipt => receipt.Decision == CandidateDecision.Reject && receipt.Continuation == CandidateContinuation.Continue))
+            || (stopReason == CandidateStopReason.ContinuationLimit && continuationsAdmitted >= snapshot.Count(receipt => receipt.IsAccepted && receipt.Continuation == CandidateContinuation.Continue)))
+        {
+            throw new ArgumentException("A limit-denied terminal follow-on cannot be counted as admitted.", nameof(stopReason));
+        }
+
         Outcome = outcome;
         StopReason = stopReason;
         Receipts = Array.AsReadOnly(snapshot);

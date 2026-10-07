@@ -118,6 +118,33 @@ public sealed class CandidateTerminalTests
     }
 
     [Theory]
+    [InlineData(CandidateStopReason.RepairLimit, CandidateDecision.Reject, 1)]
+    [InlineData(CandidateStopReason.RepairLimit, CandidateDecision.Reject, 2)]
+    [InlineData(CandidateStopReason.ContinuationLimit, CandidateDecision.Accept, 1)]
+    [InlineData(CandidateStopReason.ContinuationLimit, CandidateDecision.Accept, 2)]
+    public void LimitStopCannotCountItsDeniedTerminalFollowOnAsAdmitted(CandidateStopReason stop, CandidateDecision decision, int receiptCount)
+    {
+        var receipts = Enumerable.Range(0, receiptCount).Select(_ => Receipt(CandidateAcknowledgement.Acknowledged, decision)).ToArray();
+        Assert.Throws<ArgumentException>(() => Result(receiptCount));
+        var valid = Result(receiptCount - 1);
+        Assert.Equal(receiptCount - 1, stop == CandidateStopReason.RepairLimit ? valid.RepairsAdmitted : valid.ContinuationsAdmitted);
+        Assert.Equal(decision == CandidateDecision.Accept ? receiptCount : 0, valid.AcceptedCount);
+        Assert.Equal(0, valid.Outcome.CompletedWorkUnits);
+
+        var otherDecision = decision == CandidateDecision.Accept ? CandidateDecision.Reject : CandidateDecision.Accept;
+        var mixed = new CandidateExecutionResult(Outcome(stop), stop,
+            [Receipt(CandidateAcknowledgement.Acknowledged, otherDecision), receipts[^1]],
+            repairsAdmitted: stop == CandidateStopReason.ContinuationLimit ? 1 : 0,
+            continuationsAdmitted: stop == CandidateStopReason.RepairLimit ? 1 : 0);
+        Assert.Equal(1, mixed.RepairsAdmitted + mixed.ContinuationsAdmitted);
+        Assert.Equal(1, mixed.AcceptedCount);
+
+        CandidateExecutionResult Result(int admitted) => new(Outcome(stop), stop, receipts,
+            repairsAdmitted: stop == CandidateStopReason.RepairLimit ? admitted : 0,
+            continuationsAdmitted: stop == CandidateStopReason.ContinuationLimit ? admitted : 0);
+    }
+
+    [Theory]
     [InlineData(CandidateStopReason.Cancelled)]
     [InlineData(CandidateStopReason.WorkUnitLimit)]
     [InlineData(CandidateStopReason.ProductionFailed)]
