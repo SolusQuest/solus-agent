@@ -7,8 +7,8 @@ namespace SolusAgent.Api.Execution;
 public sealed class AgentRequest
 {
     /// <summary>Validates Host control inputs and takes a defensive snapshot of the data list before work can begin.</summary>
-    /// <exception cref="ArgumentException">The identity is empty or trusted instructions are blank.</exception>
-    /// <exception cref="ArgumentNullException">A required value or data member is null.</exception>
+    /// <exception cref="ArgumentException">The identity is empty, trusted instructions are blank or a data member is null.</exception>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Required capabilities contain undefined flags.</exception>
     public AgentRequest(
         Guid executionId,
