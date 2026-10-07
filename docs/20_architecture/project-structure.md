@@ -6,6 +6,8 @@ The four production libraries retain the selected dependency boundaries. `SolusA
 
 The outer [candidate-feedback draft](drafts/candidate-feedback.md) lives in `SolusAgent.Api/Candidates`. Its actual producer and Host consumer compile in the existing Api-only library; Candidates tests use the existing runner. It introduces no project, package, solution registration or production reference edge.
 
+The [context envelope draft](drafts/context-envelope.md) lives in `SolusAgent.Api/Context`. Its actual synthetic producer and call-scoped restricted Host sink compile in the existing Api-only library; Context tests use the existing runner with no new project, package or reference edge.
+
 ```text
 SolusAgent.slnx
 src/

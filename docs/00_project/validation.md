@@ -39,6 +39,12 @@ Candidates tests exercise the actual Api-only producer and Host consumer through
 
 Providers tests call the actual Runtime.Api-only CustomProvider producer/Host consumer and guarded exchange: two model turns, two fully correlated real tools admitted as a whole batch, exact required continuation, invalid shapes/associations, retained usage after payload rejection/failure/cancellation, known/unknown dispatch, capture closure/concurrency, finite count/byte neighbors and diagnostic canaries. Use the same runner with `--filter "FullyQualifiedName~SolusAgent.ContractTests.Providers"`. The [provider exchange draft](../20_architecture/drafts/provider-exchange.md) states current semantics and M2/M4 deferrals; these are synthetic expressibility checks, not actual transport/parser/restoration proof.
 
+Context tests exercise the actual Api-only producer/Host consumer for explicit intent, implementation/format/compatibility/grammar/transition rejection before effects, no fresh fallback, Host control/capability reinjection, immutable restricted copies and safe canary confinement. Call-scoped capture and overlapping same-correlation sinks demonstrate Host retention without agent lookup; capture failure stays separate from work outcomes. These checks cover the [context envelope draft](../20_architecture/drafts/context-envelope.md), not production restoration or a durable codec. Use the existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Context"
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).

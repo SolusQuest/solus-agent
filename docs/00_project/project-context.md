@@ -14,6 +14,8 @@ The executable [candidate-feedback draft](../20_architecture/drafts/candidate-fe
 
 The [provider exchange draft](../20_architecture/drafts/provider-exchange.md) is executable through the Runtime.Api-only CustomProvider fixture and Providers tests. It preserves bounded classified input, complete tool-round association, retained observation after failure and restricted exact continuation without a production adapter.
 
+The executable [context envelope draft](../20_architecture/drafts/context-envelope.md) adds implementation-scoped opaque state, explicit fresh/new-run/continuation choices and fail-closed admission. Its actual Api-only producer/Host consumer proves restricted call-scoped capture and current Host control/data separation; it supplies no runtime restoration codec or recovery guarantee.
+
 ## Accepted design direction
 
 - Use the name `SolusAgent` and the four projects defined in [Project structure](../20_architecture/project-structure.md).

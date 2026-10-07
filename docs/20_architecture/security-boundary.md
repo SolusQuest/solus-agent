@@ -30,6 +30,8 @@ Separate restricted restoration state from public outcomes and diagnostic events
 
 Never use a public log, ordinary GitHub comment, or repository fixture as a storage path for live continuation state. Use synthetic canaries and captured fake transports when the implementation needs evidence that secret data cannot cross those boundaries.
 
+The executable [context envelope draft](drafts/context-envelope.md) transfers synthetic state only through a deliberately supplied call-scoped restricted sink. Context rejection has no work outcome or capture. Capture delivery/failure is observed separately from work and does not prove Host persistence or absent retention. Actual tests confine a synthetic canary and preserve current Host authority; production integrity/protection and full runtime admission remain unimplemented.
+
 ## Validation and external effects
 
 Ordinary validation uses synthetic fixtures, fake transports, and test-only capabilities. A live-provider or paid run needs authorization for that execution and a bounded scope.

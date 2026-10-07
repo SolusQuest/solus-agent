@@ -14,6 +14,8 @@ The outer [candidate-feedback draft](../20_architecture/drafts/candidate-feedbac
 
 The Runtime.Api [provider exchange draft](../20_architecture/drafts/provider-exchange.md) and its independent CustomProvider producer/Host consumer are also executable. Providers tests cover classified inputs, full call/result association, complete batch admission, retained usage, finite bounds, cancellation and scoped restricted continuation. M2 adapter and runtime behavior remain unimplemented.
 
+The outer [context envelope draft](../20_architecture/drafts/context-envelope.md) is executable through the existing Api-only producer/Host consumer and Context tests. It covers explicit fresh/supplied new-run/unfinished-continuation intent, admission rejection and call-scoped restricted capture. Host-owned retention and later runtime restoration obligations remain distinct.
+
 ## Shared loading and ownership
 
 [Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.
