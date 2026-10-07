@@ -28,7 +28,8 @@ Preparation and pre-dispatch rejection can be shown to have zero effects. Result
 
 | Boundary | Result |
 | --- | --- |
-| Invalid metadata, encoding, schema or constructor size | Classified `ToolContractException`; no prepared invocation is retained. |
+| Invalid metadata, encoding, schema or retained payload size | Classified `ToolContractException`; no prepared invocation is retained. |
+| Invalid descriptor limit configuration or null API argument | `ArgumentOutOfRangeException` or `ArgumentNullException`; these are caller precondition errors. |
 | Invalid actual arguments or effect-free domain rejection | Rejected `ToolPreparation`, with no effects. |
 | Owner/call mismatch, denied capability or used handle | Associated Rejected result before dispatch. |
 | Pre-dispatch cancellation | Associated Cancelled, `InvocationStarted: false`. |
