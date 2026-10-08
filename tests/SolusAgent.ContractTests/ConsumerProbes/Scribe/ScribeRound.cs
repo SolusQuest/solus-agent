@@ -34,7 +34,7 @@ internal sealed class ScribeRound
     internal ScribeRuntimeStartup Runtime { get; }
     internal ScriptedCandidateAgent Agent { get; }
 
-    /// <summary>Gets the members actually produced, proving which work the producer regenerated.</summary>
+    /// <summary>Gets the members whose candidates were actually produced successfully, proving which work the producer regenerated.</summary>
     internal IReadOnlyList<string> ProducedMembers => producedMembers.ToArray();
 
     internal async ValueTask<ObservedCandidateExecution> RunAsync(CancellationToken cancellationToken = default) =>
@@ -43,7 +43,8 @@ internal sealed class ScribeRound
     private Func<CandidateFeedback?, CancellationToken, ValueTask<string>> Produce(ScribeProductionStep step) =>
         async (_, cancellationToken) =>
         {
+            var payload = await Runtime.ProduceCandidateAsync(step.Member, step.Fact, cancellationToken);
             producedMembers.Add(step.Member);
-            return await Runtime.ProduceCandidateAsync(step.Member, step.Fact, cancellationToken);
+            return payload;
         };
 }
