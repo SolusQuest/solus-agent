@@ -45,7 +45,7 @@ var startup = AprStartup.Create(new AprStartupOptions { TargetWorkUnits = 1, Tar
 var execution = new AgentRequest(Guid.NewGuid(), "review the supplied synthetic items",
     [new AgentInput(AgentInputSource.Repository, "synthetic item batch")],
     new AgentExecutionBounds(8, TimeSpan.FromMinutes(1)), AgentCapability.None);
-var supplied = new AprContextState(execution.ExecutionId, units: 0, goal: 1, total: 4, "prior note")
+var supplied = new AprContextState(execution.ExecutionId, Units: 0, Goal: 1, Total: 4, Notes: ["prior note"])
     .ToEnvelope(AprScenarioAgent.ImplementationId);
 var sink = new AprFixtures.CollectingSink();
 var feedback = new ScriptedAprFeedback((submission, index, _) => ValueTask.FromResult<CandidateFeedback?>(
@@ -61,7 +61,7 @@ var run = await startup.Host.RunAsync(
 var appliedEffects = startup.Host.Acceptance.ApplyEffects();
 ```
 
-`AprStartup`, `AprContextState`, `ScriptedAprFeedback` and `AprDecisions` are test-only scenario helpers in the managed runner; `AprBusinessHost`, `AprItem`, `AprAcceptanceRecord` and `AprHostAcceptance` are the Api-only library surface with XML documentation.
+`AprStartup`, `AprContextState`, `ScriptedAprFeedback` and `AprDecisions` are test-only scenario helpers in the managed runner; `AprBusinessHost`, `AprItem`, `AprAcceptanceRecord` and `AprHostAcceptance` are the Api-only library surface with XML documentation. The snippet runs in the managed runner's Apr test context with the `SolusAgent.Api.Capabilities`, `SolusAgent.Api.Candidates`, `SolusAgent.Api.Context`, `SolusAgent.Api.Execution` and `SolusAgent.ContractTests.ConsumerProbes.Apr` namespaces imported alongside the implicit `System` namespaces; it was compiled and executed there against these actual helpers as the documentation proof for this leaf.
 
 ## Requirement-to-evidence matrix
 
