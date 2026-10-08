@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools and Providers tests, while separate Api-only custom-agent, CustomTools, CustomProvider and ScribeHost libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
+The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools and Providers tests, while separate Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
 
 ## Layout
 
@@ -24,6 +24,7 @@ tests/
         CustomTools/
         CustomProvider/
         ScribeHost/
+        AprHost/
 .github/
     workflows/          # Ordinary CI
 docs/
@@ -67,7 +68,7 @@ flowchart TD
 
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
-`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the four test-only consumer libraries for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph and current test registrations exact. Execution, Usage, Candidates, Tools and Providers tests call actual contract types. Future focused tests use this same runner and add only dependencies required by implemented tests.
+`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the five test-only consumer libraries for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph and current test registrations exact. Execution, Usage, Candidates, Tools and Providers tests call actual contract types. Future focused tests use this same runner and add only dependencies required by implemented tests.
 
 `tests/SolusAgent.ApiOnlyConsumer` is a non-packable test library with Api as its only production reference and no packages; it contains synthetic execution and [usage](drafts/usage.md) agents and their consumer orchestration through `IAgent`. Evaluated graph and compiled assembly checks preserve this independent boundary even though the common runner also references Tools.Api.
 
@@ -76,6 +77,8 @@ Downstream product source, repository snapshots, fixtures, and machine-local pat
 `tests/ConsumerProbes/CustomProvider` is a non-packable test-only library with Runtime.Api as its sole direct production reference and no packages. It uses the accepted Tools/Usage types transitively through Runtime.Api and never references Runtime. Providers tests exercise its finite model/tool exchange and actual all-member tool admission; Architecture checks evaluate its exact graph, compiled references and repository-contained sources. Runtime.Api generates XML documentation with warnings-as-errors for the [provider exchange draft](drafts/provider-exchange.md).
 
 `tests/ConsumerProbes/ScribeHost` is a non-packable test-only library, registered in the solution, with Api as its sole production reference and no packages. It contains the synthetic business Host, manifest and validated progress of the [Scribe consumption draft](drafts/scribe-consumption.md); the runner's `ConsumerProbes/Scribe` tests compose it with the existing producer and configuration fixtures. Evaluated assertions check its exact Api-only edge and compile inputs confined to its own project directory.
+
+`tests/ConsumerProbes/AprHost` is a non-packable test-only library with Api as its only production reference and no packages. It contains the APR-shaped synthetic business Host and its minimized synthetic item, acceptance and effect types with XML documentation, and it references neither Runtime.Api, Runtime, the tool or provider fixtures nor any downstream product source. The [APR-shaped draft consumption document](drafts/apr-consumption.md) owns its seams, synthetic policies and evidence matrix; its evaluated and compiled boundary checks run with the Apr tests in the existing runner.
 
 ## Downstream consumption
 

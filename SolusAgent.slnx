@@ -13,5 +13,6 @@
     <Project Path="tests/ConsumerProbes/CustomTools/CustomTools.csproj" />
     <Project Path="tests/ConsumerProbes/CustomProvider/CustomProvider.csproj" />
     <Project Path="tests/ConsumerProbes/ScribeHost/ScribeHost.csproj" />
+    <Project Path="tests/ConsumerProbes/AprHost/AprHost.csproj" />
   </Folder>
 </Solution>

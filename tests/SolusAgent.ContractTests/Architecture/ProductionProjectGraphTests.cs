@@ -49,6 +49,7 @@ public sealed class ProductionProjectGraphTests
         CustomToolsProjectPath,
         CustomProviderProjectPath,
         ScribeHostProjectPath,
+        AprHostProjectPath,
     ];
 
     [Fact]
@@ -129,6 +130,7 @@ public sealed class ProductionProjectGraphTests
             RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
             CustomProviderProjectPath,
             ScribeHostProjectPath,
+            AprHostProjectPath,
         ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
         Assert.NotEmpty(evaluation.CompileItems);
@@ -204,4 +206,7 @@ public sealed class ProductionProjectGraphTests
 
     private static string ScribeHostProjectPath =>
         Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "ScribeHost", "ScribeHost.csproj");
+
+    private static string AprHostProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "AprHost", "AprHost.csproj");
 }

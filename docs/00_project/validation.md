@@ -4,7 +4,7 @@ Use shared [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d19
 
 ## Current available checks
 
-The solution contains four production libraries, the separate compiled Api-only custom-agent, CustomTools, CustomProvider and ScribeHost consumer libraries, and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. Api and Tools.Api implement their current execution and function-tool drafts; Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. From the repository root, use the SDK selected by `global.json`:
+The solution contains four production libraries, the separate compiled Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost consumer libraries, and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. Api and Tools.Api implement their current execution and function-tool drafts; Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. From the repository root, use the SDK selected by `global.json`:
 
 ```text
 dotnet restore SolusAgent.slnx
@@ -12,7 +12,7 @@ dotnet build SolusAgent.slnx --configuration Release --no-restore
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-The runner uses xUnit through `Microsoft.NET.Test.Sdk`, `xunit` and `xunit.runner.visualstudio` with private runner assets. It references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the four test-only consumer libraries for actual behavioral tests. The separately compiled Api-only consumer references only Api and has no packages; CustomTools references only Tools.Api and has no packages; CustomProvider references only Runtime.Api directly, without Runtime or packages; ScribeHost references only Api and has no packages. Execution and Usage tests invoke the actual consumer/agent through `IAgent`. Architecture tests evaluate the real production and consumer project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this same runner and add only dependencies required by implemented test code. Api, Tools.Api and Runtime.Api generate XML documentation with warnings-as-errors during the normal build.
+The runner uses xUnit through `Microsoft.NET.Test.Sdk`, `xunit` and `xunit.runner.visualstudio` with private runner assets. It references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the five test-only consumer libraries for actual behavioral tests. The separately compiled Api-only consumer references only Api and has no packages; CustomTools references only Tools.Api and has no packages; CustomProvider references only Runtime.Api directly, without Runtime or packages; ScribeHost references only Api and has no packages; AprHost references only Api and has no packages. Execution and Usage tests invoke the actual consumer/agent through `IAgent`. Architecture tests evaluate the real production and consumer project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this same runner and add only dependencies required by implemented test code. Api, Tools.Api and Runtime.Api generate XML documentation with warnings-as-errors during the normal build.
 
 Focused runs select the same runner with a filter, for example:
 
@@ -55,6 +55,13 @@ Scribe tests exercise the independent Api-only ScribeHost business Host with the
 
 ```text
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Scribe"
+```
+
+Apr tests exercise the Api-only APR-shaped business Host and the finite test-only scenario that composes the actual CustomTools counter tool and the actual guarded CustomProvider provider through `RuntimeConfiguration`, `ConfigurationConsumer` and the Host exposure hooks. They cover supplied prior context admission and rejection, correction through `RepairsSubmissionId`, accepted continuation with explicit completion, partial/resource/cancellation stops with retained progress, missing/unknown/failed/wrong feedback, whole-batch admission before effects, honest known/partial/unavailable usage, ordered exposure and same-attempt closure, and restricted payload and credential confinement, plus the AprHost evaluated and compiled boundary. These checks are synthetic M1 consumption evidence under the [APR-shaped draft consumption document](../20_architecture/drafts/apr-consumption.md), not production runtime, budget enforcement, restoration or downstream migration. Use the existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Apr"
+```
 ```
 
 ## Continuous integration
