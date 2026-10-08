@@ -182,7 +182,8 @@ public sealed class ConfinementAndIsolationTests
         Assert.NotEqual(firstHeld[0]!.Attempt.PhysicalAttemptId, firstHeld[1]!.Attempt.PhysicalAttemptId);
         Assert.NotEqual(firstHeld[0]!.Attempt.LogicalCallId, firstHeld[1]!.Attempt.LogicalCallId);
 
-        // Reversed release order: run B leaves the first gate before run A.
+        // Release run B's gate before run A's; this witnesses gate release order only, since asynchronous
+        // continuations need not execute in release order.
         releaseFirstB.TrySetResult();
         releaseFirstA.TrySetResult();
 

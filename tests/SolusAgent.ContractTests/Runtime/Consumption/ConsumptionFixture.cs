@@ -179,18 +179,18 @@ internal sealed class ExchangeChannel(IReadOnlyList<ExchangePolicy> plan) : ICan
             policy.Accepted ? null : ConsumptionFixture.Correction(policy.CorrectedValue ?? 0));
 }
 
-/// <summary>Host channel decorator that witnesses when the decorated delivery operation has actually completed.</summary>
+/// <summary>Host channel decorator that publishes the actual delivery operation task so tests can await it after release.</summary>
 internal sealed class WitnessingChannel(ICandidateHost inner) : ICandidateHost
 {
-    private readonly TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<Task<CandidateFeedback?>> published = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal Task DeliveryCompleted => completed.Task;
+    internal Task<Task<CandidateFeedback?>> DeliveryPublished => published.Task;
 
-    public async ValueTask<CandidateFeedback?> SubmitAsync(CandidateSubmission submission, CancellationToken cancellationToken = default)
+    public ValueTask<CandidateFeedback?> SubmitAsync(CandidateSubmission submission, CancellationToken cancellationToken = default)
     {
-        var feedback = await inner.SubmitAsync(submission, cancellationToken).ConfigureAwait(false);
-        completed.TrySetResult();
-        return feedback;
+        var delivery = inner.SubmitAsync(submission, cancellationToken).AsTask();
+        published.TrySetResult(delivery);
+        return new ValueTask<CandidateFeedback?>(delivery);
     }
 }
 
