@@ -4,7 +4,7 @@ Use shared [Validation](https://github.com/SolusQuest/solus-book/blob/c3718d7d19
 
 ## Current available checks
 
-The solution contains four core production libraries and the optional DeepSeek adapter, the separate compiled Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost consumer libraries, and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. Api and Tools.Api implement their current execution and function-tool drafts; Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. From the repository root, use the SDK selected by `global.json`:
+The solution contains four core production libraries and the optional DeepSeek adapter, the separate compiled Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost consumer libraries, and one managed test runner, `tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj`. Api and Tools.Api implement their current execution and function-tool drafts; Runtime.Api contains the provider exchange draft; Runtime implements the bounded production provider-turn path. From the repository root, use the SDK selected by `global.json`:
 
 ```text
 dotnet restore SolusAgent.slnx
@@ -12,7 +12,7 @@ dotnet build SolusAgent.slnx --configuration Release --no-restore
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
 ```
 
-The runner uses xUnit through `Microsoft.NET.Test.Sdk`, `xunit` and `xunit.runner.visualstudio` with private runner assets. It references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the five test-only consumer libraries for actual behavioral tests. The separately compiled Api-only consumer references only Api and has no packages; CustomTools references only Tools.Api and has no packages; CustomProvider references only Runtime.Api directly, without Runtime or packages; ScribeHost references only Api and has no packages; AprHost references only Api and has no packages. Execution and Usage tests invoke the actual consumer/agent through `IAgent`. Architecture tests evaluate the real production and consumer project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this same runner and add only dependencies required by implemented test code. Api, Tools.Api and Runtime.Api generate XML documentation with warnings-as-errors during the normal build.
+The runner uses xUnit through `Microsoft.NET.Test.Sdk`, `xunit` and `xunit.runner.visualstudio` with private runner assets. It references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, `SolusAgent.Runtime` and the five test-only consumer libraries for actual behavioral tests. The separately compiled Api-only consumer references only Api and has no packages; CustomTools references only Tools.Api and has no packages; CustomProvider references only Runtime.Api directly, without Runtime or packages; ScribeHost references only Api and has no packages; AprHost references only Api and has no packages. Execution and Usage tests invoke the actual consumer/agent through `IAgent`. Architecture tests evaluate the real production and consumer project files through `dotnet msbuild` JSON output, including imported and conditioned items. Future focused tests use this same runner and add only dependencies required by implemented test code. Api, Tools.Api, Runtime.Api and Runtime generate XML documentation with warnings-as-errors during the normal build.
 
 Focused runs select the same runner with a filter, for example:
 
@@ -31,7 +31,7 @@ Usage tests exercise the [usage draft](../20_architecture/drafts/usage.md) throu
 
 Tools tests run the actual synthetic consumer through public contracts and prove bounded metadata/schema/arguments/results, zero preparation effects, explicit narrow capability admission, call/output association, single-use concurrent invocation and honest cancellation/failure outcomes. The [function-tool draft](../20_architecture/drafts/function-tools.md) states these guarantees and limits. Run the full small suite after shared signature or registration changes.
 
-These checks do not demonstrate a production runtime loop, live provider interoperability, production tool adapters, duration or budget enforcement, context restoration, packaging, installation, production external effects or release readiness. A passing local run does not establish CI results or platform support. Inspect solution membership and direct references against [Project structure](../20_architecture/project-structure.md).
+The synthetic M1 checks alone do not demonstrate production runtime enforcement. The separate Runtime.Execution checks below cover the first production provider turn and its duration/cancellation cut; the optional adapter checks cover actual controlled HTTP transport. Live provider interoperability, production tool adapters, full budget enforcement, context restoration, packaging, installation, production external effects and release readiness remain unproved. A passing local run does not establish CI results or platform support. Inspect solution membership and direct references against [Project structure](../20_architecture/project-structure.md).
 
 Use `--no-restore` only after a successful applicable restore; repeat restore after SDK, framework, project, reference, package, source, or restore-property changes. Use `--no-build` only after a successful build of the same inputs, SDK, configuration, and tree; rebuild after source, project, solution, build configuration, or generator changes.
 
@@ -65,13 +65,23 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --con
 
 ## DeepSeek adapter
 
-The optional [DeepSeek provider draft](../20_architecture/drafts/deepseek-provider.md) has owning tests in the existing runner. They execute the real writer/invoker/reader/parser/guard with controlled handlers, actual generic tool preparation/results and all historical replay. Negatives cover finish/identity/schema/association, bounded JSON/Unicode, usage retention, cancellation cuts, disposal, concurrent calls and wire/logical ceilings. Evaluated and compiled assertions require Runtime.Api as the adapter's sole direct production edge, with no packages or Runtime dependency. Run the owning tests first:
+The optional [DeepSeek provider draft](../20_architecture/drafts/deepseek-provider.md) has owning tests in the existing runner. They execute the real writer/invoker/reader/parser/guard with controlled handlers, actual generic tool preparation/results and all historical replay. Negatives cover finish/identity/schema/association, bounded JSON/Unicode, usage retention, cancellation cuts, disposal, concurrent calls and wire/logical ceilings. Actual observation integration checks cover single-use/presealed requests, external sealing during held send/read and frozen earlier measurements without late payload acceptance. Evaluated and compiled assertions require Runtime.Api as the adapter's sole direct production edge, with no packages or Runtime dependency. Run the owning tests first:
 
 ```powershell
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.DeepSeek.Adapter"
 ```
 
 Synthetic TLS tests use the actual production handler factory with a test-only local route and pinned synthetic certificate, count one physical connection/request for success, premature EOF, 500 and 307, and check standard EventSource/DiagnosticListener/ActivityListener confinement. A separate inner-handler throw tests exception sanitization before invoker telemetry. These require no provider secret, installed trust certificate, live provider, sibling source or new runner. Arbitrary Host executable logging and privileged raw internal tracing are outside ordinary diagnostics. Run affected Providers/Usage/Architecture checks and the full small suite after registration changes; live service support, remote stop, billing, streaming and durable restoration remain unverified.
+
+## Production runtime checks
+
+Runtime.Execution tests invoke the production public factory and `IAgent` with the independently compiled finite Scripted Provider. They prove whole-run deadline/cancellation cuts while operations remain held, atomic retained observation, same-attempt permission/settlement, original-request payload revalidation, capacity and UTF-8 neighbors, closure/progress failures, canary confinement and concurrent same-identity isolation. A closed settlement phase matrix covers invocation, obtained result, local stop, exposure and measurement availability. Real internal two-turn operation tests demonstrate work/attempt admission, required continuation replay and non-vacuous Stop/uncertain-closure gating; these do not enable tool or candidate execution in the public R1 driver. The [runtime execution draft](../20_architecture/drafts/runtime-execution.md) owns the implemented support and bounded closure allowance. Run focused tests first:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Execution"
+```
+
+Run the full applicable suite after draft, reference, registration or shared-state changes. This evidence does not establish actual provider transport, tools/candidates, complete budgets, persistence, live calls or release qualification.
 
 ## Continuous integration
 

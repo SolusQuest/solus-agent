@@ -1,6 +1,6 @@
 # DeepSeek provider draft
 
-`SolusAgent.Providers.DeepSeek` is an optional, callable `ModelProvider` implementation. Its sole direct production reference is `SolusAgent.Runtime.Api`; it has no package dependencies or Runtime reference. The four core libraries retain their reference graph. This implementation projects, sends, reads and admits one actual HTTP exchange through the [provider exchange draft](provider-exchange.md). The runtime loop, budget enforcement, durable restoration, distribution and downstream migration have their own delivery boundaries.
+`SolusAgent.Providers.DeepSeek` is an optional, callable `ModelProvider` implementation. Its sole direct production reference is `SolusAgent.Runtime.Api`; it has no package dependencies or Runtime reference. The four core libraries retain their reference graph. This implementation projects, sends, reads and admits one actual HTTP exchange through the [provider exchange draft](provider-exchange.md). The bounded [provider-turn runtime](runtime-execution.md) is separately implemented; complete tool/candidate orchestration, budget enforcement, durable restoration, distribution and downstream migration have their own delivery boundaries.
 
 ## Selected service profile
 
@@ -41,6 +41,12 @@ The default path owns a fresh `SocketsHttpHandler` and `HttpMessageInvoker` per 
 The overload accepting a terminal `HttpMessageHandler` is for Host-controlled transport. Delegating handlers, HttpClientHandler and known unsafe SocketsHttpHandler policies are rejected. Arbitrary executable handlers must honor one-send and restricted-data rules themselves; the adapter does not sandbox their code or logging. Disposal closes owned resources and makes subsequent calls fail before dispatch; it does not assert remote stop or rollback.
 
 Preparation and pre-send cancellation are NotDispatched. Entry to `SendAsync` is Unknown until a response proves Dispatched; a thrown send cannot prove no exposure. Caller cancellation reaches send/read and produces the caller's cancellation classification only for exceptions carrying that supplied token. An unrelated or absent exception token remains provider failure even when the caller concurrently cancels. The positive options timeout defaults to 120 seconds, is at most ten minutes, and produces provider failure if the caller did not cancel. Local cancellation or timeout does not prove that remote work stopped. Overlapping exchanges use independent bodies, observations and correlations.
+
+## Invocation-owned observation
+
+Each `ProviderRequest` is single-use for guarded exchange and owns its numeric `Observation`. Reusing an already invoked or presealed request fails without a second transport call and preserves its sealed evidence. The runtime can snapshot and atomically seal that channel at its local cut independently of a held HTTP operation. The adapter checks the active observation channel before send and reports obtained dispatch and usage through that same channel. Sealing rejects late reports and payload admission; it never implies that an already started remote operation stopped.
+
+`ObservationIntegrationTests` execute the actual adapter with the merged Runtime.Api guard. They cover presealed and repeated requests, external sealing while send or body read remains held, exclusion of late response/usage, idempotent snapshots and retained valid forwarding-transport measurements. The shared runner also references Runtime for its separately owned runtime tests; the adapter assembly and its direct project graph remain independent of Runtime.
 
 ## Executable evidence
 

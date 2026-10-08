@@ -19,7 +19,6 @@ public sealed class ProviderBoundaryTests
         ProjectBoundaryAssertions.AssertCompileSourcesWithinRoot(evaluated, Path.GetDirectoryName(project)!);
         var references = typeof(DeepSeekProvider).Assembly.GetReferencedAssemblies();
         Assert.Contains(references, a => a.Name == "SolusAgent.Runtime.Api"); Assert.DoesNotContain(references, a => a.Name == "SolusAgent.Runtime");
-        Assert.DoesNotContain(typeof(ProviderBoundaryTests).Assembly.GetReferencedAssemblies(), a => a.Name == "SolusAgent.Runtime");
     }
     [Theory]
     [InlineData("https://untrusted.invalid/chat/completions")]
@@ -82,12 +81,11 @@ public sealed class ProviderBoundaryTests
     public async Task EscapedRequestByteLimitIsEnforcedBeforeSendAndHasExactBoundary()
     {
         var request = AdapterFixture.Request([ProviderInput.Data(new string('\u0001', 1000))]);
-        using var firstHandler = FakeHandler.Reply(AdapterFixture.Response()); using var first = AdapterFixture.Provider(firstHandler);
         var bytes = DeepSeekRequestWriter.Write(request, new(AdapterFixture.Credential, 2048)); Assert.True(bytes.Length > request.PayloadByteCount);
         using var exactHandler = FakeHandler.Reply(AdapterFixture.Response()); using var exact = AdapterFixture.Provider(exactHandler, requestCap: bytes.Length);
         Assert.Equal(ProviderOutcome.Succeeded, (await exact.ExchangeAsync(request)).Outcome);
         using var smallHandler = FakeHandler.Reply(AdapterFixture.Response()); using var small = AdapterFixture.Provider(smallHandler, requestCap: bytes.Length - 1);
-        var result = await small.ExchangeAsync(request); Assert.Equal(ProviderError.LimitExceeded, result.Error);
+        var result = await small.ExchangeAsync(AdapterFixture.Request(request.Inputs)); Assert.Equal(ProviderError.LimitExceeded, result.Error);
         Assert.Equal(DispatchExposure.NotDispatched, result.Observation.Exposure); Assert.Equal(0, smallHandler.Sends);
     }
     [Fact]

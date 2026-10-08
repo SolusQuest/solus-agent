@@ -78,6 +78,8 @@ public enum RuntimeStop
     SettlementMismatch,
     /// <summary>A valid Host settlement decision stopped further admission.</summary>
     HostStopped,
+    /// <summary>The whole-run local deadline closed admission; not caller cancellation or remote-stop proof.</summary>
+    DurationLimit,
 }
 
 /// <summary>Host exposure intent before dispatch, identified by existing scope and full physical-attempt identity.</summary>
@@ -145,7 +147,7 @@ public sealed class RuntimeSettlement
 {
     /// <summary>Validates full association, original admission/provider phase and optional exchange outcome; does not implement accounting.</summary>
     public RuntimeSettlement(RuntimeExposure exposure, UsageAttemptObservation observation, RuntimeStop stop,
-        ProviderOutcome? providerOutcome = null, ProviderError? providerError = null)
+        bool providerInvoked, ProviderOutcome? providerOutcome = null, ProviderError? providerError = null)
     {
         Exposure = exposure ?? throw new ArgumentNullException(nameof(exposure));
         Observation = observation ?? throw new ArgumentNullException(nameof(observation));
@@ -157,13 +159,16 @@ public sealed class RuntimeSettlement
             throw new ArgumentException("The settlement association is invalid.");
         var deliveryStop = stop is RuntimeStop.SettlementMissing or RuntimeStop.SettlementFailed or RuntimeStop.SettlementUnknown
             or RuntimeStop.SettlementMismatch or RuntimeStop.HostStopped;
-        if (deliveryStop || (providerOutcome.HasValue && stop is not (RuntimeStop.None or RuntimeStop.Cancelled))
+        var localCut = stop is RuntimeStop.Cancelled or RuntimeStop.DurationLimit;
+        if (deliveryStop || (providerInvoked && stop != RuntimeStop.None && !localCut)
             || providerOutcome.HasValue != providerError.HasValue
             || (providerOutcome.HasValue && ((providerOutcome == Providers.ProviderOutcome.Succeeded) != (providerError == Providers.ProviderError.None)))
-            || (!providerOutcome.HasValue && (observation.Exposure != DispatchExposure.NotDispatched || stop == RuntimeStop.None
-                || observation.Usage.Completeness != UsageCompleteness.Unavailable)))
+            || (!providerInvoked && (providerOutcome.HasValue || observation.Exposure != DispatchExposure.NotDispatched
+                || stop == RuntimeStop.None || observation.Usage.Completeness != UsageCompleteness.Unavailable))
+            || (providerInvoked && !providerOutcome.HasValue && !localCut))
             throw new ArgumentException("The settlement outcome is incoherent.");
         Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError;
+        ProviderInvoked = providerInvoked;
     }
     /// <summary>Gets original restricted Host exposure association.</summary>
     public RuntimeExposure Exposure { get; }
@@ -171,7 +176,9 @@ public sealed class RuntimeSettlement
     public UsageAttemptObservation Observation { get; }
     /// <summary>Gets prior admission/cancellation state; later settlement delivery and HostStopped cannot inhabit this field.</summary>
     public RuntimeStop Stop { get; }
-    /// <summary>Gets actual provider outcome only when its exchange was invoked.</summary>
+    /// <summary>Gets whether the provider seam was invoked; a pending cut may have no obtained outcome.</summary>
+    public bool ProviderInvoked { get; }
+    /// <summary>Gets the obtained exchange outcome or normalized observed extension fault; absent for still-pending work at a local cut.</summary>
     public ProviderOutcome? ProviderOutcome { get; }
     /// <summary>Gets actual provider error only when its exchange was invoked.</summary>
     public ProviderError? ProviderError { get; }

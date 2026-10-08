@@ -48,14 +48,19 @@ public sealed class ProviderResponse
     public ProviderContinuation? Continuation { get; }
     /// <summary>Gets whether guarded request-relative acceptance occurred.</summary>
     public bool Accepted { get; }
+    /// <summary>Gets bounded variable payload bytes, including scope, calls and continuation; not a wire-size estimate.</summary>
+    public int PayloadByteCount => ByteCount;
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderResponse);
     internal int ByteCount => Scope.Bytes + ProviderBoundary.Bytes(Text) + Calls.Sum(CallBytes)
         + (Continuation is null ? 0 : Continuation.ByteCount + Continuation.Scope.Bytes);
     internal static int CallBytes(ToolCall call) => ProviderBoundary.Bytes(call.CallId) + ProviderBoundary.Bytes(call.ToolName) + ProviderBoundary.Bytes(call.ArgumentsJson);
     internal ProviderResponse Accept() => new(this);
-    internal void Validate(ProviderRequest request)
+    /// <summary>Revalidates this response against the actual consumer request, including its bounds and continuation requirements.</summary>
+    /// <remarks>Accepted alone does not prove validation against this request. This operation neither dispatches nor makes a candidate accepted.</remarks>
+    public void ValidateFor(ProviderRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
         ProviderBoundary.Require(Scope.Matches(request.Scope) && Attempt.Matches(request.Attempt), ProviderError.InvalidAssociation);
         ProviderBoundary.Require(Calls.Count <= request.Bounds.MaximumToolCalls && ByteCount <= request.Bounds.MaximumResponseBytes, ProviderError.LimitExceeded);
         if (Continuation is not null)

@@ -130,6 +130,7 @@ public sealed class ProductionProjectGraphTests
             CustomToolsProjectPath,
             RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
             RepositoryLayout.ProductionProjectPath("SolusAgent.Providers.DeepSeek"),
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime"),
             CustomProviderProjectPath,
             ScribeHostProjectPath,
             AprHostProjectPath,
