@@ -126,7 +126,7 @@ public sealed class StartupAndTurnTests
     }
 
     [Fact]
-    public async Task ValidToolResponseUsesExplicitUnsupportedHandlerWithNoPreparationOrInvocation()
+    public async Task ValidToolResponseExecutesThenStopsBeforeAnotherModelAtWorkLimit()
     {
         var capability = new ConfigurationCapability(); var tool = new ConfigurationTool();
         var provider = new ScriptedProvider([(request, observation, _) =>
@@ -136,8 +136,8 @@ public sealed class StartupAndTurnTests
                 [new ToolCall("call", tool.Descriptor.Name, "{\"text\":\"TOOL_DATA_CANARY\"}")]));
         }]);
         var outcome = await RuntimeAgentFactory.Create(new(provider, [new(tool, capability)], new RuntimeHooks())).ExecuteAsync(RuntimeFixture.Request());
-        Assert.Equal(AgentTerminationReason.Failed, outcome.Reason); Assert.Equal(AgentFailureCode.ExecutionFailed, outcome.FailureCode);
-        Assert.Equal(1, outcome.CompletedWorkUnits); Assert.Equal(0, capability.Effects); Assert.Equal(1, provider.Effects);
+        Assert.Equal(AgentTerminationReason.ResourceLimit, outcome.Reason); Assert.Equal(AgentFailureCode.None, outcome.FailureCode);
+        Assert.Equal(1, outcome.CompletedWorkUnits); Assert.Equal(1, capability.Effects); Assert.Equal(1, provider.Effects);
     }
 
     [Fact]

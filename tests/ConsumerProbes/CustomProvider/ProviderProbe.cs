@@ -36,7 +36,6 @@ public sealed class ProbeTool : FunctionTool<ProbeCapability>
     private readonly bool denyPreparation;
     public ProbeTool(string name, bool denyPreparation = false) : base(new(name, "Synthetic echo", ToolSchema.Parse(Schema),
         ToolSchema.Parse(Schema), "synthetic_echo", ToolEffect.Mutating)) => this.denyPreparation = denyPreparation;
-    public bool Admits(IToolCapability? capability) => capability is ProbeCapability typed && typed.CapabilityId == Descriptor.CapabilityId;
     protected override bool ValidateArguments(JsonElement arguments) => !denyPreparation;
     protected override ValueTask<ToolOutput> InvokeCoreAsync(ToolCall call, ProbeCapability capability, CancellationToken cancellationToken)
     {
@@ -62,7 +61,8 @@ public static class ProbeBatch
             if (index < 0) return new(ToolError.CallMismatch, []);
             var preparation = tools[index].Prepare(call);
             if (!preparation.Accepted) return new(preparation.Error, []);
-            if (!tools[index].Admits(capabilities[index])) return new(ToolError.UnsupportedCapability, []);
+            var admission = tools[index].ValidateInvocation(preparation.Prepared!, call, capabilities[index]);
+            if (admission != ToolError.None) return new(admission, []);
             prepared.Add((tools[index], call, preparation.Prepared!, capabilities[index]!));
         }
         // No invocation occurs until every member has passed preparation AND concrete capability admission.

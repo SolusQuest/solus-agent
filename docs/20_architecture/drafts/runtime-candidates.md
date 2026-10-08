@@ -1,6 +1,6 @@
 # Managed runtime candidate execution draft
 
-`RuntimeAgentFactory.Create` returns the actual managed runtime as `IAgent`, also implementing the existing optional `ICandidateAgent`. Startup selects the runtime; business Host and calling consumer compile against Api alone. Select `ExecuteCandidatesAsync` explicitly for candidate feedback. Ordinary `ExecuteAsync` retains its independent Final-completion behavior.
+`RuntimeAgentFactory.Create` returns the actual managed runtime as `IAgent`, also implementing the existing optional `ICandidateAgent`. Startup selects the runtime; business Host and calling consumer compile against Api alone. Select `ExecuteCandidatesAsync` explicitly for candidate feedback. Ordinary `ExecuteAsync` retains its independent Final-completion and [tool-batch execution](runtime-tools.md) behavior. Candidate execution selects the Final-response feedback path explicitly.
 
 ```csharp
 IAgent agent = RuntimeAgentFactory.Create(configuration, options);

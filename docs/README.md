@@ -34,7 +34,8 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Provider exchange draft](20_architecture/drafts/provider-exchange.md).
 - [DeepSeek provider draft](20_architecture/drafts/deepseek-provider.md): bounded thinking/tool HTTP exchange, restricted in-run replay and invocation-owned observations.
 - [Runtime configuration and exposure draft](20_architecture/drafts/runtime-configuration.md): live Host bindings and ordered same-attempt acknowledgement/closure.
-- [Managed runtime execution draft](20_architecture/drafts/runtime-execution.md): public construction, the first production provider turn, whole-run local cuts and retained observations.
+- [Managed runtime execution draft](20_architecture/drafts/runtime-execution.md): public construction, bounded provider turns, whole-run local cuts and retained observations.
+- [Runtime tools draft](20_architecture/drafts/runtime-tools.md): generic all-member admission, sequential effects, retained partial results and complete model/tool rounds.
 
 - [Context envelope draft](20_architecture/drafts/context-envelope.md): explicit intent/admission and call-scoped restricted capture with Host-owned retention.
 

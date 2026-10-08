@@ -1,6 +1,6 @@
 # Prepared function-tool draft
 
-`SolusAgent.Tools.Api` supplies an executable M1 draft for bounded function-tool metadata, actual argument validation, effect-free preparation and explicit capability-authorized invocation. The compiled synthetic [CustomTools consumer](../../../tests/ConsumerProbes/CustomTools/CounterTool.cs) depends on Tools.Api alone. This draft does not implement registration, an agent adapter, runtime recording, scheduling, retry, transport, production effects or package distribution.
+`SolusAgent.Tools.Api` supplies an executable M1 draft for bounded function-tool metadata, actual argument validation, effect-free preparation and explicit capability-authorized invocation. The compiled synthetic [CustomTools consumer](../../../tests/ConsumerProbes/CustomTools/CounterTool.cs) depends on Tools.Api alone. Tools.Api remains runtime-independent; the separate [runtime tools draft](runtime-tools.md) owns live registration consumption, generic batch scheduling and restricted recording. Retry, tool transport, product effects and package distribution remain outside this leaf.
 
 ## Supported metadata and schema
 
@@ -14,7 +14,9 @@ An integration must verify support for the complete profile, property semantics,
 
 ## Preparation and authority
 
-Consumers use `IFunctionTool`; custom implementations derive from `FunctionTool<TCapability>` to use the guarded preparation and invocation seam. `Prepare` checks the actual call tool name and real arguments against every supported input constraint, then runs optional effect-free implementation-local validation. It returns `ToolPreparation` with either a fixed rejection or an owner-bound `PreparedToolInvocation` retaining the exact bounded original call. No capability is supplied or invoked during preparation. Trusted tool code must not perform effects in its validation hook; this library is not a sandbox for hostile in-process implementations.
+Consumers use `IFunctionTool`; implementations can derive from `FunctionTool<TCapability>` or delegate through an interface-only wrapper, as the independently compiled TransformTool does. `Prepare` checks the actual call tool name and real arguments against every supported input constraint, then runs optional effect-free implementation-local validation. It returns `ToolPreparation` with either a fixed rejection or an owner-bound `PreparedToolInvocation` retaining the exact bounded original call. No capability is supplied or invoked during preparation. Trusted tool code must not perform effects in its validation hook; this library is not a sandbox for hostile in-process implementations.
+
+`ValidateInvocation(prepared, expectedCall, capability)` checks the actual owner, full call, concrete capability type, exact semantic ID and unused-handle state without effects or claiming the handle. The generic guard shares these actual binding checks with invocation. Batch consumers check every member before any invocation; ID equality alone is insufficient. The result grants no lasting authority: invocation rechecks the binding, cancellation and atomic claim. Trusted interface implementations must uphold the same effect-free contract.
 
 Preparation is not execution permission. The host separately supplies a narrow capability at invocation. The guard verifies both the concrete required capability type and its exact semantic identifier. A capability must confine the actual effect; the model, descriptor, prepared handle and argument data cannot manufacture trusted authority. The synthetic counter capability exposes only a counter mutation and cancellation token, without generic service lookup, process, network, filesystem or platform clients.
 
@@ -39,9 +41,9 @@ Preparation and pre-dispatch rejection can be shown to have zero effects. Result
 
 ## Batch admission obligations
 
-Before a batch's first effect, an integration must impose finite count and aggregate byte limits, validate and prepare every member, preserve each original association, reject duplicate call IDs or ambiguous tool binding, verify every required narrow capability, and complete its host-owned admission policy. A rejected member must not be hidden by dispatching earlier members during preparation. If partial execution is intentionally supported later, its admission and recording semantics must be explicit. Scheduling, concurrency, budgets and retry are separate runtime responsibilities; this draft supplies no production batch executor or batch policy.
+Before a batch's first effect, an integration must impose finite count and aggregate byte limits, validate and prepare every member, preserve each original association, reject duplicate call IDs or ambiguous tool binding, verify every required narrow capability, and complete its host-owned admission policy. A rejected member must not be hidden by dispatching earlier members during preparation. The [runtime tool adapter](runtime-tools.md) explicitly implements sequential partial execution with immediate restricted records and no retry or rollback promise. Scheduling, concurrency and run capacities remain runtime responsibilities rather than Tools.Api policy.
 
-The test-only bounded host example prepares all members and checks count, aggregate bytes, distinct IDs and capability before any dispatch. Its canary stays zero for valid preparation and for invalid, ambiguous, oversized or unauthorized batch admission. Invocation is always a subsequent explicit operation; no provider retry authorizes retry of tool effects.
+The test-only bounded host example prepares all members and checks count, aggregate bytes, distinct IDs and the same generic ValidateInvocation capability guard before any dispatch. Its canary stays zero for valid preparation and for invalid, ambiguous, oversized or unauthorized batch admission. Invocation is always a subsequent explicit operation; no provider retry authorizes retry of tool effects.
 
 ## Current proof and limits
 

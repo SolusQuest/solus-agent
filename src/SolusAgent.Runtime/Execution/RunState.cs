@@ -1,10 +1,12 @@
 using SolusAgent.Api.Execution;
-using System.Text;
 using SolusAgent.Api.Usage;
 using SolusAgent.Runtime.Api.Configuration;
 using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Runtime.Startup;
+using SolusAgent.Runtime.Tools;
+using SolusAgent.Tools.Api;
+using System.Text;
 
 namespace SolusAgent.Runtime.Execution;
 
@@ -14,6 +16,9 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     private readonly List<UsageAttemptObservation> attempts = [];
     private int retainedBytes;
     private ProviderContinuation? continuation;
+    private ProviderResponse? latestResponse;
+    private bool toolBatchClaimed;
+    private readonly List<ToolExecutionRecord> toolRecords = [];
     public AgentRequest Request { get; } = request;
     public RuntimeConfiguration Configuration { get; } = configuration;
     public RuntimeOptions Options { get; } = options;
@@ -21,6 +26,8 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     public int Completed { get; private set; }
     public RuntimeStop AdmissionStop { get; private set; }
     public bool CanContinue => AdmissionStop == RuntimeStop.None && Cut.Check() == RuntimeStop.None;
+    internal IReadOnlyList<ProviderInput> Records => records.ToArray();
+    internal IReadOnlyList<ToolExecutionRecord> ToolRecords => toolRecords.ToArray();
 
     public void Initialize()
     {
@@ -76,7 +83,51 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
             throw new ProviderContractException(ProviderError.LimitExceeded);
         records.Add(ProviderInput.FromModel(response));
         retainedBytes += response.PayloadByteCount; continuation = response.Continuation; Completed++;
+        latestResponse = response; toolBatchClaimed = false;
     }
+    public bool ClaimToolBatch(ProviderResponse response)
+    {
+        if (!ReferenceEquals(latestResponse, response) || toolBatchClaimed || response.Finish != ProviderFinish.ToolCalls) return false;
+        toolBatchClaimed = true;
+        return true;
+    }
+    public int ReserveToolBatch(ProviderResponse response, IReadOnlyList<RuntimeToolRegistration> bindings)
+    {
+        var count = response.Calls.Count;
+        if (count == 0 || count != bindings.Count || count > Configuration.Bounds.MaximumToolCalls
+            || records.Count > Options.MaximumRecords - count || toolRecords.Count > Options.MaximumRecords - count)
+        { Close(RuntimeStop.ResourceLimit); return -1; }
+        long reservation = 0;
+        for (var i = 0; i < count; i++) reservation += ToolCallBytes(response.Calls[i]) + bindings[i].Descriptor.MaximumResultBytes;
+        if (reservation > Options.MaximumRetainedBytes - retainedBytes)
+        { Close(RuntimeStop.ResourceLimit); return -1; }
+        var first = toolRecords.Count;
+        for (var i = 0; i < count; i++) toolRecords.Add(new(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted));
+        return first;
+    }
+    public void EnterTool(int index) => toolRecords[index] = toolRecords[index] with { State = ToolMemberState.InvokedUnknown };
+    public void RejectToolResult(int index, ToolError error) => toolRecords[index] = toolRecords[index] with
+        { State = ToolMemberState.Rejected, Error = error };
+    public void FailToolInvocation(int index) => toolRecords[index] = toolRecords[index] with
+        { State = ToolMemberState.Failed, Error = ToolError.InvocationFailed };
+    public void CompleteTool(int index, ToolResult result)
+    {
+        if (!toolRecords[index].Call.Matches(result.Call)) throw new ProviderContractException(ProviderError.InvalidAssociation);
+        var bytes = ToolCallBytes(result.Call) + Encoding.UTF8.GetByteCount(result.Json ?? string.Empty);
+        if (records.Count >= Options.MaximumRecords || bytes > Options.MaximumRetainedBytes - retainedBytes)
+            throw new ProviderContractException(ProviderError.LimitExceeded);
+        records.Add(ProviderInput.FromTool(result)); retainedBytes += bytes;
+        var phase = result.Outcome switch
+        {
+            ToolOutcome.Succeeded => ToolMemberState.Succeeded,
+            ToolOutcome.Cancelled => ToolMemberState.Cancelled,
+            ToolOutcome.Rejected => ToolMemberState.Rejected,
+            _ => ToolMemberState.Failed,
+        };
+        toolRecords[index] = toolRecords[index] with { State = phase, Result = result, Error = result.Error };
+    }
+    internal static int ToolCallBytes(ToolCall call) => Encoding.UTF8.GetByteCount(call.CallId)
+        + Encoding.UTF8.GetByteCount(call.ToolName) + Encoding.UTF8.GetByteCount(call.ArgumentsJson);
     public void Close(RuntimeStop reason) { if (AdmissionStop == RuntimeStop.None) AdmissionStop = reason; }
     public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts);
     public AgentOutcome Outcome(AgentTerminationReason reason, AgentFailureCode failure = AgentFailureCode.None) =>

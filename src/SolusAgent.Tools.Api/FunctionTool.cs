@@ -38,20 +38,33 @@ public abstract class FunctionTool<TCapability> : IFunctionTool where TCapabilit
     protected virtual bool ValidateArguments(JsonElement arguments) => true;
 
     /// <inheritdoc />
-    public async ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall,
-        IToolCapability? capability, CancellationToken cancellationToken = default)
+    public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability)
+    {
+        var error = ValidateBinding(prepared, expectedCall, capability);
+        return error != ToolError.None ? error : prepared.IsClaimed ? ToolError.AlreadyInvoked : ToolError.None;
+    }
+
+    private ToolError ValidateBinding(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability)
     {
         ArgumentNullException.ThrowIfNull(prepared);
         ArgumentNullException.ThrowIfNull(expectedCall);
-        if (!ReferenceEquals(prepared.Owner, this)) { return Reject(expectedCall, ToolError.PreparedMismatch); }
-        if (!prepared.Call.Matches(expectedCall)) { return Reject(expectedCall, ToolError.CallMismatch); }
+        if (!ReferenceEquals(prepared.Owner, this)) return ToolError.PreparedMismatch;
+        if (!prepared.Call.Matches(expectedCall)) return ToolError.CallMismatch;
         try
         {
-            if (capability is not TCapability typed || typed.CapabilityId != Descriptor.CapabilityId)
-            { return Reject(expectedCall, ToolError.UnsupportedCapability); }
+            return capability is TCapability typed && typed.CapabilityId == Descriptor.CapabilityId
+                ? ToolError.None : ToolError.UnsupportedCapability;
         }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
-        { return Reject(expectedCall, ToolError.UnsupportedCapability); }
+        { return ToolError.UnsupportedCapability; }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall,
+        IToolCapability? capability, CancellationToken cancellationToken = default)
+    {
+        var error = ValidateBinding(prepared, expectedCall, capability);
+        if (error != ToolError.None) return Reject(expectedCall, error);
         if (cancellationToken.IsCancellationRequested) { return new(expectedCall, ToolOutcome.Cancelled, ToolError.Cancelled, false); }
         if (!prepared.TryClaim()) { return Reject(expectedCall, ToolError.AlreadyInvoked); }
         var started = false;
