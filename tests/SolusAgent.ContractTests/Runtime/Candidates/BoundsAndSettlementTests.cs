@@ -13,6 +13,47 @@ namespace SolusAgent.ContractTests.Runtime.Candidates;
 public sealed class BoundsAndSettlementTests
 {
     [Theory]
+    [InlineData("failure", false)] [InlineData("failure", true)]
+    [InlineData("limit", false)] [InlineData("limit", true)]
+    [InlineData("association", false)] [InlineData("association", true)]
+    [InlineData("success", false)] [InlineData("success", true)]
+    public async Task SettlementStopCannotMaskProviderFailureOrCapacity(string mode, bool settlementStop)
+    {
+        var provider = new ScriptedProvider([(r, o, _) =>
+        {
+            o.CaptureUsage(new(7, null));
+            if (mode == "failure") throw new InvalidOperationException("PROVIDER_EXCEPTION_CANARY");
+            if (mode == "association") return ValueTask.FromResult(new ProviderResponse(r.Scope,
+                new(r.Attempt.ExecutionId, Guid.NewGuid(), Guid.NewGuid()), ProviderFinish.Final, "f", []));
+            return ValueTask.FromResult(RuntimeFixture.Final(r, mode == "limit" ? new string('x', 129) : "f"));
+        }]);
+        var hooks = new RuntimeHooks { After = (s, _) => ValueTask.FromResult<SettlementAcknowledgement?>(new(s.Exposure,
+            RuntimeHookStatus.Acknowledged, settlementStop ? RuntimeContinuation.Stop : RuntimeContinuation.Continue)) };
+        var host = new ScriptedCandidateHost((s, _) => CandidateFixture.Feedback(s));
+        var result = await CandidateFixture.Agent(provider, hooks, bounds: new(maximumResponseBytes: 128))
+            .ExecuteCandidatesAsync(CandidateFixture.Request(), host);
+        var expected = mode switch
+        {
+            "failure" or "association" => CandidateStopReason.ProductionFailed,
+            "limit" => CandidateStopReason.RuntimeLimit,
+            _ => settlementStop ? CandidateStopReason.ProductionStopped : CandidateStopReason.Completed,
+        };
+        Assert.Equal(expected, result.StopReason);
+        Assert.Equal(expected switch
+        {
+            CandidateStopReason.ProductionFailed => AgentTerminationReason.Failed,
+            CandidateStopReason.RuntimeLimit => AgentTerminationReason.ResourceLimit,
+            CandidateStopReason.ProductionStopped => AgentTerminationReason.Partial,
+            _ => AgentTerminationReason.Completed,
+        }, result.Outcome.Reason);
+        Assert.Equal(mode == "success" ? 1 : 0, result.Outcome.CompletedWorkUnits);
+        Assert.Equal(mode == "success" && !settlementStop ? 1 : 0, host.Submissions.Count);
+        Assert.Equal(host.Submissions.Count, result.Receipts.Count); Assert.Equal(1, provider.Effects);
+        Assert.Single(hooks.Settlements); Assert.Equal(7, result.Outcome.Usage!.Attempts.Single().Usage.InputTokens);
+        Assert.Null(result.Outcome.Usage.Attempts[0].Usage.OutputTokens);
+    }
+
+    [Theory]
     [InlineData("work", CandidateStopReason.WorkUnitLimit)]
     [InlineData("submissions", CandidateStopReason.SubmissionLimit)]
     [InlineData("attempts", CandidateStopReason.RuntimeLimit)]

@@ -58,6 +58,13 @@ internal static class CandidateExecutionDriver
                 }
                 var attempt = await ProviderAttemptOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
                 if (cut.Check() != RuntimeStop.None) return CutStop();
+                if (attempt.Stop != RuntimeStop.None) return StateStop();
+                if (attempt.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped))
+                    return Stop(CandidateStopReason.ProductionFailed);
+                // A deliberate settlement Stop cannot replace an observed failed or rejected production.
+                if (attempt.ProviderOutcome != ProviderOutcome.Succeeded || attempt.Response is null)
+                    return Stop(attempt.ProviderError == ProviderError.LimitExceeded
+                        ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed);
                 // Accepted Final alone grants neither candidate delivery nor another turn.
                 if (!state.CanContinue) return StateStop();
                 if (attempt.Response?.Finish != ProviderFinish.Final) return Stop(CandidateStopReason.ProductionFailed);
@@ -84,6 +91,11 @@ internal static class CandidateExecutionDriver
                         return CutStop();
                     }
                     feedback = observed.Value;
+                }
+                catch (OperationCanceledException) when (cut.Check() != RuntimeStop.None)
+                {
+                    if (invoked) Observe(CandidateAcknowledgement.Unknown);
+                    return CutStop();
                 }
                 catch (Exception exception) when (Recoverable(exception))
                 {

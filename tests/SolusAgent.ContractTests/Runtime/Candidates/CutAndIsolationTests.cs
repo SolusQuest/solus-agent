@@ -16,6 +16,53 @@ public sealed class CutAndIsolationTests
     [Theory]
     [InlineData(false, false)] [InlineData(true, false)]
     [InlineData(false, true)] [InlineData(true, true)]
+    public async Task CooperativeHostCancellationAtRunCutRetainsUnknownAndEarlierAcceptance(bool cancel, bool throwSynchronously)
+    {
+        var clock = new ControlledTimeProvider(); using var cancellation = new CancellationTokenSource();
+        var calls = 0;
+        var host = new ScriptedCandidateHost((s, token) =>
+        {
+            if (++calls == 1) return CandidateFixture.Feedback(s, instruction: CandidateContinuation.Continue);
+            if (cancel) cancellation.Cancel(); else clock.Advance(TimeSpan.FromSeconds(10));
+            Assert.True(token.IsCancellationRequested);
+            if (throwSynchronously) throw new OperationCanceledException(token);
+            return ValueTask.FromCanceled<CandidateFeedback?>(token);
+        });
+        var provider = CandidateFixture.Provider();
+        var result = await CandidateFixture.Agent(provider, options: new(clock)).ExecuteCandidatesAsync(CandidateFixture.Request(), host,
+            cancellationToken: cancellation.Token);
+        Assert.Equal(cancel ? CandidateStopReason.Cancelled : CandidateStopReason.DurationLimit, result.StopReason);
+        Assert.Equal(cancel ? AgentTerminationReason.Cancelled : AgentTerminationReason.ResourceLimit, result.Outcome.Reason);
+        Assert.Equal(1, result.AcceptedCount); Assert.Equal(2, result.Receipts.Count);
+        Assert.Equal(CandidateAcknowledgement.Unknown, result.Receipts[1].Acknowledgement);
+        Assert.Equal(1, result.ContinuationsAdmitted); Assert.Equal(0, result.RepairsAdmitted);
+        Assert.Equal(2, result.Outcome.CompletedWorkUnits); Assert.Equal(2, result.Outcome.Usage!.Attempts.Count);
+        Assert.Equal(2, provider.Effects); Assert.Equal(2, host.Submissions.Count);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task HostOwnCancellationWithoutRunCutRemainsFailedAcknowledgement(bool throwSynchronously)
+    {
+        using var hostCancellation = new CancellationTokenSource(); hostCancellation.Cancel();
+        var host = new ScriptedCandidateHost((_, token) =>
+        {
+            Assert.False(token.IsCancellationRequested);
+            if (throwSynchronously) throw new OperationCanceledException(hostCancellation.Token);
+            return ValueTask.FromCanceled<CandidateFeedback?>(hostCancellation.Token);
+        });
+        var provider = CandidateFixture.Provider();
+        var result = await CandidateFixture.Agent(provider).ExecuteCandidatesAsync(CandidateFixture.Request(), host);
+        Assert.Equal(CandidateStopReason.FailedAcknowledgement, result.StopReason);
+        Assert.Equal(AgentTerminationReason.Failed, result.Outcome.Reason);
+        Assert.Equal(CandidateAcknowledgement.Failed, result.Receipts.Single().Acknowledgement);
+        Assert.Equal(1, result.Outcome.CompletedWorkUnits); Assert.Single(result.Outcome.Usage!.Attempts);
+        Assert.Equal(1, provider.Effects); Assert.Single(host.Submissions);
+    }
+
+    [Theory]
+    [InlineData(false, false)] [InlineData(true, false)]
+    [InlineData(false, true)] [InlineData(true, true)]
     public async Task PendingHostCutReturnsBeforeReleaseAndLateFeedbackOrFaultCannotMutate(bool cancel, bool lateFault)
     {
         var clock = new ControlledTimeProvider(); using var cancellation = new CancellationTokenSource();
