@@ -62,7 +62,6 @@ Apr tests exercise the Api-only APR-shaped business Host and the finite test-onl
 ```text
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Apr"
 ```
-```
 
 ## Continuous integration
 
