@@ -12,6 +12,7 @@
         <ProjectReference Include="../../src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
         <ProjectReference Include="../ConsumerProbes/CustomTools/CustomTools.csproj" />
         <ProjectReference Include="../../src/SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" />
+        <ProjectReference Include="../../src/SolusAgent.Providers.DeepSeek/SolusAgent.Providers.DeepSeek.csproj" />
         <ProjectReference Include="../ConsumerProbes/CustomProvider/CustomProvider.csproj" />
         <ProjectReference Include="../ConsumerProbes/ScribeHost/ScribeHost.csproj" />
         <ProjectReference Include="../ConsumerProbes/AprHost/AprHost.csproj" />

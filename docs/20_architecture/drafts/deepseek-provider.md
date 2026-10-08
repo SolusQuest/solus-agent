@@ -1,0 +1,49 @@
+# DeepSeek provider draft
+
+`SolusAgent.Providers.DeepSeek` is an optional, callable `ModelProvider` implementation. Its sole direct production reference is `SolusAgent.Runtime.Api`; it has no package dependencies or Runtime reference. The four core libraries retain their reference graph. This implementation projects, sends, reads and admits one actual HTTP exchange through the [provider exchange draft](provider-exchange.md). The runtime loop, budget enforcement, durable restoration, distribution and downstream migration have their own delivery boundaries.
+
+## Selected service profile
+
+The Host constructs `DeepSeekOptions` with a credential and a positive `maximumTokens` from 1 through 393216. The only endpoint is exactly `https://api.deepseek.com/chat/completions`, and the provider/model scope is `deepseek` / `deepseek-flash`. Options do not look up environment variables, files or alternate backends. The request always selects `model=deepseek-flash`, `stream=false`, `thinking.type=enabled`, `reasoning_effort=high` and the supplied finite `max_tokens`. It omits optional sampling and tool-choice features.
+
+The official [thinking guide](https://api-docs.deepseek.com/guides/thinking_mode/) and [chat completion API](https://api-docs.deepseek.com/api/create-chat-completion/) were checked on 2026-10-08. The implementation admits this selected profile; synthetic fixtures and local TLS do not establish live interoperability or billing accuracy. Request model selection and response model identity are independent checks. Only response `model=deepseek-flash` is accepted; legacy or neighboring aliases fail rather than being inferred from the requested model.
+
+## Projection and tool association
+
+Requests require at least one input. Classified Host instructions become `system`, input data becomes `user`, accepted model data becomes `assistant`, and correlated tool result data becomes `tool`. Content, raw tool argument strings, call IDs, result strings and ordering are preserved. Null assistant content stays null. The entire normalized Tools.Api scalar input schema is emitted as function parameters for every registered tool. Tool capabilities, result schemas and result text never become instruction authority. A failed guarded tool result is represented as fixed outcome/error data.
+
+The provider proposes calls; the Host still prepares, admits and invokes tools with its own capabilities. Successful `tool_calls` requires a nonempty call batch. The Runtime.Api guard rejects unknown tools, duplicate or recycled historical call IDs, invalid input schemas and request-relative count/byte violations before a response becomes eligible for history. Successful `stop` requires nonempty text and no calls. `length`, `content_filter`, `insufficient_system_resource`, `aborted`, unknown, missing and null finishes reject even if text or arguments look complete. No partial response becomes a final candidate or invocation authority.
+
+## Restricted in-run replay
+
+Any request with tools explicitly requires the Continuation capability before its first send. Every historical accepted assistant turn must retain its own exact `reasoning_content`, including empty strings and final turns with no calls. Replay decodes each turn separately, while Runtime.Api checks the latest continuation's exact scope and originating attempt. Missing, malformed, wrong-scope or stale replay rejects before transport; there is no silent fresh-conversation fallback.
+
+The internal token is one discriminator byte followed by strict UTF-8 reasoning. Empty reasoning therefore has a nonempty token. The 8192-byte M1 ceiling includes that byte, allowing at most 8191 reasoning bytes; lower request bounds also apply. Unknown frames and invalid UTF-8 reject. Text-only requests can decline continuation retention; subsequently introducing tools into history without the required tokens fails explicitly. This framing is an in-memory adapter detail, with no durable codec, authentication or cross-process compatibility claim. Continuation, inputs, outputs and tool payloads are restricted data under [Security boundary](../security-boundary.md).
+
+## Bounds and admission
+
+Logical M1 bounds and wire bounds are separate. The request writer caps escaped JSON while writing, before dispatch. Options default to 1048576 request-body bytes and 524288 response-body bytes; both are positive, lowerable and at most 1048576. The response reader checks declared length, reads incrementally with a one-byte overflow probe and rejects truncated declared lengths. It disposes requests, responses and streams on all outcomes.
+
+Admission requires strict UTF-8 JSON with depth at most 16, no comments or trailing commas, no duplicate decoded property names, and valid Unicode strings. The root must identify a nonempty bounded completion ID, `object=chat.completion` and the separately admitted model. Exactly one choice with index zero and assistant message is supported. Streaming deltas, legacy `function_call`, multimodal content, unsupported fields and conflicting finish/call shapes reject. JSON content type is required, with absent or UTF-8 charset and no content encoding. Payload constructors and the base guard impose the M1 absolute and lowered request bounds after parsing.
+
+## Usage and failure retention
+
+Unique nonnegative lexical Int64 `prompt_tokens` and `completion_tokens` become nullable input/output measurements. Missing counters stay unknown; `total_tokens` never fabricates either core counter. Direct cache hit/miss are input subsets; reasoning tokens are an output subset. `prompt_tokens_details.cached_tokens` is an equivalent cache-hit source, never an additional count. Unknown parents remain unknown. Conflicting aliases, invalid subsets, cache partitions or totals reject the payload while retaining independently valid core facts and dropping untrustworthy detail claims. No CacheWrite measurement is fabricated.
+
+Usage capture occurs before identity, finish and payload admission. A bounded, parseable HTTP error body may provide independently valid usage, but error status never produces success. Duplicate usage envelopes yield unavailable measurement. Malformed complete JSON, invalid raw UTF-8, oversized or interrupted bodies cannot supply validated counters. A later rejection or cancellation preserves already captured usage and exposure. Ordinary outcomes and diagnostics contain fixed classifications rather than provider error text or exceptions.
+
+## One attempt and transport diagnostics
+
+The default path owns a fresh `SocketsHttpHandler` and `HttpMessageInvoker` per attempt. It uses exact HTTP/1.1, a nonnull known-length POST body, `ExpectContinue=false` and `Connection: close`. Redirects, proxy, cookies, automatic authentication and decompression are disabled. Body serialization is allowed once. The selected .NET 10 handler policy excludes pooled reuse, HTTP/2 or HTTP/3 retry/downgrade and the empty/delayed-body premature-EOF retry path. The adapter contains no retry loop. A retry requires a separately admitted attempt with new Host-owned correlation and accounting.
+
+`ActivityHeadersPropagator=null` excludes the request/header-publishing diagnostics handler. An inner guard replaces transport exceptions before invoker telemetry observes them. Standard System.Net EventSource, DiagnosticListener and ActivityListener canary tests verify the ordinary diagnostic boundary. Privileged `Private.InternalDiagnostics` raw tracing and arbitrary in-process Host code remain trusted capabilities, outside that boundary.
+
+The overload accepting a terminal `HttpMessageHandler` is for Host-controlled transport. Delegating handlers, HttpClientHandler and known unsafe SocketsHttpHandler policies are rejected. Arbitrary executable handlers must honor one-send and restricted-data rules themselves; the adapter does not sandbox their code or logging. Disposal closes owned resources and makes subsequent calls fail before dispatch; it does not assert remote stop or rollback.
+
+Preparation and pre-send cancellation are NotDispatched. Entry to `SendAsync` is Unknown until a response proves Dispatched; a thrown send cannot prove no exposure. Caller cancellation reaches send/read and produces the caller's cancellation classification. The positive options timeout defaults to 120 seconds, is at most ten minutes, and produces provider failure if the caller did not cancel. Local cancellation or timeout does not prove that remote work stopped. Overlapping exchanges use independent bodies, observations and correlations.
+
+## Executable evidence
+
+The existing runner's `DeepSeek.Adapter` tests execute the actual writer, invoker, reader, parser and ModelProvider guard. They cover two generic tools with reversed actual guarded results, subsequent final and user turns, exact replay including empty/final reasoning, fixed failed-tool data, schema and authority boundaries, incomplete finishes, identity neighbors, invalid JSON/Unicode/shapes, usage variants, lowered/absolute logical and wire bounds, cancellation cuts, disposal and concurrent exchanges.
+
+The same production handler factory runs against credential-free synthetic TLS with a test-only connection route and pinned synthetic certificate. Success, premature EOF, 500 and 307 each produce one connection and one physical request under enabled standard instrumentation; synthetic credential/body/replay canaries remain absent from ordinary telemetry. An injected exception test covers sanitization before invoker telemetry, and a deliberate second body serialization produces no second body bytes. No trust store changes or live provider calls are involved. Evaluated project and compiled assembly tests protect the adapter's independent Runtime.Api boundary. [Project validation](../../00_project/validation.md) owns commands and the limits of local/CI evidence.

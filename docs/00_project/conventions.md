@@ -17,7 +17,7 @@ Apply the shared [Conventions](https://github.com/SolusQuest/solus-book/blob/c37
 - Use nullable reference types, implicit usings, and warnings-as-errors consistently.
 - Use PascalCase for types and public members, camelCase for parameters and local variables, and an `I` prefix for interfaces.
 - Prefer file-scoped namespaces and normal .NET asynchronous naming. Expose cancellation for asynchronous operations that can be interrupted.
-- Project names, assembly names, and root namespaces match: `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, and `SolusAgent.Runtime`.
+- Project names, assembly names, and root namespaces match: `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, `SolusAgent.Runtime`, and optional `SolusAgent.Providers.DeepSeek`.
 - Keep public contracts small and implementation details internal. Dependency direction follows [Project structure](../20_architecture/project-structure.md).
 - Keep provider-specific wire records, continuation materialization, and SDK dependencies out of the outer agent and shared tool APIs.
 - Add a project for an actual dependency, extension, or distribution boundary. Do not reserve speculative implementation, generator, integration, or test projects.

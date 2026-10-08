@@ -12,6 +12,7 @@ public sealed class ProductionProjectGraphTests
         "SolusAgent.Tools.Api",
         "SolusAgent.Runtime.Api",
         "SolusAgent.Runtime",
+        "SolusAgent.Providers.DeepSeek",
     ];
 
     private static readonly IReadOnlyList<string> IndependentApiProjectNames =
@@ -53,7 +54,7 @@ public sealed class ProductionProjectGraphTests
     ];
 
     [Fact]
-    public void SolutionRegistersTheFourProductionProjectsAndCurrentTestOnlyProjects()
+    public void SolutionRegistersTheCoreProjectsOptionalProviderAndCurrentTestOnlyProjects()
     {
         var registeredPaths = XDocument.Load(RepositoryLayout.SolutionPath)
             .Descendants("Project")
@@ -128,6 +129,7 @@ public sealed class ProductionProjectGraphTests
             RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api"),
             CustomToolsProjectPath,
             RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Providers.DeepSeek"),
             CustomProviderProjectPath,
             ScribeHostProjectPath,
             AprHostProjectPath,

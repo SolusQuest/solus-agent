@@ -1,6 +1,6 @@
 # Project structure
 
-The four production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools and Providers tests, while separate Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost libraries provide their actual independent compile boundaries. No production providers, adapters, generators or runtime loop are included.
+The four core production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime remains an implementation skeleton. The optional [DeepSeek provider draft](drafts/deepseek-provider.md) adds a fifth production library with actual bounded HTTP exchange. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools, Providers and DeepSeek.Adapter tests, while separate Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost libraries provide their actual independent compile boundaries. Generators, production tool adapters and the runtime loop remain future work.
 
 ## Layout
 
@@ -17,6 +17,7 @@ src/
     SolusAgent.Tools.Api/
     SolusAgent.Runtime.Api/
     SolusAgent.Runtime/
+    SolusAgent.Providers.DeepSeek/
 tests/
     SolusAgent.ApiOnlyConsumer/
     SolusAgent.ContractTests/
@@ -38,7 +39,7 @@ docs/
 
 Shared engineering guidance and its resources are loaded from the handbook submodule. [Shared handbook adoption](../00_project/shared-handbook.md) owns initialization and the selected revision; the remaining documentation directories retain project requirements.
 
-The XML solution format follows ContractScribe's .NET solution layout. All four projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
+The XML solution format follows ContractScribe's .NET solution layout. All five production projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
 
 ## Assembly responsibilities
 
@@ -48,6 +49,7 @@ The XML solution format follows ContractScribe's .NET solution layout. All four 
 | `SolusAgent.Tools.Api` | Reusable function-tool definitions, metadata, input preparation, invocation, and result contracts. | A specific agent SDK, model provider, execution loop, or product evidence model. |
 | `SolusAgent.Runtime.Api` | Self-owned runtime extension contracts, including model exchange, runtime configuration, and supported integration hooks. | Runtime execution implementation or product-specific review and documentation contracts. |
 | `SolusAgent.Runtime` | Self-owned loop, per-run enforcement, context handling, and integration with shared tools and model providers. | Product result acceptance, campaign ownership, GitHub publication, or host storage policy. |
+| `SolusAgent.Providers.DeepSeek` | Optional bounded thinking/tool HTTP projection, transport, response admission, usage and restricted in-run replay. | Runtime loop, budget ledger, durable restoration, product acceptance or tool invocation authority. |
 
 Project filenames and output DLLs use these exact names. Root namespaces and assembly names use the SDK defaults rather than separate aliases. Distribution metadata will be planned later.
 
@@ -62,13 +64,16 @@ flowchart TD
     Runtime --> ToolsApi[SolusAgent.Tools.Api]
     RuntimeApi --> AgentApi
     RuntimeApi --> ToolsApi
+    DeepSeek[SolusAgent.Providers.DeepSeek] --> RuntimeApi
 ```
 
 `SolusAgent.Api` and `SolusAgent.Tools.Api` have no project references or external package dependencies. Neither may reference `Runtime.Api` or `Runtime`. `Runtime.Api` may reference the two independent APIs, but must not reference the implementation.
 
+`SolusAgent.Providers.DeepSeek` has Runtime.Api as its sole direct production reference, no package dependency and no Runtime edge. It is an independently compiled implementation of the runtime extension seam. Host startup selects it explicitly; the core libraries do not depend on it.
+
 Downstream product source, repository snapshots, fixtures, and machine-local paths must not become shared project references or linked build inputs.
 
-`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api` and the five test-only consumer libraries for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph and current test registrations exact. Execution, Usage, Candidates, Tools and Providers tests call actual contract types. Future focused tests use this same runner and add only dependencies required by implemented tests.
+`tests/SolusAgent.ContractTests` is the sole managed test runner and classifies as test-only. It declares the current runner packages with private runner assets and references `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, the optional DeepSeek adapter and the five test-only consumer libraries for its actual executable tests. Its Architecture tests evaluate MSBuild project paths and keep the production reference graph and current test registrations exact. Execution, Usage, Candidates, Tools and Providers tests call actual contract types; DeepSeek.Adapter tests execute the actual adapter through controlled transport and check its evaluated and compiled boundary. Future focused tests use this same runner and add only dependencies required by implemented tests.
 
 `tests/SolusAgent.ApiOnlyConsumer` is a non-packable test library with Api as its only production reference and no packages; it contains synthetic execution and [usage](drafts/usage.md) agents and their consumer orchestration through `IAgent`. Evaluated graph and compiled assembly checks preserve this independent boundary even though the common runner also references Tools.Api.
 
@@ -94,4 +99,4 @@ A single downstream project can begin with these source-level responsibilities. 
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
-Provider packages, additional agent implementations, production tool adapters, generators, further test runners and convenience hosting packages remain future work. The four selected libraries do not imply that those packages are required for first implementation.
+Additional provider implementations, provider packaging, additional agent implementations, production tool adapters, generators, further test runners and convenience hosting packages remain future work. The four core libraries and optional source adapter do not establish a distribution decision.

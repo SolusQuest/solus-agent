@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup><GenerateDocumentationFile>true</GenerateDocumentationFile></PropertyGroup>
+    <ItemGroup><ProjectReference Include="../SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" /></ItemGroup>
+    <ItemGroup><InternalsVisibleTo Include="SolusAgent.ContractTests" /></ItemGroup>
+</Project>
