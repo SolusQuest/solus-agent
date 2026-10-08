@@ -247,7 +247,10 @@ public sealed class RetentionAndStopTests
             new AgentExecutionBounds(8, TimeSpan.FromSeconds(10)), new CandidateExecutionBounds(4, 1, 1));
         var host = new ScribeBusinessHost(manifest, new ScribeProgress(manifest, []), control,
             ExchangePlans.Scribe([new ExchangePolicy(true, CandidateContinuation.Continue, ExchangeDelivery.Held)]));
-        var pending = host.ExecuteFreshCandidatesAsync(startup.Agent, cancellationToken: cancellation.Token).AsTask();
+        // The same fresh-injection path ExecuteFreshCandidatesAsync uses, with a witnessing decorator on the Host channel.
+        var channel = new WitnessingChannel(host);
+        var request = new ScribeCandidateStartup(control.CandidateBounds).Adopt(host.CreateFreshRequest());
+        var pending = startup.Agent.ExecuteCandidatesAsync(request, channel, cancellationToken: cancellation.Token).AsTask();
         await RuntimeFixture.Await(host.DeliveryHeld);
         if (cancel) cancellation.Cancel(); else clock.Advance(TimeSpan.FromSeconds(11));
         var result = await RuntimeFixture.Await(pending);
@@ -255,11 +258,15 @@ public sealed class RetentionAndStopTests
         Assert.Equal(stop, result.StopReason);
         Assert.Equal(CandidateAcknowledgement.Unknown, result.Receipts.Single().Acknowledgement);
         Assert.Equal(0, result.AcceptedCount);
-        // The Host committed its validated fact before delivery, and the uncertain delivery never grants replay.
+        // The run returned at the cut while the held delivery is still unreleased and incomplete.
+        Assert.True(host.DeliveryHeld.IsCompleted);
+        Assert.False(channel.DeliveryCompleted.IsCompleted);
+        // The Host committed its validated fact before delivery, so committed progress exceeds the acknowledged count.
         Assert.Equal(1, host.Progress.AcceptedCount);
         Assert.Single(host.Exchanges);
         var before = System.Text.Json.JsonSerializer.Serialize(result);
         host.ReleaseHeldDelivery();
+        await RuntimeFixture.Await(channel.DeliveryCompleted);
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(result));
         Assert.Single(host.Exchanges);
         Assert.Equal(1, host.Progress.AcceptedCount);
@@ -274,8 +281,7 @@ public sealed class RetentionAndStopTests
         var clock = new ControlledTimeProvider();
         var entered = RuntimeFixture.Barrier();
         var release = RuntimeFixture.Barrier();
-        var heldResponse = RuntimeFixture.Barrier<ProviderResponse>();
-        ProviderRequest? heldRequest = null;
+        var lateCompleted = RuntimeFixture.Barrier();
         var startup = stage == "tool"
             ? new ProductionStartup(
                 [(r, o, _) => ConsumptionFixture.ToolCalls(r, o, [ToolFixture.Transform("t1", "held")], ConsumptionFixture.TurnReplay(1))],
@@ -283,15 +289,19 @@ public sealed class RetentionAndStopTests
                 {
                     entered.SetResult();
                     await release.Task;
-                    return ToolOutput.Success(call, "{\"text\":\"LATE\"}");
+                    var output = ToolOutput.Success(call, "{\"text\":\"LATE\"}");
+                    lateCompleted.SetResult();
+                    return output;
                 })
             : new ProductionStartup(
-                [(r, o, _) =>
+                [async (r, o, _) =>
                 {
                     o.CaptureUsage(new(3, 2));
-                    heldRequest = r;
                     entered.SetResult();
-                    return new(heldResponse.Task);
+                    await release.Task;
+                    var response = new ProviderResponse(r.Scope, r.Attempt, ProviderFinish.Final, "late", []);
+                    lateCompleted.SetResult();
+                    return response;
                 }],
                 options: new RuntimeOptions(clock, requireContinuation: true));
         var host = new AprBusinessHost(startup.Agent, startup.Agent);
@@ -302,16 +312,13 @@ public sealed class RetentionAndStopTests
         var result = await RuntimeFixture.Await(pending);
 
         Assert.Equal(CandidateStopReason.DurationLimit, result.StopReason);
+        // Cut-return-before-release proof: the run returned while the held operation is still incomplete.
         Assert.False(release.Task.IsCompleted);
+        Assert.False(lateCompleted.Task.IsCompleted);
         Assert.Empty(channel.Submissions);
         var before = System.Text.Json.JsonSerializer.Serialize(result);
-        if (stage == "tool") release.SetResult();
-        else
-        {
-            release.SetResult();
-            heldResponse.SetResult(new ProviderResponse(heldRequest!.Scope, heldRequest.Attempt, ProviderFinish.Final, "late", []));
-        }
-
+        release.SetResult();
+        await RuntimeFixture.Await(lateCompleted.Task);
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(result));
         Assert.Equal(1, startup.Provider.Effects);
         Assert.Empty(channel.Submissions);
