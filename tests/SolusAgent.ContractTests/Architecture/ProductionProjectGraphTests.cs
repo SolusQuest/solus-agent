@@ -42,6 +42,16 @@ public sealed class ProductionProjectGraphTests
         "xunit.runner.visualstudio",
     ];
 
+    private static readonly IReadOnlyList<string> TestOnlyProjectPaths =
+    [
+        Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"),
+        RepositoryLayout.TestProjectPath,
+        CustomToolsProjectPath,
+        CustomProviderProjectPath,
+        ScribeHostProjectPath,
+        AprHostProjectPath,
+    ];
+
     [Fact]
     public void SolutionRegistersTheFourProductionProjectsAndCurrentTestOnlyProjects()
     {
@@ -55,11 +65,7 @@ public sealed class ProductionProjectGraphTests
 
         var expectedPaths = ProductionProjectNames
             .Select(RepositoryLayout.ProductionProjectPath)
-            .Append(RepositoryLayout.TestProjectPath)
-            .Append(Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"))
-            .Append(CustomToolsProjectPath)
-            .Append(CustomProviderProjectPath)
-            .Append(AprHostProjectPath)
+            .Concat(TestOnlyProjectPaths)
             .Select(ProjectBoundaries.Canonicalize)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -69,7 +75,7 @@ public sealed class ProductionProjectGraphTests
         var registeredTestProjects = registeredPaths
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "tests")))
             .ToArray();
-        Assert.Equal(5, registeredTestProjects.Length);
+        Assert.Equal(TestOnlyProjectPaths.Count, registeredTestProjects.Length);
     }
 
     [Fact]
@@ -123,6 +129,7 @@ public sealed class ProductionProjectGraphTests
             CustomToolsProjectPath,
             RepositoryLayout.ProductionProjectPath("SolusAgent.Runtime.Api"),
             CustomProviderProjectPath,
+            ScribeHostProjectPath,
             AprHostProjectPath,
         ]);
         ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
@@ -168,6 +175,37 @@ public sealed class ProductionProjectGraphTests
 
     private static string CustomProviderProjectPath =>
         Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "CustomProvider", "CustomProvider.csproj");
+
+    [Fact]
+    public void ScribeHostProbeEvaluatesOnlyApiWithOwnDirectoryCompileInputsAndNoForeignAssemblyReferences()
+    {
+        var evaluation = MsbuildProjectEvaluation.Evaluate(ScribeHostProjectPath);
+        ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
+            [RepositoryLayout.ProductionProjectPath("SolusAgent.Api")]);
+        ProjectBoundaryAssertions.AssertNoPackages(evaluation);
+        ProjectBoundaryAssertions.AssertManagedNet10(evaluation);
+        Assert.NotEmpty(evaluation.CompileItems);
+        ProjectBoundaryAssertions.AssertCompileSourcesWithinRoot(evaluation, Path.GetDirectoryName(ScribeHostProjectPath)!);
+
+        var references = typeof(SolusAgent.ConsumerProbes.ScribeHost.ScribeManifest).Assembly.GetReferencedAssemblies();
+        Assert.Contains(references, reference => reference.Name == "SolusAgent.Api");
+        Assert.DoesNotContain(references, reference => reference.Name == "SolusAgent.Runtime.Api");
+        Assert.DoesNotContain(references, reference => reference.Name == "SolusAgent.Runtime");
+        Assert.DoesNotContain(references, reference => reference.Name == "SolusAgent.Tools.Api");
+        Assert.All(references, reference =>
+        {
+            var name = reference.Name ?? string.Empty;
+            Assert.True(
+                name == "SolusAgent.Api"
+                || name is "netstandard" or "mscorlib"
+                || name.StartsWith("System", StringComparison.Ordinal)
+                || name.StartsWith("Microsoft.", StringComparison.Ordinal),
+                $"ScribeHost must not reference foreign assembly '{name}'.");
+        });
+    }
+
+    private static string ScribeHostProjectPath =>
+        Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "ScribeHost", "ScribeHost.csproj");
 
     private static string AprHostProjectPath =>
         Path.Combine(RepositoryLayout.Root, "tests", "ConsumerProbes", "AprHost", "AprHost.csproj");
