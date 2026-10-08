@@ -1,4 +1,5 @@
 using SolusAgent.Api.Capabilities;
+using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
 using SolusAgent.Api.Usage;
 using SolusAgent.Runtime.Api.Configuration;
@@ -8,7 +9,7 @@ using SolusAgent.Runtime.Startup;
 
 namespace SolusAgent.Runtime.Execution;
 
-internal sealed class RuntimeAgent(RuntimeConfiguration configuration, RuntimeOptions options) : IAgent
+internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, RuntimeOptions options) : ICandidateAgent
 {
     public AgentCapability SupportedCapabilities => RuntimeAgentFactory.Support.SupportedCapabilities;
 

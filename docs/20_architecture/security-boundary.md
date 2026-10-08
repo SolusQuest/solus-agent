@@ -1,6 +1,6 @@
 # Security boundary
 
-These rules govern the current execution, usage and function-tool drafts and future implementation. Synthetic tests exercise Host control/data separation, ordinary diagnostic confinement, effect-free tool preparation and narrow capability-authorized invocation. The production [provider-turn runtime](drafts/runtime-execution.md) now enforces ordered exposure, local cuts, finite state and ordinary-data confinement. Authentication, context protection, provider transport and runtime tool-batch admission remain unimplemented.
+These rules govern the current execution, usage and function-tool drafts and future implementation. Synthetic tests exercise Host control/data separation, ordinary diagnostic confinement, effect-free tool preparation and narrow capability-authorized invocation. The production [provider-turn runtime](drafts/runtime-execution.md) now enforces ordered exposure, local cuts, finite state and ordinary-data confinement. The [candidate driver](drafts/runtime-candidates.md) adds actual correlated Host delivery and correction-data continuation under those same boundaries. The optional [DeepSeek adapter](drafts/deepseek-provider.md) supplies bounded provider transport with controlled synthetic evidence; live interoperability remains unverified. Authentication, context protection and runtime tool-batch admission remain unimplemented.
 
 ## Host authority
 

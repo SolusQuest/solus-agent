@@ -20,7 +20,7 @@ public static class RuntimeAgentFactory
         RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>
-    /// <remarks>No tool invocation, candidate delivery, context restoration or provider retry is implemented by this path.</remarks>
+    /// <remarks>The returned agent also implements ICandidateAgent for explicitly selected candidate execution. No tool invocation, context restoration or provider retry is implemented by this path.</remarks>
     public static IAgent Create(RuntimeConfiguration configuration, RuntimeOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);

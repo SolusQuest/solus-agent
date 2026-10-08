@@ -147,6 +147,9 @@ public sealed class CandidateTerminalTests
     [Theory]
     [InlineData(CandidateStopReason.Cancelled)]
     [InlineData(CandidateStopReason.WorkUnitLimit)]
+    [InlineData(CandidateStopReason.DurationLimit)]
+    [InlineData(CandidateStopReason.RuntimeLimit)]
+    [InlineData(CandidateStopReason.ProductionStopped)]
     [InlineData(CandidateStopReason.ProductionFailed)]
     [InlineData(CandidateStopReason.ProgressObserverFailed)]
     public void NeighboringStopsNeedNoInventedNewAcknowledgementAndRetainPriorAcceptance(CandidateStopReason stop)
@@ -162,6 +165,8 @@ public sealed class CandidateTerminalTests
     [Theory]
     [InlineData(CandidateStopReason.Cancelled)]
     [InlineData(CandidateStopReason.WorkUnitLimit)]
+    [InlineData(CandidateStopReason.DurationLimit)]
+    [InlineData(CandidateStopReason.RuntimeLimit)]
     public void CancellationOrResourceStopCanRetainUnknownPendingReceiptWithoutClaimingHostRollback(CandidateStopReason stop)
     {
         var result = new CandidateExecutionResult(Outcome(stop), stop,
@@ -192,8 +197,8 @@ public sealed class CandidateTerminalTests
 
     private static AgentOutcome Outcome(CandidateStopReason stop) => stop switch
     {
-        CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted => new(ExecutionId, AgentTerminationReason.Partial, 0),
-        CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit or CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit => new(ExecutionId, AgentTerminationReason.ResourceLimit, 0),
+        CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.ProductionStopped => new(ExecutionId, AgentTerminationReason.Partial, 0),
+        CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit or CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.DurationLimit or CandidateStopReason.RuntimeLimit => new(ExecutionId, AgentTerminationReason.ResourceLimit, 0),
         CandidateStopReason.Completed => new(ExecutionId, AgentTerminationReason.Completed, 0),
         CandidateStopReason.Cancelled => new(ExecutionId, AgentTerminationReason.Cancelled, 0),
         CandidateStopReason.ProgressObserverFailed => new(ExecutionId, AgentTerminationReason.Failed, 0, failureCode: AgentFailureCode.ProgressObserverFailed),

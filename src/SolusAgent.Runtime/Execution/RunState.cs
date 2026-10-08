@@ -1,4 +1,5 @@
 using SolusAgent.Api.Execution;
+using System.Text;
 using SolusAgent.Api.Usage;
 using SolusAgent.Runtime.Api.Configuration;
 using SolusAgent.Runtime.Api.Exposure;
@@ -55,6 +56,17 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         var index = attempts.FindIndex(item => item.PhysicalAttemptId == attempt.PhysicalAttemptId);
         if (index < 0) throw new ProviderContractException(ProviderError.InvalidAssociation);
         attempts[index] = observation;
+    }
+    // Host correction is data, charged once to retained state; reserve the next accepted response slot.
+    public void AppendCandidateCorrection(string text)
+    {
+        var data = ProviderInput.Data(text);
+        var bytes = Encoding.UTF8.GetByteCount(text);
+        if (records.Count >= Options.MaximumRecords - 1 || records.Count >= Configuration.Bounds.MaximumInputs
+            || bytes > Options.MaximumRetainedBytes - retainedBytes)
+            throw new ProviderContractException(ProviderError.LimitExceeded);
+        records.Add(data);
+        retainedBytes += bytes;
     }
     public void Accept(ProviderRequest providerRequest, ProviderResponse response)
     {
