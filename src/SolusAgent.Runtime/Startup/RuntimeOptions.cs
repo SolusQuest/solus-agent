@@ -24,9 +24,9 @@ public sealed class RuntimeOptions
     public TimeProvider TimeProvider { get; }
     /// <summary>Gets the finite per-run attempt inventory capacity, independent of completed work.</summary>
     public int MaximumAttempts { get; }
-    /// <summary>Gets the total classified-input and accepted-model record capacity.</summary>
+    /// <summary>Gets the total classified-input, accepted-model and tool-result record capacity.</summary>
     public int MaximumRecords { get; }
-    /// <summary>Gets the total variable retained input/definition/response bytes.</summary>
+    /// <summary>Gets the total variable retained input/definition/model/tool-result bytes.</summary>
     public int MaximumRetainedBytes { get; }
     /// <summary>Gets the maximum single settlement wait, also allowed after an execution cut. It grants no new execution authority.</summary>
     public TimeSpan SettlementGrace { get; }

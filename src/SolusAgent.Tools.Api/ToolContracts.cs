@@ -92,6 +92,9 @@ public interface IFunctionTool
     ToolDescriptor Descriptor { get; }
     /// <summary>Bounded effect-free actual argument validation; supplies no invocation authority.</summary>
     ToolPreparation Prepare(ToolCall call);
+    /// <summary>Checks owner, full call, concrete Host capability and unused handle without effects or claiming invocation.</summary>
+    /// <remarks>Batch consumers check every member before the first effect. Invocation must revalidate; this check grants no lasting authority.</remarks>
+    ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability);
     /// <summary>Explicit invocation with original call association, host capability and cancellation.</summary>
     ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall,
         IToolCapability? capability, CancellationToken cancellationToken = default);
@@ -115,6 +118,7 @@ public sealed class PreparedToolInvocation
     private int claimed;
     internal PreparedToolInvocation(object owner, ToolCall call) { Owner = owner; Call = call; }
     internal object Owner { get; }
+    internal bool IsClaimed => Volatile.Read(ref claimed) != 0;
     internal bool TryClaim() => Interlocked.CompareExchange(ref claimed, 1, 0) == 0;
     /// <summary>The original immutable call association and arguments.</summary>
     public ToolCall Call { get; }

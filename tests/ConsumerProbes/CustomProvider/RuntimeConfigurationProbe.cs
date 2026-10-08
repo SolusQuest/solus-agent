@@ -40,6 +40,8 @@ public sealed class ForwardingConfigurationTool(IFunctionTool inner) : IFunction
 {
     public ToolDescriptor Descriptor => inner.Descriptor;
     public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+    public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability) =>
+        inner.ValidateInvocation(prepared, expectedCall, capability);
     public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability, CancellationToken token = default) =>
         inner.InvokeAsync(prepared, expectedCall, capability, token);
 }

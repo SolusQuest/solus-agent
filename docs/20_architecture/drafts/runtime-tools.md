@@ -1,0 +1,31 @@
+# Runtime tools draft
+
+The production Runtime consumes Host-installed `IFunctionTool` bindings through one metadata-driven adapter. Public `RuntimeAgentFactory.Create` / `IAgent.ExecuteAsync` runs accepted tool-call responses, their guarded results and subsequent model turns. Independently compiled [CounterTool](../../../tests/ConsumerProbes/CustomTools/CounterTool.cs) and interface-only [TransformTool](../../../tests/ConsumerProbes/CustomTools/TransformTool.cs) exercise this same operation with different schemas and capabilities. There is no per-name product mapping, new assembly or package.
+
+## Complete admission before effects
+
+A tool-call response must first pass original-request provider admission and same-attempt settlement. Stop, failed/unknown/missing closure, cancellation or deadline cannot grant a tool effect. Resolve each exact unique name from the captured Host registry and compare the tool's current full descriptor semantics with that registration; equivalent immutable descriptors need not share object identity.
+
+Before the first invocation, check the entire finite batch's actual input schemas, effect-free Prepare result and exact prepared call, then call [ValidateInvocation](function-tools.md#preparation-and-authority) against every actual supplied narrow capability. Concrete type and exact capability semantics both matter. Preparation and admission cannot manufacture authority or probe permission by executing a later member. Unsupported schemas reject at the real sealed schema parser; only the full closed scalar object profile is supported. Trusted in-process extension getters and validation must bound their own synchronous work and remain effect-free; this is no hostile-code sandbox.
+
+Reserve all tool-result record slots and the finite member inventory before invocation. The retained-byte check includes each exact repeated call association plus that descriptor's maximum result bytes. This deliberately conservative policy may refuse eventual small outputs that would fit: it guarantees room for every valid admitted result rather than truncating after effects. Actual accepted results consume actual bytes; unused allowance is not charged into the next turn. RuntimeOptions caps whole-run records, attempts and retained bytes independently of an arbitrarily large Host work ceiling.
+
+## Sequential effects and truthful partial records
+
+Invoke admitted members in provider order. Each start and result commit shares the run's cancellation/deadline gate. Invocation rechecks capability and atomically claims its owner-bound prepared handle; preflight grants no lasting permission. Tools add no model work units. A work ceiling of one therefore allows the admitted first turn's tool batch, then refuses a second model turn with ResourceLimit.
+
+Restricted run-owned member records initially mark every member Unstarted. Entering an interface invocation marks the current member InvokedUnknown. Each obtained guarded result is revalidated against the exact requested call and actual registered result schema/size, immediately classified as ToolResultData, and recorded with its fixed outcome/error and InvocationStarted observation. Failure, cancellation or output rejection cannot erase earlier success or enable retry; remaining members stay Unstarted.
+
+A null, thrown, foreign or loosely guarded invalid interface result supplies no valid associated ToolResultData. Its current member retains fixed failure/rejection and unknown effects rather than an invented result. A held noncooperative invocation at the local cut remains InvokedUnknown, with no false zero-effect claim. The runtime returns without releasing or waiting for that extension; late results and observed late faults cannot rewrite snapshots or start another member. A tool-reported Cancelled without an actual caller/deadline cut produces outer Failed rather than fabricating caller cancellation. Actual caller cancellation returns Cancelled; duration/capacity returns ResourceLimit, preserving accepted model units and usage.
+
+## Complete next turn and confinement
+
+Only a complete successful batch enters the next provider turn. ProviderInput preserves the accepted model and exact associated tool results as data, with the latest required continuation unchanged. ProviderRequest rejects missing, duplicate, foreign, recycled, wrong-name or changed-raw-argument associations before the next provider effect. Complete results may be reordered by exact identity; the runtime itself invokes and records provider order. Record/input/request-byte/work/attempt limits stop further admission while preserving completed tool effects.
+
+Each execution allocates independent records, cuts, prepared handles and provider identities, including equal Host execution IDs. Hosts may deliberately share a capability object; Runtime neither clones that authority nor caches permission between runs. Outcomes, progress and startup disclosure remain numeric/closed ordinary metadata. Arguments, success JSON, capabilities, continuation and raw exception details remain restricted internal/provider data; no public journal, capture surface, persistence or rollback certificate is added.
+
+## Evidence and limits
+
+[Runtime.Tools tests](../../../tests/SolusAgent.ContractTests/Runtime/Tools) primarily exercise actual public startup and ExecuteAsync with independent producers, effect counters and request-inspecting Scripted Provider. Supplemental tests inspect the same internal production batch operation's retained success/failed/unknown/unstarted snapshots. They cover multiple real tool rounds, all-member rejection, schema/result forwarding, exact count/byte/capacity neighbors, replay, bounded noncooperative waits, late faults, progress failure and concurrent-run confinement. [Project validation](../../00_project/validation.md) owns the actual commands.
+
+Tools.Api and Api remain independent; CustomTools references Tools.Api alone and CustomProvider Runtime.Api alone. Existing R1 Final/permission/closure/usage tests and M1 fixtures keep their original evidence identities. These unreleased drafts supply no automatic tool retry, durable receipts/restoration, full reservation/accounting engine, product acceptance, live/paid calls or package qualification. The optional DeepSeek adapter's controlled transport evidence is separate.

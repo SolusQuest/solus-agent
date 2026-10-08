@@ -1,6 +1,6 @@
 # DeepSeek provider draft
 
-`SolusAgent.Providers.DeepSeek` is an optional, callable `ModelProvider` implementation. Its sole direct production reference is `SolusAgent.Runtime.Api`; it has no package dependencies or Runtime reference. The four core libraries retain their reference graph. This implementation projects, sends, reads and admits one actual HTTP exchange through the [provider exchange draft](provider-exchange.md). The bounded [provider-turn runtime](runtime-execution.md) is separately implemented; complete tool/candidate orchestration, budget enforcement, durable restoration, distribution and downstream migration have their own delivery boundaries.
+`SolusAgent.Providers.DeepSeek` is an optional, callable `ModelProvider` implementation. Its sole direct production reference is `SolusAgent.Runtime.Api`; it has no package dependencies or Runtime reference. The four core libraries retain their reference graph. This implementation projects, sends, reads and admits one actual HTTP exchange through the [provider exchange draft](provider-exchange.md). The bounded [provider-turn runtime](runtime-execution.md) is separately implemented; the generic [runtime tool adapter](runtime-tools.md) owns complete tool rounds. Candidate orchestration, budget enforcement, durable restoration, distribution and downstream migration have their own delivery boundaries.
 
 ## Selected service profile
 
