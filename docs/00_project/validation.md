@@ -103,7 +103,7 @@ Runtime.Consumption tests compose the production runtime startup with the indepe
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Consumption"
 ```
 
-These are M2 scripted-transport consumption checks: they prove the production runtime, tool batches and both business Host consumption patterns under the independent ScriptedProvider, not a real model adapter, live transport, product acceptance, budget enforcement or restoration. The controlled DeepSeek adapter transport evidence for the same consumption obligations is owned by #35 and stays pending until that work reports its own proven result.
+These are M2 scripted-transport consumption checks: they prove the production runtime, tool batches and both business Host consumption patterns under the independent ScriptedProvider, not a real model adapter, live transport, product acceptance, budget enforcement or restoration. The controlled DeepSeek adapter transport evidence for the same consumption obligations is owned by #35 and is recorded in the DeepSeek adapter section above with its own controlled-transport composition proof and synthetic limits.
 
 ## Continuous integration
 
