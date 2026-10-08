@@ -229,6 +229,99 @@ public sealed class ScribeRuntimeStartupTests
         Assert.Equal(ProviderError.InvalidAssociation, record.Attempt.Provider.Error);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task NonAuthorizingSettlementBlocksToolCandidateAndSubmissionOnProductionPath(int mode)
+    {
+        var host = ScribeFixtures.CreateHost([new ScribeExchangePlan(true, ScribeDelivery.Delivered, CandidateContinuation.Continue)]);
+        var round = new ScribeRound(host,
+        [
+            new ScribeProductionStep("intro", "INTRO_FACT_CANARY accepted before settlement block"),
+            new ScribeProductionStep("usage", "USAGE_FACT_CANARY blocked by settlement"),
+        ]);
+        var settlements = 0;
+        round.Runtime.Hooks.Settlement = (settlement, _) =>
+        {
+            settlements++;
+            if (settlements == 1)
+            {
+                return new ValueTask<SettlementAcknowledgement?>(new SettlementAcknowledgement(settlement.Exposure,
+                    RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue));
+            }
+
+            return mode switch
+            {
+                0 => new ValueTask<SettlementAcknowledgement?>((SettlementAcknowledgement?)null),
+                1 => new ValueTask<SettlementAcknowledgement?>(new SettlementAcknowledgement(settlement.Exposure, RuntimeHookStatus.Unknown)),
+                2 => throw new InvalidOperationException("Synthetic settlement failure."),
+                3 => new ValueTask<SettlementAcknowledgement?>(new SettlementAcknowledgement(
+                    new RuntimeExposure(new ProviderScope("other-provider", "other-model"), settlement.Exposure.Attempt,
+                        settlement.Exposure.RequiredAcknowledgement), RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue)),
+                _ => new ValueTask<SettlementAcknowledgement?>(new SettlementAcknowledgement(settlement.Exposure,
+                    RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop)),
+            };
+        };
+
+        var observed = await round.RunAsync();
+
+        var expected = mode switch
+        {
+            0 => RuntimeStop.SettlementMissing,
+            1 => RuntimeStop.SettlementUnknown,
+            2 => RuntimeStop.SettlementFailed,
+            3 => RuntimeStop.SettlementMismatch,
+            _ => RuntimeStop.HostStopped,
+        };
+        Assert.Equal(CandidateStopReason.ProductionFailed, observed.Result.StopReason);
+        Assert.Equal(AgentTerminationReason.Failed, observed.Result.Outcome.Reason);
+        Assert.NotEqual(CandidateStopReason.RepairLimit, observed.Result.StopReason);
+
+        // Only the pre-block production reached the tool and the Host; nothing downstream ran afterwards.
+        Assert.Single(observed.Result.Receipts);
+        Assert.Single(host.Exchanges);
+        Assert.Equal(2, round.Agent.TotalProductionStarted);
+        Assert.Equal(1, round.Runtime.Capability.Effects);
+
+        // The real dispatched attempt and known usage stay retained separately from the blocked production.
+        Assert.Equal(2, round.Runtime.Productions.Count);
+        var blocked = round.Runtime.Productions[1].Attempt;
+        Assert.Equal(DispatchExposure.Dispatched, blocked.Observation.Exposure);
+        Assert.Equal(3, blocked.Observation.Usage.InputTokens);
+        Assert.Equal(2, blocked.Observation.Usage.OutputTokens);
+        Assert.Equal(expected, blocked.Diagnostic.SettlementStop);
+        Assert.Empty(round.Runtime.Productions[1].ToolResults);
+
+        // Earlier accepted progress survives the settlement block.
+        Assert.Equal(new[] { "intro" }, host.Progress.AcceptedFacts.Select(fact => fact.Member).ToArray());
+    }
+
+    [Fact]
+    public async Task CancellationDuringProductionRemainsCancelledBeforeSettlementGate()
+    {
+        var host = ScribeFixtures.CreateHost([new ScribeExchangePlan(true, ScribeDelivery.Delivered, CandidateContinuation.Continue)]);
+        var round = new ScribeRound(host, [new ScribeProductionStep("intro", "INTRO_FACT_CANARY cancelled production")]);
+        using var cancellation = new CancellationTokenSource();
+        round.Runtime.Hooks.Settlement = (settlement, _) =>
+        {
+            // Cancellation is observed after dispatch but before any downstream effect.
+            cancellation.Cancel();
+            return new ValueTask<SettlementAcknowledgement?>(new SettlementAcknowledgement(settlement.Exposure,
+                RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue));
+        };
+
+        var observed = await round.RunAsync(cancellation.Token);
+
+        Assert.Equal(CandidateStopReason.Cancelled, observed.Result.StopReason);
+        Assert.Equal(AgentTerminationReason.Cancelled, observed.Result.Outcome.Reason);
+        Assert.Equal(0, round.Runtime.Capability.Effects);
+        Assert.Empty(host.Exchanges);
+        Assert.Empty(observed.Result.Receipts);
+    }
+
     [Fact]
     public async Task InstalledToolPreparationIsEffectFreeAndInvocationPreservesCallAssociation()
     {

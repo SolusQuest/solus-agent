@@ -28,8 +28,14 @@ public enum ScribeDelivery
 public sealed class ScribeExchangePlan
 {
     /// <summary>Creates one coherent scripted exchange entry.</summary>
+    /// <param name="accepted">The scripted domain decision applied only when validation passes.</param>
+    /// <param name="delivery">The scripted delivery classification.</param>
+    /// <param name="continuation">The Host instruction delivered only with an acknowledged decision.</param>
+    /// <param name="correctionFact">The corrected fact a rejection requests as untrusted repair data; null sends a correction without repair data.</param>
     /// <exception cref="ArgumentOutOfRangeException">An enumeration value is undefined.</exception>
-    public ScribeExchangePlan(bool accepted, ScribeDelivery delivery = ScribeDelivery.Delivered, CandidateContinuation continuation = CandidateContinuation.Continue)
+    /// <exception cref="ArgumentException">A supplied correction fact is invalid.</exception>
+    public ScribeExchangePlan(bool accepted, ScribeDelivery delivery = ScribeDelivery.Delivered,
+        CandidateContinuation continuation = CandidateContinuation.Continue, string? correctionFact = null)
     {
         if (!Enum.IsDefined(delivery))
         {
@@ -44,6 +50,7 @@ public sealed class ScribeExchangePlan
         Accepted = accepted;
         Delivery = delivery;
         Continuation = continuation;
+        CorrectionFact = correctionFact is null ? null : ScribeText.Fact(correctionFact);
     }
 
     /// <summary>Gets the scripted domain decision applied only when validation passes.</summary>
@@ -54,6 +61,9 @@ public sealed class ScribeExchangePlan
 
     /// <summary>Gets the Host execution instruction delivered only with an acknowledged decision.</summary>
     public CandidateContinuation Continuation { get; }
+
+    /// <summary>Gets the corrected fact a rejection requests as untrusted repair data; null sends no repair data.</summary>
+    public string? CorrectionFact { get; }
 }
 
 /// <summary>Closed exchange correlation record retaining neither candidate payload nor correction text.</summary>
@@ -259,8 +269,9 @@ public sealed class ScribeBusinessHost : ICandidateHost
                 validation, accepted, plan.Delivery));
         }
 
-        var correction = accepted ? null
-            : $"synthetic rejection ({(validation == ScribePayloadValidation.Valid ? "domain-policy" : validation)}): {CorrectionCanary}";
+        // Rejection corrections always carry the shared grammar: the marker plus optional requested-fact
+        // repair data the producer must consume as untrusted data. Acceptance delivers no correction.
+        var correction = accepted ? null : ScribeCandidateCorrection.Format(plan.CorrectionFact);
         return plan.Delivery switch
         {
             ScribeDelivery.Missing => null,

@@ -83,6 +83,14 @@ internal sealed class ScribeRuntimeStartup
             throw new InvalidOperationException("The configuration exchange prevented candidate production.");
         }
 
+        // Only a correlated acknowledged settlement permitting Continue can authorize downstream effects:
+        // missing, unknown, failed, mismatched or explicit Stop settlement blocks tool invocation, candidate
+        // production and submission while the real dispatched attempt and usage stay retained above.
+        if (result.SettlementStop != RuntimeStop.None)
+        {
+            throw new InvalidOperationException("Settlement did not authorize continuation of candidate production.");
+        }
+
         // Provider and model data cannot select bindings: only the Host-installed tool is prepared or invoked.
         foreach (var call in result.Provider.Response.Calls)
         {

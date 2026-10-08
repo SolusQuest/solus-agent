@@ -41,9 +41,23 @@ internal sealed class ScribeRound
         await CandidateConsumer.RunAsync(Agent, CandidateRequest, host, cancellationToken);
 
     private Func<CandidateFeedback?, CancellationToken, ValueTask<string>> Produce(ScribeProductionStep step) =>
-        async (_, cancellationToken) =>
+        async (previous, cancellationToken) =>
         {
-            var payload = await Runtime.ProduceCandidateAsync(step.Member, step.Fact, cancellationToken);
+            // A production following a rejection is a repair: its content must come from the Host correction
+            // consumed as untrusted data, so the correction causally drives the repair. Missing or malformed
+            // correction data never authorizes fabricating repair content.
+            var fact = step.Fact;
+            if (previous?.Decision == CandidateDecision.Reject)
+            {
+                if (!ScribeCandidateCorrection.TryParseRequestedFact(previous.CorrectionText, out var requestedFact))
+                {
+                    throw new InvalidOperationException("Repair production requires parseable Host correction data.");
+                }
+
+                fact = requestedFact;
+            }
+
+            var payload = await Runtime.ProduceCandidateAsync(step.Member, fact, cancellationToken);
             producedMembers.Add(step.Member);
             return payload;
         };
