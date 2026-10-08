@@ -32,6 +32,10 @@ internal static class IntegrationFixture
             new AgentExecutionBounds(units, duration ?? TimeSpan.FromSeconds(10)), AgentCapability.None),
             new CandidateExecutionBounds(submissions, repairs, continuations));
 
+    internal static AgentRequest Execution(int units = 8) =>
+        new(Guid.NewGuid(), Instruction, [new AgentInput(AgentInputSource.Repository, InputData)],
+            new AgentExecutionBounds(units, TimeSpan.FromSeconds(10)), AgentCapability.None);
+
     internal static object Usage(int turn) => new
     { prompt_tokens = 100 + turn, completion_tokens = 10 + turn, total_tokens = 110 + 2 * turn };
 
@@ -66,12 +70,43 @@ internal static class IntegrationFixture
     }
 }
 
-/// <summary>A transform-shaped narrow capability whose admission consultation is observable.</summary>
-internal sealed class ObservedTransformCapability : IToolCapability
+/// <summary>A genuinely wrong-typed narrow capability whose identifier still matches the transform descriptor.</summary>
+internal sealed class ForeignTransformCapability : IToolCapability
+{ public string CapabilityId => "text_transform"; }
+
+/// <summary>
+/// Fixture-only method observer that forwards every call, unchanged and without replay, to the real guarded
+/// producer while counting the effect-free admission calls it actually receives.
+/// </summary>
+internal sealed class ObservedFunctionTool(IFunctionTool inner) : IFunctionTool
 {
-    private int reads;
-    internal int Reads => Volatile.Read(ref reads);
-    public string CapabilityId { get { Interlocked.Increment(ref reads); return "text_transform"; } }
+    private int preparations;
+    private int admissions;
+    private int invocations;
+    private int lastPrepareError;
+    internal int Preparations => Volatile.Read(ref preparations);
+    internal int Admissions => Volatile.Read(ref admissions);
+    internal int Invocations => Volatile.Read(ref invocations);
+    internal ToolError LastPrepareError => (ToolError)Volatile.Read(ref lastPrepareError);
+    public ToolDescriptor Descriptor => inner.Descriptor;
+    public ToolPreparation Prepare(ToolCall call)
+    {
+        Interlocked.Increment(ref preparations);
+        var preparation = inner.Prepare(call);
+        Volatile.Write(ref lastPrepareError, (int)preparation.Error);
+        return preparation;
+    }
+    public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability)
+    {
+        Interlocked.Increment(ref admissions);
+        return inner.ValidateInvocation(prepared, expectedCall, capability);
+    }
+    public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall,
+        IToolCapability? capability, CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref invocations);
+        return inner.InvokeAsync(prepared, expectedCall, capability, cancellationToken);
+    }
 }
 
 /// <summary>Non-cooperative response body optionally held at the read boundary, signalling entry and drained completion.</summary>
