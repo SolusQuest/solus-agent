@@ -143,7 +143,7 @@ public sealed class SettlementAndCutTests
         var transform = new TransformTool(maximumResultBytes: 64); var transformCapability = new TransformCapability();
         var held = RuntimeFixture.Barrier();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var late = AdapterFixture.Response("late-candidate", "late-reasoning", usage: IntegrationFixture.Usage(1));
         // The phase barrier sits at the held operation itself: the send, or the body read boundary.
         using var handler = phase == "send"
@@ -152,17 +152,17 @@ public sealed class SettlementAndCutTests
                 IntegrationFixture.AssertTransport(message);
                 held.SetResult();
                 await release.Task.ConfigureAwait(false);
-                completed.TrySetResult();
                 return AdapterFixture.Http(late);
             })
             : new FakeHandler((message, _) =>
             {
                 IntegrationFixture.AssertTransport(message);
-                var content = new HeldContent(Encoding.UTF8.GetBytes(late), completed, held, release);
+                var content = new HeldContent(Encoding.UTF8.GetBytes(late), drained, held, release);
                 content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
             });
-        using var provider = AdapterFixture.Provider(handler);
+        using var adapter = AdapterFixture.Provider(handler);
+        var provider = new ObservedProvider(adapter);
         var hooks = new RuntimeHooks();
         IAgent agent = RuntimeAgentFactory.Create(new(provider, Bindings(counter, counterCapability, transform, transformCapability), hooks),
             IntegrationFixture.Options(clock));
@@ -170,7 +170,8 @@ public sealed class SettlementAndCutTests
         var host = new ScriptedCandidateHost((submission, _) => CandidateFixture.Feedback(submission));
         var run = CandidateConsumer.RunAsync(candidateAgent, IntegrationFixture.Request(units: 2), host, cancellation.Token).AsTask();
         await RuntimeFixture.Await(held.Task);
-        Assert.False(completed.Task.IsCompleted);
+        Assert.False(provider.Returned.Task.IsCompleted);
+        if (phase == "body") Assert.False(drained.Task.IsCompleted);
         if (cancel) cancellation.Cancel(); else clock.Advance(TimeSpan.FromSeconds(10));
         var result = (await RuntimeFixture.Await(run)).Result;
 
@@ -187,7 +188,10 @@ public sealed class SettlementAndCutTests
         Assert.Null(hooks.Settlements.Single().ProviderOutcome);
         var snapshot = JsonSerializer.Serialize(result);
 
-        release.SetResult(); await RuntimeFixture.Await(completed.Task);
+        // Late completion is observed at the same actual guarded provider invocation, after its real return.
+        release.SetResult();
+        if (phase == "body") await RuntimeFixture.Await(drained.Task);
+        await RuntimeFixture.Await(provider.Returned.Task);
         Assert.Equal(1, handler.Sends); Assert.Empty(host.Submissions); Assert.Equal(0, host.Effects);
         Assert.Equal(0, counterCapability.Effects); Assert.Equal(0, transformCapability.Effects);
         Assert.Single(hooks.Settlements); Assert.Same(attempt, result.Outcome.Usage!.Attempts[0]);
@@ -203,9 +207,10 @@ public sealed class SettlementAndCutTests
         var entered = RuntimeFixture.Barrier<RuntimeSettlement>();
         var receipt = RuntimeFixture.Barrier<SettlementAcknowledgement?>();
         var hooks = new RuntimeHooks { After = (settlement, _) => { entered.SetResult(settlement); return new(receipt.Task); } };
+        var observedHooks = new ObservedHooks(hooks);
         using var handler = FakeHandler.Reply(AdapterFixture.Response("candidate-one", "held-settlement-reasoning", usage: IntegrationFixture.Usage(1)));
         using var provider = AdapterFixture.Provider(handler);
-        IAgent agent = RuntimeAgentFactory.Create(new(provider, Bindings(counter, counterCapability, transform, transformCapability), hooks),
+        IAgent agent = RuntimeAgentFactory.Create(new(provider, Bindings(counter, counterCapability, transform, transformCapability), observedHooks),
             IntegrationFixture.Options(clock));
         var candidateAgent = Assert.IsAssignableFrom<ICandidateAgent>(agent);
         var host = new ScriptedCandidateHost((submission, _) => CandidateFixture.Feedback(submission));
@@ -228,7 +233,10 @@ public sealed class SettlementAndCutTests
         Assert.Equal(101, attempt.Usage.InputTokens); Assert.Equal(11, attempt.Usage.OutputTokens);
         var snapshot = JsonSerializer.Serialize(result);
 
-        receipt.SetResult(RuntimeHooks.Continue(settlement)); await receipt.Task;
+        // Late completion is observed at the same actual returned hook producer after release.
+        Assert.False(observedHooks.AfterReturned.Task.IsCompleted);
+        receipt.SetResult(RuntimeHooks.Continue(settlement));
+        await RuntimeFixture.Await(observedHooks.AfterReturned.Task);
         Assert.Equal(1, handler.Sends); Assert.Empty(host.Submissions); Assert.Equal(0, host.Effects);
         Assert.Single(hooks.Settlements); Assert.Same(attempt, result.Outcome.Usage!.Attempts[0]);
         Assert.Equal(snapshot, JsonSerializer.Serialize(result));

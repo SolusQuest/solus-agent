@@ -40,7 +40,7 @@ public sealed class MixedCompositionTests
             return AdapterFixture.Http(wire.Dequeue());
         });
         using var provider = AdapterFixture.Provider(handler);
-        var hooks = new RuntimeHooks(); var options = IntegrationFixture.Options();
+        var hooks = new RuntimeHooks(); var options = IntegrationFixture.Options(maximumAttempts: 6);
         var configuration = new SolusAgent.Runtime.Api.Configuration.RuntimeConfiguration(provider,
             [new RuntimeToolRegistration(counter, counterCapability), new RuntimeToolRegistration(transform, transformCapability)], hooks);
         IAgent agent = RuntimeAgentFactory.Create(configuration, options);
@@ -86,6 +86,11 @@ public sealed class MixedCompositionTests
         Assert.Equal(CandidateDecision.Reject, result.Receipts[0].Decision); Assert.Equal(CandidateContinuation.Continue, result.Receipts[0].Continuation);
         Assert.Equal(CandidateDecision.Accept, result.Receipts[1].Decision); Assert.Equal(CandidateContinuation.Continue, result.Receipts[1].Continuation);
         Assert.Equal(CandidateDecision.Accept, result.Receipts[2].Decision); Assert.Equal(CandidateContinuation.End, result.Receipts[2].Continuation);
+        for (var i = 0; i < result.Receipts.Count; i++)
+        {
+            Assert.Equal(request.Execution.ExecutionId, result.Receipts[i].ExecutionId);
+            Assert.Equal(host.Submissions[i].SubmissionId, result.Receipts[i].SubmissionId);
+        }
 
         // Per-attempt numeric usage stays retained independently of payloads and effects.
         Assert.Equal(UsageInventoryCoverage.Complete, result.Outcome.Usage!.Coverage);
@@ -161,7 +166,9 @@ public sealed class MixedCompositionTests
         var ordinary = JsonSerializer.Serialize(result) + JsonSerializer.Serialize(observed.Progress)
             + JsonSerializer.Serialize(RuntimeAgentFactory.Describe(configuration, options));
         foreach (var canary in new[] { AdapterFixture.Credential, IntegrationFixture.CorrectionA, IntegrationFixture.InputData,
-            "rejected-final-reasoning", "candidate-one", "TRANSFORM-CANARY", "transform-canary" })
+            "candidate-one", "candidate-two", "candidate-three", "rejected-final-reasoning", "turn-two-reasoning",
+            "repair-reasoning", "accepted-final-reasoning", "closing-reasoning",
+            "transform-canary", "TRANSFORM-CANARY", "repair-transform-canary", "REPAIR-TRANSFORM-CANARY" })
             Assert.DoesNotContain(canary, ordinary);
     }
 
@@ -193,6 +200,56 @@ public sealed class MixedCompositionTests
             && message.GetProperty("content").GetString() == IntegrationFixture.CorrectionA);
         Assert.Single(messagesB, message => message.GetProperty("role").GetString() == "user"
             && message.GetProperty("content").GetString() == IntegrationFixture.CorrectionB);
+    }
+
+    [Theory]
+    [InlineData("work", CandidateStopReason.WorkUnitLimit)]
+    [InlineData("attempts", CandidateStopReason.RuntimeLimit)]
+    public async Task MixedToolThenFinalContinueStopsAtCeilingBeforeAnotherDispatchOrEffect(string mode, CandidateStopReason stop)
+    {
+        var counter = new CounterTool(maximumResultBytes: 64); var counterCapability = new CounterCapability();
+        var transform = new TransformTool(maximumResultBytes: 64); var transformCapability = new TransformCapability();
+        var wire = new Queue<string>([
+            AdapterFixture.Response(null, "mixed-batch-reasoning", "tool_calls",
+                calls: [AdapterFixture.Call("call-1a", "counter", IntegrationFixture.CounterArguments)], usage: IntegrationFixture.Usage(1)),
+            AdapterFixture.Response("candidate-one", "mixed-final-reasoning", usage: IntegrationFixture.Usage(2)),
+        ]);
+        using var handler = new FakeHandler((message, _) =>
+        {
+            IntegrationFixture.AssertTransport(message);
+            return Task.FromResult(AdapterFixture.Http(wire.Dequeue()));
+        });
+        using var provider = AdapterFixture.Provider(handler);
+        IAgent agent = RuntimeAgentFactory.Create(new(provider,
+            [new RuntimeToolRegistration(counter, counterCapability), new RuntimeToolRegistration(transform, transformCapability)], new RuntimeHooks()),
+            IntegrationFixture.Options(maximumAttempts: mode == "attempts" ? 2 : 64));
+        var candidateAgent = Assert.IsAssignableFrom<ICandidateAgent>(agent);
+        ScriptedCandidateHost? host = null;
+        host = new ScriptedCandidateHost((submission, _) =>
+        {
+            host!.ApplyEffect();
+            return CandidateFixture.Feedback(submission, CandidateDecision.Accept, CandidateContinuation.Continue);
+        });
+        var request = IntegrationFixture.Request(units: mode == "work" ? 2 : 8, submissions: 8, repairs: 8, continuations: 8);
+        var result = (await CandidateConsumer.RunAsync(candidateAgent, request, host)).Result;
+
+        // Real tool-to-Final mixed prefix with nonzero tool and Host effects, denied at the exact ceiling before any next dispatch.
+        Assert.Equal(stop, result.StopReason);
+        Assert.Equal(AgentTerminationReason.ResourceLimit, result.Outcome.Reason);
+        Assert.Equal(2, handler.Sends); Assert.Equal(2, result.Outcome.CompletedWorkUnits);
+        Assert.Equal(1, counterCapability.Effects); Assert.Equal(2, counterCapability.Total);
+        Assert.Equal(0, transformCapability.Effects);
+        Assert.Single(host.Submissions); Assert.Equal("candidate-one", host.Submissions[0].Payload);
+        Assert.Equal(1, host.Effects);
+        Assert.Single(result.Receipts);
+        Assert.Equal(request.Execution.ExecutionId, result.Receipts[0].ExecutionId);
+        Assert.Equal(host.Submissions[0].SubmissionId, result.Receipts[0].SubmissionId);
+        Assert.True(result.Receipts[0].IsAccepted); Assert.Equal(CandidateContinuation.Continue, result.Receipts[0].Continuation);
+        Assert.Equal(0, result.RepairsAdmitted); Assert.Equal(0, result.ContinuationsAdmitted);
+        var attempts = result.Outcome.Usage!.Attempts;
+        Assert.Equal(2, attempts.Count);
+        Assert.Equal(101, attempts[0].Usage.InputTokens); Assert.Equal(11, attempts[0].Usage.OutputTokens);
+        Assert.Equal(102, attempts[1].Usage.InputTokens); Assert.Equal(12, attempts[1].Usage.OutputTokens);
     }
 
     private static async Task<(List<string> Bodies, CandidateExecutionResult Result, ScriptedCandidateHost Host)> RunCorrectionVariant(string correction)

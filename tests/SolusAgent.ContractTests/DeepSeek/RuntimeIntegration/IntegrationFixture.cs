@@ -5,6 +5,7 @@ using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
 using SolusAgent.ContractTests.DeepSeek.Adapter;
 using SolusAgent.Providers.DeepSeek;
+using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Runtime.Startup;
 using SolusAgent.Tools.Api;
@@ -24,7 +25,8 @@ internal static class IntegrationFixture
     internal const string TransformRepairArguments = "{\"text\":\"repair-transform-canary\"}";
 
     // The DeepSeek tool profile requires explicit continuation support from the first request.
-    internal static RuntimeOptions Options(TimeProvider? clock = null) => new(clock, requireContinuation: true);
+    internal static RuntimeOptions Options(TimeProvider? clock = null, int maximumAttempts = 64) =>
+        new(clock, maximumAttempts, requireContinuation: true);
 
     internal static CandidateExecutionRequest Request(int units = 8, int submissions = 8, int repairs = 8,
         int continuations = 8, TimeSpan? duration = null, Guid? executionId = null) =>
@@ -48,7 +50,8 @@ internal static class IntegrationFixture
 
     internal static void AssertTransport(HttpRequestMessage message)
     {
-        Assert.Equal(AdapterFixture.Credential, message.Headers.Authorization!.Parameter);
+        Assert.Equal("Bearer", message.Headers.Authorization!.Scheme);
+        Assert.Equal(AdapterFixture.Credential, message.Headers.Authorization.Parameter);
         Assert.Equal("https://api.deepseek.com/chat/completions", message.RequestUri!.AbsoluteUri);
     }
 
@@ -109,8 +112,8 @@ internal sealed class ObservedFunctionTool(IFunctionTool inner) : IFunctionTool
     }
 }
 
-/// <summary>Non-cooperative response body optionally held at the read boundary, signalling entry and drained completion.</summary>
-internal sealed class HeldContent(byte[] body, TaskCompletionSource completed, TaskCompletionSource? held = null, TaskCompletionSource? release = null) : HttpContent
+/// <summary>Non-cooperative response body optionally held at the read boundary, signalling entry and drained delivery.</summary>
+internal sealed class HeldContent(byte[] body, TaskCompletionSource drained, TaskCompletionSource? held = null, TaskCompletionSource? release = null) : HttpContent
 {
     protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => WriteAsync(stream);
     protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken token) => WriteAsync(stream);
@@ -119,7 +122,46 @@ internal sealed class HeldContent(byte[] body, TaskCompletionSource completed, T
         held?.TrySetResult();
         if (release is not null) await release.Task.ConfigureAwait(false);
         await stream.WriteAsync(body).ConfigureAwait(false);
-        completed.TrySetResult();
+        drained.TrySetResult();
     }
     protected override bool TryComputeLength(out long length) { length = body.Length; return true; }
+}
+
+/// <summary>
+/// Transparent fixture-only observer of the actual guarded provider invocation. It forwards the exact request,
+/// observation and token exactly once to the real adapter and signals only when that invocation has returned.
+/// </summary>
+internal sealed class ObservedProvider(IModelProvider inner) : IModelProvider
+{
+    private readonly TaskCompletionSource returned = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource Returned => returned;
+    public ProviderScope Scope => inner.Scope;
+    public ProviderCapabilities Capabilities => inner.Capabilities;
+    public async ValueTask<ProviderExchangeResult> ExchangeAsync(ProviderRequest request, CancellationToken cancellationToken = default)
+    {
+        try { return await inner.ExchangeAsync(request, cancellationToken).ConfigureAwait(false); }
+        finally { returned.TrySetResult(); }
+    }
+}
+
+/// <summary>
+/// Transparent fixture-only observer of the actual exposure and settlement hook invocations. It forwards to the
+/// real hooks and signals only when each returned hook producer has completed.
+/// </summary>
+internal sealed class ObservedHooks(IRuntimeExposureHooks inner) : IRuntimeExposureHooks
+{
+    private readonly TaskCompletionSource beforeReturned = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource afterReturned = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource BeforeReturned => beforeReturned;
+    internal TaskCompletionSource AfterReturned => afterReturned;
+    public async ValueTask<ExposureAcknowledgement?> BeforeDispatchAsync(RuntimeExposure exposure, CancellationToken token)
+    {
+        try { return await inner.BeforeDispatchAsync(exposure, token).ConfigureAwait(false); }
+        finally { beforeReturned.TrySetResult(); }
+    }
+    public async ValueTask<SettlementAcknowledgement?> AfterAttemptAsync(RuntimeSettlement settlement, CancellationToken token)
+    {
+        try { return await inner.AfterAttemptAsync(settlement, token).ConfigureAwait(false); }
+        finally { afterReturned.TrySetResult(); }
+    }
 }
