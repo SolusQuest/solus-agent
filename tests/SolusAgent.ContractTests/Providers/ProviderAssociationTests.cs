@@ -85,7 +85,12 @@ public sealed class ProviderAssociationTests
             capture.CaptureUsage(new(2, 1));
             return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.ToolCalls, null, [run.First.Response!.Calls[0]]));
         });
-        var result = await provider.ExchangeAsync(run.SecondRequest);
+        // The earlier second request has already closed its invocation-owned observation.
+        // Exercise recycled call admission on a new physical turn with the same completed tool history.
+        var prior = run.SecondRequest;
+        var next = new ProviderRequest(prior.Scope, ProviderExchangeTests.Attempt(prior.Attempt.ExecutionId),
+            prior.Inputs, prior.Tools, prior.Continuation, prior.RequiredCapabilities, prior.Bounds);
+        var result = await provider.ExchangeAsync(next);
         Assert.Equal(ProviderError.InvalidAssociation, result.Error);
         Assert.Equal(2, result.Observation.Usage.InputTokens);
         Assert.Null(result.Response);

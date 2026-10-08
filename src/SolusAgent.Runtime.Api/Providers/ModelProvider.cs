@@ -52,9 +52,13 @@ public sealed class ProviderObservation
     private UsageAccounting? accounting;
     private bool captured;
     private bool closed;
+    private bool started;
+    private UsageAttemptObservation? sealedObservation;
     internal ProviderObservation(ProviderAttempt attempt) => Attempt = attempt;
     /// <summary>Gets immutable request-owned correlation.</summary>
     public ProviderAttempt Attempt { get; }
+    /// <summary>Gets whether a valid usage/accounting capture was made, including an explicitly unavailable capture.</summary>
+    public bool HasCapturedUsage { get { lock (gate) return captured; } }
     /// <summary>Reports dispatch knowledge without regressing known dispatch or altering captured evidence.</summary>
     public void ObserveDispatch(DispatchExposure value)
     {
@@ -80,8 +84,20 @@ public sealed class ProviderObservation
             usage = value; accounting = claims; captured = true;
         }
     }
-    internal UsageAttemptObservation Close()
-    { lock (gate) { closed = true; return Attempt.Observe(exposure, usage, accounting); } }
+    /// <summary>Returns a point-in-time immutable snapshot without closing the channel.</summary>
+    public UsageAttemptObservation Snapshot()
+    { lock (gate) return sealedObservation ?? Attempt.Observe(exposure, usage, accounting); }
+    /// <summary>Atomically freezes all preceding facts and rejects later writers. Repeated sealing returns the same snapshot.</summary>
+    public UsageAttemptObservation Seal()
+    {
+        lock (gate)
+        {
+            closed = true;
+            return sealedObservation ??= Attempt.Observe(exposure, usage, accounting);
+        }
+    }
+    internal bool TryBegin()
+    { lock (gate) { if (started || closed) return false; started = true; return true; } }
     private void Open() => ProviderBoundary.Require(!closed, ProviderError.ObservationClosed);
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderObservation);
@@ -115,10 +131,11 @@ public abstract class ModelProvider : IModelProvider
     public async ValueTask<ProviderExchangeResult> ExchangeAsync(ProviderRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var capture = request.Observation;
+        if (!capture.TryBegin()) return new(ProviderOutcome.Rejected, ProviderError.ObservationClosed, capture.Seal());
         if (!Scope.Matches(request.Scope)) return BeforeCore(ProviderOutcome.Rejected, ProviderError.InvalidAssociation);
         if ((request.RequiredCapabilities & ~Capabilities) != 0) return BeforeCore(ProviderOutcome.Rejected, ProviderError.UnsupportedCapability);
         if (cancellationToken.IsCancellationRequested) return BeforeCore(ProviderOutcome.Cancelled, ProviderError.Cancelled);
-        var capture = new ProviderObservation(request.Attempt);
         ProviderResponse? candidate = null;
         UsageAttemptObservation observation;
         var outcome = ProviderOutcome.Succeeded;
@@ -130,21 +147,26 @@ public abstract class ModelProvider : IModelProvider
         catch (ToolContractException) { outcome = ProviderOutcome.Rejected; error = ProviderError.InvalidResponse; }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed; }
-        finally { observation = capture.Close(); }
+        finally { observation = capture.Seal(); }
         if (error != ProviderError.None) return new(outcome, error, observation);
         if (cancellationToken.IsCancellationRequested) return new(ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
         try
         {
             ProviderBoundary.Require(candidate is not null, ProviderError.InvalidResponse);
-            candidate!.Validate(request);
+            candidate!.ValidateFor(request);
         }
         catch (ProviderContractException exception) { return new(ProviderOutcome.Rejected, exception.Error, observation); }
         // This final check is the acceptance cut; later cancellation cannot rewrite this immutable result.
         if (cancellationToken.IsCancellationRequested) return new(ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
         return new(ProviderOutcome.Succeeded, ProviderError.None, observation, candidate.Accept());
 
-        ProviderExchangeResult BeforeCore(ProviderOutcome result, ProviderError failure) =>
-            new(result, failure, request.Attempt.Observe(DispatchExposure.NotDispatched, new()));
+        ProviderExchangeResult BeforeCore(ProviderOutcome result, ProviderError failure)
+        {
+            try { capture.ObserveDispatch(DispatchExposure.NotDispatched); }
+            // A forwarding extension may already have supplied valid facts. Pre-core rejection cannot erase them.
+            catch (ProviderContractException) { }
+            return new(result, failure, capture.Seal());
+        }
     }
     /// <summary>Report known dispatch and normalized usage before constructing/validating output; bound own allocations and pass cancellation to effects.</summary>
     protected abstract ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken cancellationToken);

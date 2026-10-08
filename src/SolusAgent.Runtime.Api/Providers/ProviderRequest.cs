@@ -162,6 +162,7 @@ public sealed class ProviderRequest
             | (continuation is not null ? ProviderCapabilities.Continuation : ProviderCapabilities.None);
         HistoricalCallIds = callIds;
         PayloadByteCount = total;
+        Observation = new(attempt);
     }
     /// <summary>Gets exact host provider/model association.</summary>
     public ProviderScope Scope { get; }
@@ -179,6 +180,9 @@ public sealed class ProviderRequest
     public ProviderExchangeBounds Bounds { get; }
     /// <summary>Gets aggregate variable payload size; not a wire byte estimate.</summary>
     public int PayloadByteCount { get; }
+    /// <summary>Gets the invocation-owned numeric observation channel, visible independently of payload completion.</summary>
+    /// <remarks>This request is single-use for guarded exchange. The runtime may seal this channel at its local cut; late reports then reject.</remarks>
+    public ProviderObservation Observation { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderRequest);
     internal IReadOnlySet<string> HistoricalCallIds { get; }

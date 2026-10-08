@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="../SolusAgent.Api/SolusAgent.Api.csproj" />
         <ProjectReference Include="../SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />

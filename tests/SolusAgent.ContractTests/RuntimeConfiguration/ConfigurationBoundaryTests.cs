@@ -121,7 +121,7 @@ public sealed class ConfigurationBoundaryTests
         var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Volatile);
         var a = ConfigurationFixture.Change(exposure, field).Attempt;
         var wrong = new UsageAttemptObservation(a.ExecutionId, a.LogicalCallId, a.PhysicalAttemptId, a.AttemptNumber, DispatchExposure.NotDispatched, new());
-        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, wrong, RuntimeStop.Cancelled));
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, wrong, RuntimeStop.Cancelled, false));
     }
 
     [Fact]
@@ -129,10 +129,10 @@ public sealed class ConfigurationBoundaryTests
     {
         var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Durable);
         var observation = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1, DispatchExposure.NotDispatched, new());
-        Assert.Null(new RuntimeSettlement(exposure, observation, RuntimeStop.Cancelled).ProviderOutcome);
-        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None));
-        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None, ProviderOutcome.Succeeded));
-        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None, ProviderOutcome.Failed, ProviderError.None));
+        Assert.Null(new RuntimeSettlement(exposure, observation, RuntimeStop.Cancelled, false).ProviderOutcome);
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None, false));
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None, true, ProviderOutcome.Succeeded));
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.None, true, ProviderOutcome.Failed, ProviderError.None));
         Assert.Throws<ArgumentException>(() => new SettlementAcknowledgement(exposure, RuntimeHookStatus.Acknowledged));
         Assert.Throws<ArgumentException>(() => new SettlementAcknowledgement(exposure, RuntimeHookStatus.Unknown, RuntimeContinuation.Continue));
         Assert.Throws<ArgumentOutOfRangeException>(() => new SettlementAcknowledgement(exposure, RuntimeHookStatus.Acknowledged, (RuntimeContinuation)99));
@@ -142,6 +142,7 @@ public sealed class ConfigurationBoundaryTests
     {
         { RuntimeStop.None, true, false },
         { RuntimeStop.Cancelled, true, true },
+        { RuntimeStop.DurationLimit, true, true },
         { RuntimeStop.UnsupportedCapability, false, true },
         { RuntimeStop.MissingHooks, false, true },
         { RuntimeStop.InvalidAssociation, false, true },
@@ -171,13 +172,13 @@ public sealed class ConfigurationBoundaryTests
             DispatchExposure.Unknown, new());
         if (invokedAllowed)
         {
-            Assert.Same(dispatched, new RuntimeSettlement(exposure, dispatched, stop, ProviderOutcome.Succeeded, ProviderError.None).Observation);
-            Assert.Same(unknown, new RuntimeSettlement(exposure, unknown, stop, ProviderOutcome.Failed, ProviderError.ProviderFailed).Observation);
+            Assert.Same(dispatched, new RuntimeSettlement(exposure, dispatched, stop, true, ProviderOutcome.Succeeded, ProviderError.None).Observation);
+            Assert.Same(unknown, new RuntimeSettlement(exposure, unknown, stop, true, ProviderOutcome.Failed, ProviderError.ProviderFailed).Observation);
         }
         else
         {
-            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, dispatched, stop, ProviderOutcome.Succeeded, ProviderError.None));
-            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, unknown, stop, ProviderOutcome.Failed, ProviderError.ProviderFailed));
+            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, dispatched, stop, true, ProviderOutcome.Succeeded, ProviderError.None));
+            Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, unknown, stop, true, ProviderOutcome.Failed, ProviderError.ProviderFailed));
         }
     }
 
@@ -191,10 +192,10 @@ public sealed class ConfigurationBoundaryTests
             DispatchExposure.NotDispatched, new());
         if (noProviderAllowed)
         {
-            var settlement = new RuntimeSettlement(exposure, observation, stop);
+            var settlement = new RuntimeSettlement(exposure, observation, stop, false);
             Assert.Null(settlement.ProviderOutcome); Assert.Same(observation, settlement.Observation);
         }
-        else Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, stop));
+        else Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, stop, false));
     }
 
     [Fact]
@@ -203,7 +204,7 @@ public sealed class ConfigurationBoundaryTests
         var f = new ConfigurationFixture(); var exposure = new RuntimeExposure(f.Configuration.Scope, f.Attempt, ExposureStrength.Volatile);
         var observation = new UsageAttemptObservation(f.Attempt.ExecutionId, f.Attempt.LogicalCallId, f.Attempt.PhysicalAttemptId, 1,
             DispatchExposure.NotDispatched, new(0, 0));
-        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.Cancelled));
+        Assert.Throws<ArgumentException>(() => new RuntimeSettlement(exposure, observation, RuntimeStop.Cancelled, false));
     }
 
     private sealed class ThrowingCapability : SolusAgent.Tools.Api.IToolCapability

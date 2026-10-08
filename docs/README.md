@@ -33,6 +33,7 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Run limits and usage draft](20_architecture/drafts/usage.md).
 - [Provider exchange draft](20_architecture/drafts/provider-exchange.md).
 - [Runtime configuration and exposure draft](20_architecture/drafts/runtime-configuration.md): live Host bindings and ordered same-attempt acknowledgement/closure.
+- [Managed runtime execution draft](20_architecture/drafts/runtime-execution.md): public construction, the first production provider turn, whole-run local cuts and retained observations.
 
 - [Context envelope draft](20_architecture/drafts/context-envelope.md): explicit intent/admission and call-scoped restricted capture with Host-owned retention.
 
