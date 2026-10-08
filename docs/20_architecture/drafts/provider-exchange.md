@@ -1,6 +1,6 @@
 # Provider exchange draft
 
-`SolusAgent.Runtime.Api.Providers` supplies a bounded in-memory M1 extension seam for the self-owned runtime. The separately compiled [CustomProvider producer and Host consumer](../../../tests/ConsumerProbes/CustomProvider/ProviderProbe.cs) has Runtime.Api as its sole direct production reference, no packages, and no Runtime or downstream source. It uses the accepted [Tools](function-tools.md) and [Usage](usage.md) vocabulary through Runtime.Api's existing references. Api and Tools.Api retain their independent boundaries. No production loop, adapter, transport, parser, budget engine, saved-state codec, model service/profile or distribution is delivered.
+`SolusAgent.Runtime.Api.Providers` supplies a bounded in-memory M1 extension seam for the self-owned runtime. The separately compiled [CustomProvider producer and Host consumer](../../../tests/ConsumerProbes/CustomProvider/ProviderProbe.cs) has Runtime.Api as its sole direct production reference, no packages, and no Runtime or downstream source. It uses the accepted [Tools](function-tools.md) and [Usage](usage.md) vocabulary through Runtime.Api's existing references. Api and Tools.Api retain their independent boundaries. These M1 fixtures do not establish a production loop, adapter, transport, parser, budget engine, saved-state codec, model service/profile or distribution. The first actual provider-turn implementation is owned by [runtime execution](runtime-execution.md).
 
 ## Host control and model data
 
@@ -31,6 +31,10 @@ The guard closes capture before candidate admission. Constructor, association, s
 `ProviderCapabilities` advertises complete tool exchange, exact continuation and honest usage reporting separately. Requests include explicit requirements plus those implied by their represented tools/replay. An unsupported requirement refuses core invocation. A provider may emit continuation only when the request explicitly requires continuation support; the resulting token is then required if that accepted turn is continued. There is no lossy adaptation or alternate provider selection.
 
 ## Finite retention and diagnostics
+
+The production runtime requires observation visibility independently of pending payload completion. Each `ProviderRequest.Observation` is invocation-owned and guarded requests are single-use. `Snapshot()` returns immutable current facts; `Seal()` atomically retains all preceding facts, is idempotent and rejects later writers. `ModelProvider` uses this same channel without changing its subclass core signature. The runtime can seal it at a local cancellation/deadline cut even when the core does not cooperate, as specified in [runtime execution](runtime-execution.md). A fresh physical turn uses a fresh request/channel; replay of a closed guarded request rejects before another core effect.
+
+`ProviderResponse.PayloadByteCount` exposes numeric variable payload accounting. `ValidateFor(ProviderRequest)` reuses the complete request-relative validator without making a candidate accepted. Consumers must validate against their actual request rather than assuming `Accepted` proves its original bounds or continuation requirements. This protects same-attempt guarded results returned by a forwarding interface under a substituted request, while retained current-attempt observations remain independent of payload rejection.
 
 | Dimension | Draft ceiling |
 | --- | --- |

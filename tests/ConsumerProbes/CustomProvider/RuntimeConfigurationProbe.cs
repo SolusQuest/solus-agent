@@ -204,7 +204,7 @@ public sealed class ConfigurationConsumer
                     outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed;
                 }
             }
-            settlement = new(exposure, observation, stop, outcome, error);
+            settlement = new(exposure, observation, stop, outcome.HasValue, outcome, error);
             try
             {
                 var pending = Configuration.Hooks is null ? Task.FromResult<SettlementAcknowledgement?>(null)
