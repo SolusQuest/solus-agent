@@ -1,6 +1,6 @@
 # APR-shaped draft consumption
 
-The test-only `AprHost` library is a non-packable Api-only synthetic business Host: it references `SolusAgent.Api` as its only production assembly and receives the outer `IAgent` seam with its optional `ICandidateAgent` and `IContextAgent` seams, the current `AgentRequest` controls, a deliberately supplied `ICandidateHost` feedback channel and a separately supplied call-scoped `IRestrictedContextSink`. The sole test runner owns the finite APR scenario and startup composition under `tests/SolusAgent.ContractTests/ConsumerProbes/Apr`: one actual `CustomTools` `CounterTool` with its `CounterCapability`, one actual guarded `CustomProvider` provider, the existing `RuntimeConfiguration`, `ConfigurationConsumer` and Host exposure hooks, wired into the business Host over outer interfaces only. This is an executable M1 consumption example with no runtime implementation, provider transport, product source, PR identity, findings or evidence policy, GitHub authority, packaging or downstream migration.
+The test-only `AprHost` library is a non-packable Api-only synthetic business Host: it references `SolusAgent.Api` as its only production assembly and receives the outer `IAgent` seam with its optional `ICandidateAgent` and `IContextAgent` seams, the current `AgentRequest` controls, a deliberately supplied `ICandidateHost` feedback channel and a separately supplied call-scoped `IRestrictedContextSink`. The sole test runner owns the finite APR scenario and startup composition under `tests/SolusAgent.ContractTests/ConsumerProbes/Apr`: one actual `CustomTools` `CounterTool` with its `CounterCapability`, one actual guarded `CustomProvider` provider, the existing `RuntimeConfiguration`, `ConfigurationConsumer` and Host exposure hooks, wired into the business Host over outer interfaces only. This is an executable M1 consumption example with no runtime implementation and no provider transport; the M2 composition below adds actual production runtime execution on scripted transport. Neither tier carries product source, PR identity, findings or evidence policy, GitHub authority, packaging or downstream migration.
 
 ## Business Host and separate seams
 
@@ -89,6 +89,50 @@ Focused command, from the repository root after a successful restore and build o
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Apr"
 ```
 
+## Production runtime composition (M2)
+
+The same `AprBusinessHost` consumes the actual production runtime without any new seam: the startup layer composes `RuntimeAgentFactory.Create` over a `RuntimeConfiguration` carrying the independently compiled ScriptedProvider and the narrow CustomTools `CounterTool` and `TransformTool` bindings, then hands the returned `IAgent` and its `ICandidateAgent` face to the Host and invokes the existing direct candidate method. The Host stays Api-only and never sees Runtime, provider or tool types. One `ExecuteCandidatesAsync` invocation runs the full mixed production `ToolCalls` → Final Reject → correction-derived Final accepted with `Continue` → `ToolCalls` → Final accepted with `End`, so five accepted model responses and two real tool batches produce three fresh submissions with one repair and one continuation. Tool output causally determines the accepted item values, the Host correction causally determines the repaired value, and a changed correction changes that repair accordingly.
+
+The following matches the tested composition in `AprHostRunsFiveTurnToolCandidateMixedProductionInOneInvocation`; `steps` is the finite independent ScriptedProvider script and `feedback` is any supplied `ICandidateHost` channel. The snippet runs in the managed runner's Runtime/Consumption test context with the `SolusAgent.Api.Candidates`, `SolusAgent.Api.Execution`, `SolusAgent.Runtime.Api.Configuration`, `SolusAgent.Runtime.Startup` and `AprHost` namespaces imported alongside the implicit `System` namespaces.
+
+```csharp
+IAgent agent = RuntimeAgentFactory.Create(
+    new RuntimeConfiguration(provider,
+        [new RuntimeToolRegistration(counter, counterCapability), new RuntimeToolRegistration(transform, transformCapability)],
+        hooks),
+    new RuntimeOptions(requireContinuation: true));
+var host = new AprBusinessHost(agent, (ICandidateAgent)agent);
+var result = await host.ExecuteCandidatesAsync(
+    new CandidateExecutionRequest(execution, new CandidateExecutionBounds(3, 1, 1)),
+    feedback, progress, cancellationToken);
+```
+
+Runtime completion is not business completion: `AprHostAcceptance.EffectCount` stays zero after a `Completed` run and only the explicit `ApplyEffects` Host operation applies each accepted item at most once. Supplied prior context remains unsupported without a context seam on this path, exactly as in M1, so the APR restored execution mode waits for M4 instead of being silently faked.
+
+## Evidence tiers
+
+The consumption obligations below are partitioned by the evidence tier that can actually prove them. M1 rows remain synthetic expressibility through the Api-only producers; the M2 scripted row is actual production runtime composition with the independent ScriptedProvider and real tool batches; the M2 adapter row is controlled real transport owned by #35 and stays pending until that work publishes its own proven result. M3, M4 and M5 rows name later obligations that nothing in this leaf proves.
+
+| Obligation | M1 synthetic contract | M2 scripted production composition | M2 adapter-controlled transport (#35) | Later milestones |
+| --- | --- | --- | --- | --- |
+| Api-only Host over real runtime entrypoints | Host seams only | `AprHostRunsFiveTurnToolCandidateMixedProductionInOneInvocation` | pending | M5 downstream switch |
+| Mixed tool/candidate production with causal values and correction metamorphism | `RejectedCandidateIsCorrectedThroughActualToolOutputAndRepairsSubmissionId` | `AprHostRunsFiveTurnToolCandidateMixedProductionInOneInvocation`, `ChangedCorrectionMetamorphicallyChangesTheRepairPayload` | pending | — |
+| Episode accounting across intermediate tool turns | scenario productions only | `RepairEpisodeWithIntermediateToolTurnsChargesTheCorrectionAndRepairOnce`, `ContinuationEpisodeWithIntermediateToolTurnsChargesTheContinuationOnce` | pending | — |
+| Literal work/submission ceilings around tool turns | `WorkUnitBoundStopsResourceLimitBeforeTheNextEffect` | `WorkUnitCeilingIsLiteralBeforeEveryModelAdmissionAfterToolTurns`, `SubmissionCeilingDoesNotCountToolTurnsAndEndSucceedsAtExactCeilings`, `ZeroFollowOnAllowanceBlocksBeforeAnyNewProviderOrToolEffects` | pending | — |
+| Retained acceptance/usage under later stops and batch rejection | `MissingAcknowledgementAfterAcceptedProgressStopsWithoutFurtherWorkOrReplay` and neighbors | `EarlierHostAcceptanceAndUsageSurvivePostAcceptanceStops`, `LaterBatchWithInvalidLastMemberYieldsZeroNewEffectsWhileEarlierEffectsAndAcceptanceRemain`, `NonAuthorizingClosureBlocksNewToolEffectsAndCandidateSubmission`, `FailedToolAfterEarlierAcceptedBatchRetainsPriorEffectsAndNeverReplays`, `HeldToolOrProviderReturnsAtCutBeforeReleaseAndLateCompletionChangesNothing` | pending | — |
+| Full history, continuation and association | association probes | `ContinuationReplayAndClassifiedHistoryStayFullyAssociatedAcrossToolAndCandidateTurns` | pending | — |
+| Confinement and isolation | `RestrictedCanariesTravelOnlyOnTheRestrictedPayloadSurface`, `CredentialCanariesStayOutOfModelToolSavedAndOrdinaryData` | `RestrictedAndCredentialCanariesStayOffEverySafeSurface`, `TrustedInstructionAndInstalledBindingsStayImmutableDespiteInstructionLikeData`, `EqualExecutionIdsAcrossConcurrentHostRunsKeepHistoriesAndReceiptsIsolated` | pending | — |
+| Fresh versus restored execution | `SuppliedPriorContinuationAdmitsWorkAndCapturesToolDerivedRestrictedState`, `RejectedInvalidContextStopsBeforeWorkCaptureEffectsAndCandidateWork` | `AprContextRequiredRunRemainsUnsupportedWithoutAContextSeam` | pending | M4 actual restoration, including the selected APR mode |
+| Real provider transport and parsing | — | — | pending, owned by #35 | M5 migration proof |
+| Budget engine, retry policy, billing accuracy | — | — | — | M3 |
+| Packaging and downstream migration | — | — | — | M5 |
+
+Focused command, from the repository root after a successful restore and build of the same tree:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Consumption"
+```
+
 ## Later milestone limits
 
-These M1 fixtures do not invoke the production [provider-turn runtime](runtime-execution.md) or prove a real model adapter, provider transport or runtime tool adapter; the guarded provider script is not adapter conformance proof. M3 remains unimplemented: no production budget engine, accounting enforcement, billing accuracy or strict token ceiling exists here; the finite scenario bounds and the fixture consumer's small script capacity are documented test policy, not production enforcement, storage or recovery. M4 remains unimplemented: the supplied context grammar is in-memory expressibility only, with no complete new-process restoration, durable codec, integrity protection or crash recovery. M5 and actual downstream migration remain unproved: no product acceptance implementation, publication, release, packaging or downstream consumer switch is demonstrated. M1 proves that one synthetic APR-shaped Host can consume the accepted drafts with product-owned acceptance, honest usage and restricted confinement; it does not prove any production behavior.
+The M1 fixtures above do not invoke the production [provider-turn runtime](runtime-execution.md) or prove a real model adapter, provider transport or runtime tool adapter; the guarded provider script is not adapter conformance proof. The M2 composition runs the actual production runtime and tool batches, but its ScriptedProvider remains synthetic scripted transport: no real model adapter, provider transport or adapter conformance is proved here, and the controlled DeepSeek transport evidence is owned by #35 and remains pending. M3 remains unimplemented: no production budget engine, accounting enforcement, billing accuracy or strict token ceiling exists here; the finite scenario bounds and the fixture consumer's small script capacity are documented test policy, not production enforcement, storage or recovery. M4 remains unimplemented: the supplied context grammar is in-memory expressibility only, with no complete new-process restoration, durable codec, integrity protection or crash recovery, and the APR restored execution mode waits for that milestone. M5 and actual downstream migration remain unproved: no product acceptance implementation, publication, release, packaging or downstream consumer switch is demonstrated. M1 proves that one synthetic APR-shaped Host can consume the accepted drafts with product-owned acceptance, honest usage and restricted confinement, and M2 proves the same Host drives the actual runtime through one mixed production; neither proves product or release behavior.
