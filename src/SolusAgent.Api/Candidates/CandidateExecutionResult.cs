@@ -73,6 +73,12 @@ public enum CandidateStopReason
     ProgressObserverFailed,
     /// <summary>Required execution guarantees were rejected before production or submission.</summary>
     UnsupportedCapability,
+    /// <summary>The whole-run local duration expired, independently of caller cancellation and work counts.</summary>
+    DurationLimit,
+    /// <summary>A finite provider, record or retained-payload capacity prevented further production.</summary>
+    RuntimeLimit,
+    /// <summary>Provider exposure permission or settlement stopped production without a candidate Host End.</summary>
+    ProductionStopped,
 }
 
 /// <summary>An immutable safe completion observation retaining independent receipts without payloads or effect claims.</summary>
@@ -106,8 +112,8 @@ public sealed class CandidateExecutionResult
         var expectedReason = stopReason switch
         {
             CandidateStopReason.Completed => AgentTerminationReason.Completed,
-            CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement => AgentTerminationReason.Partial,
-            CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit => AgentTerminationReason.ResourceLimit,
+            CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.ProductionStopped => AgentTerminationReason.Partial,
+            CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit or CandidateStopReason.DurationLimit or CandidateStopReason.RuntimeLimit => AgentTerminationReason.ResourceLimit,
             CandidateStopReason.Cancelled => AgentTerminationReason.Cancelled,
             CandidateStopReason.UnsupportedCapability => AgentTerminationReason.UnsupportedCapability,
             _ => AgentTerminationReason.Failed,

@@ -67,9 +67,13 @@ internal sealed class RunCut : IDisposable
             return true;
         }
     }
-    public async ValueTask<(bool Obtained, T? Value)> WaitAsync<T>(Task<T> pending)
+    public async ValueTask<(bool Obtained, T? Value)> WaitAsync<T>(Task<T> pending, bool observeCompletedAtCut = false)
     {
         await Task.WhenAny(pending, interrupted.Task).ConfigureAwait(false);
+        // Candidate delivery observes an already completed callback at this selection boundary.
+        // This retains facts only; Check/TryStart still forbid every subsequent effect after a cut.
+        if (observeCompletedAtCut && pending.IsCompleted)
+            return (true, await pending.ConfigureAwait(false));
         if (Check() != RuntimeStop.None)
         {
             ObserveLate(pending);

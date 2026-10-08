@@ -83,6 +83,12 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --con
 
 Run the full applicable suite after draft, reference, registration or shared-state changes. This evidence does not establish actual provider transport, tools/candidates, complete budgets, persistence, live calls or release qualification.
 
+Runtime.Candidates tests execute the actual public `ICandidateAgent` returned by startup, using the independent Scripted Provider and existing Api-only candidate Host/consumer. They prove feedback-driven repair and continuation, full acknowledgement association, exact finite bounds, retained receipts/usage, whole-run cut barriers and late-result confinement. The [runtime candidate draft](../20_architecture/drafts/runtime-candidates.md) owns its production meaning and terminal categories. Run the focused path and then the full suite after shared contract/state edits:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Candidates"
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).
