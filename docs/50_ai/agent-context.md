@@ -18,6 +18,8 @@ The outer [context envelope draft](../20_architecture/drafts/context-envelope.md
 
 The Runtime.Api [runtime configuration and exposure draft](../20_architecture/drafts/runtime-configuration.md) is executable through the independent CustomProvider fixture and RuntimeConfiguration tests. It covers live interface bindings, current AgentRequest authority, ordered Host permission, same-attempt closure, cancellation cuts and retained usage. Host durable claims and the finite memory-only protocol do not establish production storage, enforcement or restoration.
 
+The [APR-shaped draft consumption](../20_architecture/drafts/apr-consumption.md) outcome is executable through the Api-only AprHost business Host and the finite Apr scenario in the contract runner, which composes the actual CustomTools counter tool and guarded CustomProvider provider through the existing configuration and exposure seams. It covers supplied prior context, product-owned acceptance, correction and completion, honest usage and restricted confinement; production runtime behavior, budget enforcement, restoration and downstream migration remain unimplemented.
+
 ## Shared loading and ownership
 
 [Shared handbook adoption](../00_project/shared-handbook.md) records the pinned source at `docs/shared/`, initialization, updates, and loading results. Shared skill sources are discovered through the [Task routing](https://github.com/SolusQuest/solus-book/blob/c3718d7d194e2c42b2c95ead4e8aab7f3ec1ff67/agents/task-routing.md) links and the table below. Read each `SKILL.md` directly; resolve its referenced standards and templates from its directory in the handbook.
