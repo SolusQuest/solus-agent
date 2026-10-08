@@ -122,17 +122,39 @@ public sealed class ConfinementAndIsolationTests
     [Fact]
     public async Task EqualExecutionIdsAcrossConcurrentHostRunsKeepHistoriesAndReceiptsIsolated()
     {
-        var step = (Func<ProviderRequest, ProviderObservation, CancellationToken, ValueTask<ProviderResponse>>)((r, o, _) =>
+        var firstA = RuntimeFixture.Barrier();
+        var firstB = RuntimeFixture.Barrier();
+        var releaseFirstA = RuntimeFixture.Barrier();
+        var releaseFirstB = RuntimeFixture.Barrier();
+        var repairA = RuntimeFixture.Barrier();
+        var repairB = RuntimeFixture.Barrier();
+        var releaseRepairA = RuntimeFixture.Barrier();
+        var releaseRepairB = RuntimeFixture.Barrier();
+        ProviderRequest?[] firstHeld = new ProviderRequest?[2];
+        ProviderRequest?[] repairHeld = new ProviderRequest?[2];
+        var step = (Func<ProviderRequest, ProviderObservation, CancellationToken, ValueTask<ProviderResponse>>)(async (r, o, _) =>
         {
-            var tag = r.Inputs[1].Text!;
+            var index = r.Inputs[1].Text == "run-a" ? 0 : 1;
             var models = r.Inputs.Count(i => i.Model is not null);
-            return models switch
+            if (models == 0)
             {
-                0 => ConsumptionFixture.ToolCalls(r, o, [ToolFixture.Counter("c1", 1)]),
-                1 => ConsumptionFixture.Final(r, o, "apr-item:" + tag + ":" + ConsumptionFixture.CounterTotal(r, "c1")),
-                2 => ConsumptionFixture.Final(r, o, "apr-item:fixed:" + ConsumptionFixture.CorrectedValue(r)),
-                _ => ConsumptionFixture.Final(r, o, "apr-item:last:1"),
-            };
+                firstHeld[index] = r;
+                (index == 0 ? firstA : firstB).TrySetResult();
+                await (index == 0 ? releaseFirstA : releaseFirstB).Task;
+                return await ConsumptionFixture.ToolCalls(r, o, [ToolFixture.Counter("c1", 1)]);
+            }
+
+            if (models == 1) return await ConsumptionFixture.Final(r, o,
+                "apr-item:" + r.Inputs[1].Text + ":" + ConsumptionFixture.CounterTotal(r, "c1"));
+            if (models == 2)
+            {
+                repairHeld[index] = r;
+                (index == 0 ? repairA : repairB).TrySetResult();
+                await (index == 0 ? releaseRepairA : releaseRepairB).Task;
+                return await ConsumptionFixture.Final(r, o, "apr-item:fixed:" + ConsumptionFixture.CorrectedValue(r));
+            }
+
+            return await ConsumptionFixture.Final(r, o, "apr-item:last:1");
         });
         var startup = new ProductionStartup(Enumerable.Repeat(step, 8).ToArray());
         var executionId = Guid.NewGuid();
@@ -150,6 +172,31 @@ public sealed class ConfinementAndIsolationTests
             ConsumptionFixture.Request(4, executionId, data: "run-a"), submissions: 3, repairs: 1, continuations: 1), aChannel).AsTask();
         var bRun = bHost.ExecuteCandidatesAsync(ConsumptionFixture.Candidates(
             ConsumptionFixture.Request(4, executionId, data: "run-b"), submissions: 3, repairs: 1, continuations: 1), bChannel).AsTask();
+
+        // Positive overlap: both runs really reached their first provider call while both remain incomplete,
+        // each holding its own independent request history and attempt identities.
+        await RuntimeFixture.Await(Task.WhenAll(firstA.Task, firstB.Task));
+        Assert.False(aRun.IsCompleted); Assert.False(bRun.IsCompleted);
+        Assert.Equal("run-a", firstHeld[0]!.Inputs[1].Text);
+        Assert.Equal("run-b", firstHeld[1]!.Inputs[1].Text);
+        Assert.NotEqual(firstHeld[0]!.Attempt.PhysicalAttemptId, firstHeld[1]!.Attempt.PhysicalAttemptId);
+        Assert.NotEqual(firstHeld[0]!.Attempt.LogicalCallId, firstHeld[1]!.Attempt.LogicalCallId);
+
+        // Release run B's gate before run A's; this witnesses gate release order only, since asynchronous
+        // continuations need not execute in release order.
+        releaseFirstB.TrySetResult();
+        releaseFirstA.TrySetResult();
+
+        // Held repair neighbor: both follow-on productions overlap too, each seeing only its own correction.
+        await RuntimeFixture.Await(Task.WhenAll(repairA.Task, repairB.Task));
+        Assert.False(aRun.IsCompleted); Assert.False(bRun.IsCompleted);
+        Assert.Contains(repairHeld[0]!.Inputs, i => i.Text == ConsumptionFixture.Correction(1));
+        Assert.DoesNotContain(repairHeld[0]!.Inputs, i => i.Text == ConsumptionFixture.Correction(2));
+        Assert.Contains(repairHeld[1]!.Inputs, i => i.Text == ConsumptionFixture.Correction(2));
+        Assert.DoesNotContain(repairHeld[1]!.Inputs, i => i.Text == ConsumptionFixture.Correction(1));
+        releaseRepairB.TrySetResult();
+        releaseRepairA.TrySetResult();
+
         var aResult = await RuntimeFixture.Await(aRun);
         var bResult = await RuntimeFixture.Await(bRun);
 

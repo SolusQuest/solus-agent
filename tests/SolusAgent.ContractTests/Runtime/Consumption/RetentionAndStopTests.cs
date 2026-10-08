@@ -247,7 +247,11 @@ public sealed class RetentionAndStopTests
             new AgentExecutionBounds(8, TimeSpan.FromSeconds(10)), new CandidateExecutionBounds(4, 1, 1));
         var host = new ScribeBusinessHost(manifest, new ScribeProgress(manifest, []), control,
             ExchangePlans.Scribe([new ExchangePolicy(true, CandidateContinuation.Continue, ExchangeDelivery.Held)]));
-        var pending = host.ExecuteFreshCandidatesAsync(startup.Agent, cancellationToken: cancellation.Token).AsTask();
+        // The same fresh-injection path ExecuteFreshCandidatesAsync uses, with a witnessing decorator on the Host channel.
+        var channel = new WitnessingChannel(host);
+        var request = new ScribeCandidateStartup(control.CandidateBounds).Adopt(host.CreateFreshRequest());
+        var pending = startup.Agent.ExecuteCandidatesAsync(request, channel, cancellationToken: cancellation.Token).AsTask();
+        var delivery = await RuntimeFixture.Await(channel.DeliveryPublished);
         await RuntimeFixture.Await(host.DeliveryHeld);
         if (cancel) cancellation.Cancel(); else clock.Advance(TimeSpan.FromSeconds(11));
         var result = await RuntimeFixture.Await(pending);
@@ -255,11 +259,16 @@ public sealed class RetentionAndStopTests
         Assert.Equal(stop, result.StopReason);
         Assert.Equal(CandidateAcknowledgement.Unknown, result.Receipts.Single().Acknowledgement);
         Assert.Equal(0, result.AcceptedCount);
-        // The Host committed its validated fact before delivery, and the uncertain delivery never grants replay.
+        // The run returned at the cut while the actual held delivery operation is still incomplete and unreleased.
+        Assert.True(host.DeliveryHeld.IsCompleted);
+        Assert.False(delivery.IsCompleted);
+        // The Host committed its validated fact before delivery, so committed progress exceeds the acknowledged count.
         Assert.Equal(1, host.Progress.AcceptedCount);
         Assert.Single(host.Exchanges);
         var before = System.Text.Json.JsonSerializer.Serialize(result);
         host.ReleaseHeldDelivery();
+        await RuntimeFixture.Await(delivery);
+        Assert.True(delivery.IsCompleted);
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(result));
         Assert.Single(host.Exchanges);
         Assert.Equal(1, host.Progress.AcceptedCount);
@@ -274,47 +283,59 @@ public sealed class RetentionAndStopTests
         var clock = new ControlledTimeProvider();
         var entered = RuntimeFixture.Barrier();
         var release = RuntimeFixture.Barrier();
-        var heldResponse = RuntimeFixture.Barrier<ProviderResponse>();
-        ProviderRequest? heldRequest = null;
+        var published = RuntimeFixture.Barrier<Task>();
         var startup = stage == "tool"
             ? new ProductionStartup(
                 [(r, o, _) => ConsumptionFixture.ToolCalls(r, o, [ToolFixture.Transform("t1", "held")], ConsumptionFixture.TurnReplay(1))],
-                options: new RuntimeOptions(clock, requireContinuation: true), transformEffect: async (call, capability, token) =>
+                options: new RuntimeOptions(clock, requireContinuation: true), transformEffect: (call, capability, token) =>
                 {
-                    entered.SetResult();
-                    await release.Task;
-                    return ToolOutput.Success(call, "{\"text\":\"LATE\"}");
+                    var operation = HeldToolEffect(call);
+                    published.SetResult(operation);
+                    return new ValueTask<ToolOutput>(operation);
                 })
             : new ProductionStartup(
                 [(r, o, _) =>
                 {
                     o.CaptureUsage(new(3, 2));
-                    heldRequest = r;
-                    entered.SetResult();
-                    return new(heldResponse.Task);
+                    var operation = HeldProviderTurn(r);
+                    published.SetResult(operation);
+                    return new ValueTask<ProviderResponse>(operation);
                 }],
                 options: new RuntimeOptions(clock, requireContinuation: true));
         var host = new AprBusinessHost(startup.Agent, startup.Agent);
         var channel = new ExchangeChannel([new ExchangePolicy(true, CandidateContinuation.End)]);
         var pending = host.ExecuteCandidatesAsync(ConsumptionFixture.Candidates(ConsumptionFixture.Request(8)), channel).AsTask();
         await RuntimeFixture.Await(entered.Task);
+        var operation = await RuntimeFixture.Await(published.Task);
         clock.Advance(TimeSpan.FromSeconds(61));
         var result = await RuntimeFixture.Await(pending);
 
         Assert.Equal(CandidateStopReason.DurationLimit, result.StopReason);
+        // Cut-return-before-release proof: the run returned while the actual held operation task is still incomplete.
         Assert.False(release.Task.IsCompleted);
+        Assert.False(operation.IsCompleted);
         Assert.Empty(channel.Submissions);
         var before = System.Text.Json.JsonSerializer.Serialize(result);
-        if (stage == "tool") release.SetResult();
-        else
-        {
-            release.SetResult();
-            heldResponse.SetResult(new ProviderResponse(heldRequest!.Scope, heldRequest.Attempt, ProviderFinish.Final, "late", []));
-        }
-
+        release.SetResult();
+        await RuntimeFixture.Await(operation);
+        Assert.True(operation.IsCompleted);
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(result));
         Assert.Equal(1, startup.Provider.Effects);
         Assert.Empty(channel.Submissions);
+
+        async Task<ToolOutput> HeldToolEffect(ToolCall call)
+        {
+            entered.SetResult();
+            await release.Task;
+            return ToolOutput.Success(call, "{\"text\":\"LATE\"}");
+        }
+
+        async Task<ProviderResponse> HeldProviderTurn(ProviderRequest request)
+        {
+            entered.SetResult();
+            await release.Task;
+            return new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.Final, "late", []);
+        }
     }
 
     private sealed class WrongTextCapability : IToolCapability

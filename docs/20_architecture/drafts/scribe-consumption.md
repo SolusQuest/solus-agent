@@ -1,6 +1,6 @@
 # Scribe consumption draft
 
-An Api-only Scribe-shaped synthetic business Host consumes the accepted outer drafts end to end: it explicitly starts fresh from validated business progress and exchanges independently correlated candidates with bounded repair and honest uncertainty. The independently compiled [ScribeHost](../../../tests/ConsumerProbes/ScribeHost/ScribeHost.csproj) library has `SolusAgent.Api` as its sole production reference, no packages, and compile inputs confined to its own project directory. The runner's [ConsumerProbes/Scribe](../../../tests/SolusAgent.ContractTests/ConsumerProbes/Scribe) startup composes it with the existing scripted candidate producer, the actual CustomProvider configuration provider/hooks/consumer/tool fixtures and the independent scripted usage producer. Business checkpoint and campaign accounting, domain evidence and patches, storage and external effects stay outside the shared contracts; this M1 probe delivers no production loop, budget engine, provider transport, restoration codec, packaging or downstream migration.
+An Api-only Scribe-shaped synthetic business Host consumes the accepted outer drafts end to end: it explicitly starts fresh from validated business progress and exchanges independently correlated candidates with bounded repair and honest uncertainty. The independently compiled [ScribeHost](../../../tests/ConsumerProbes/ScribeHost/ScribeHost.csproj) library has `SolusAgent.Api` as its sole production reference, no packages, and compile inputs confined to its own project directory. The runner's [ConsumerProbes/Scribe](../../../tests/SolusAgent.ContractTests/ConsumerProbes/Scribe) startup composes it with the existing scripted candidate producer, the actual CustomProvider configuration provider/hooks/consumer/tool fixtures and the independent scripted usage producer, and the [Runtime/Consumption](../../../tests/SolusAgent.ContractTests/Runtime/Consumption) startup composes the same Host with the actual production runtime. Business checkpoint and campaign accounting, domain evidence and patches, storage and external effects stay outside the shared contracts; the Host owns no agent loop, and a budget engine, real provider transport, restoration codec, packaging and downstream migration remain unproved.
 
 ## Fresh reconstruction from validated progress
 
@@ -68,6 +68,48 @@ All mapped scenarios execute in the current suite; [project validation](../../00
 | Diagnostics confinement | `ScribeConfinementTests.OrdinaryDiagnosticsExcludePayloadCorrectionProgressContinuationAndCredentialCanares` | All restricted canaries absent from ordinary surfaces, exact continuation inspected only in the restricted channel |
 | Evaluated boundary | `ProductionProjectGraphTests.ScribeHostProbeEvaluatesOnlyApiWithOwnDirectoryCompileInputsAndNoForeignAssemblyReferences` | Api-only reference, no packages, own-directory compile inputs, no foreign assembly references |
 
+## Production runtime composition (M2)
+
+The same `ScribeBusinessHost` drives the actual production runtime through its minimal Api-only fresh candidate-injection method. The startup layer composes `RuntimeAgentFactory.Create` over a `RuntimeConfiguration` carrying the independently compiled ScriptedProvider and the narrow CustomTools `CounterTool` and `TransformTool` bindings, then hands the returned `ICandidateAgent` face to the Host. `ExecuteFreshCandidatesAsync` internally consumes the Host's own `CreateFreshRequest` through the existing `ScribeCandidateStartup.Adopt` adapter and runs the candidate exchange against the Host's own `SubmitAsync`; no runtime type, transcript, continuation or saved state crosses the Api boundary. One invocation runs the mixed production `ToolCalls` → Final Reject → correction-derived Final accepted with `Continue` → `ToolCalls` → Final accepted with `End`, so five accepted model responses and two real tool batches drive three submissions with one repair and one continuation. Tool output causally determines the accepted facts, the Host correction causally determines the repair fact, and changed correction data changes that repair.
+
+The following matches the tested composition in `ScribeHostRunsFiveTurnToolCandidateMixedProductionInOneFreshInvocation`; `steps` is the finite independent ScriptedProvider script and `exchangePlan` is the Host's own scripted policy list. The snippet runs in the managed runner's Runtime/Consumption test context with the `SolusAgent.Api.Candidates`, `SolusAgent.Api.Execution`, `SolusAgent.Runtime.Api.Configuration`, `SolusAgent.Runtime.Startup` and `SolusAgent.ConsumerProbes.ScribeHost` namespaces imported alongside the implicit `System` namespaces.
+
+```csharp
+IAgent agent = RuntimeAgentFactory.Create(
+    new RuntimeConfiguration(provider,
+        [new RuntimeToolRegistration(counter, counterCapability), new RuntimeToolRegistration(transform, transformCapability)],
+        hooks),
+    new RuntimeOptions(requireContinuation: true));
+var host = new ScribeBusinessHost(manifest, new ScribeProgress(manifest, []), control, exchangePlan);
+var result = await host.ExecuteFreshCandidatesAsync((ICandidateAgent)agent, progress, cancellationToken);
+```
+
+A second fresh invocation is a lifecycle choice, not restoration: it reconstructs only validated facts and unresolved members under a new execution identity with fresh protocol identities and fresh run usage, which `ScribeSecondFreshRunUsesNewIdentitiesWithoutTranscriptOrRestoration` checks against the exact reconstructed request. Committed Host progress and Runtime acknowledgements stay distinct: a validated fact committed before a held delivery survives a cut as committed progress even when the receipt is `Unknown`, and that uncertain delivery is never replayed, which `HeldHostAcknowledgementReturnsAtCutAndKeepsCommittedFactsWithoutReplay` witnesses through the completed late delivery. Host coverage is calculated separately from runtime completion and `ExternalEffects` stays zero.
+
+## Evidence tiers
+
+The consumption obligations below are partitioned by the evidence tier that can actually prove them. M1 rows remain synthetic expressibility through the Api-only producers and configuration fixtures; the M2 scripted row is actual production runtime composition with the independent ScriptedProvider and real tool batches; the M2 adapter row is controlled real transport owned by #35 and stays pending until that work publishes its own proven result. M3, M4 and M5 rows name later obligations that nothing in this leaf proves.
+
+| Obligation | M1 synthetic contract | M2 scripted production composition | M2 adapter-controlled transport (#35) | Later milestones |
+| --- | --- | --- | --- | --- |
+| Api-only Host over real runtime entrypoints | `ScribeHostProbeEvaluatesOnlyApiWithOwnDirectoryCompileInputsAndNoForeignAssemblyReferences` | `ScribeHostRunsFiveTurnToolCandidateMixedProductionInOneFreshInvocation` | pending | M5 downstream switch |
+| Fresh reconstruction from validated progress | `FreshChoiceReconstructsAcceptedFactsAsDataAndLeavesOnlyUnresolvedWork`, `SecondFreshInvocationUsesNewIdentityAndProducesOnlyRemainingWorkWithoutContextStorage` | `ScribeSecondFreshRunUsesNewIdentitiesWithoutTranscriptOrRestoration` | pending | M4 complete restoration; Fresh never weakens it |
+| Mixed tool/candidate production with causal facts and correction metamorphism | `ChangedCorrectionDataChangesRepairContent` | `ScribeHostRunsFiveTurnToolCandidateMixedProductionInOneFreshInvocation`, `ChangedCorrectionMetamorphicallyChangesTheRepairPayload` | pending | — |
+| Episode accounting across intermediate tool turns | repair/continuation rounds | `RepairEpisodeWithIntermediateToolTurnsChargesTheCorrectionAndRepairOnce`, `ContinuationEpisodeWithIntermediateToolTurnsChargesTheContinuationOnce` (shared driver under the APR Host) | pending | — |
+| Literal work/submission ceilings around tool turns | `SubmissionAndWorkUnitAdmissionExhaustionAreLiteralResourceLimits` | `WorkUnitCeilingIsLiteralBeforeEveryModelAdmissionAfterToolTurns`, `SubmissionCeilingDoesNotCountToolTurnsAndEndSucceedsAtExactCeilings`, `ZeroFollowOnAllowanceBlocksBeforeAnyNewProviderOrToolEffects` | pending | — |
+| Uncertain delivery, retained acceptance and no replay | `MissingFeedbackAfterCommitKeepsAcceptedProgressWithoutReplay`, `UnknownFeedbackAfterCommitKeepsAcceptedProgressWithoutReplay`, `CancelledObservationOfHeldAcknowledgementRetainsProgressAndRejectsLateDelivery` | `EarlierHostAcceptanceAndUsageSurvivePostAcceptanceStops`, `HeldHostAcknowledgementReturnsAtCutAndKeepsCommittedFactsWithoutReplay`, `LaterBatchWithInvalidLastMemberYieldsZeroNewEffectsWhileEarlierEffectsAndAcceptanceRemain`, `NonAuthorizingClosureBlocksNewToolEffectsAndCandidateSubmission` | pending | — |
+| Confined diagnostics and immutable control | `OrdinaryDiagnosticsExcludePayloadCorrectionProgressContinuationAndCredentialCanares` | `RestrictedAndCredentialCanariesStayOffEverySafeSurface`, `TrustedInstructionAndInstalledBindingsStayImmutableDespiteInstructionLikeData` | pending | — |
+| Independent concurrent executions | association probes | `EqualExecutionIdsAcrossConcurrentHostRunsKeepHistoriesAndReceiptsIsolated` (positively overlapped equal execution IDs) | pending | — |
+| Real provider transport and parsing | — | — | pending, owned by #35 | M5 migration proof |
+| Budget engine, retry policy, billing accuracy | — | — | — | M3 |
+| Packaging and downstream migration | — | — | — | M5 |
+
+Focused command, from the repository root after a successful restore and build of the same tree:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Consumption"
+```
+
 ## Limits and later activation
 
-This probe proves M1 contract consumption through synthetic producers and fixtures only. Product acceptance and full M7 behavior, real checkpoint or campaign accounting, domain evidence and patches, storage and external effects, production agent loop, budget enforcement, provider transport and adapters, complete runtime restoration and its codec, packaging and downstream migration all remain unproved and belong to their own milestones. The Host's fresh choice is a product-side lifecycle decision that never weakens the self-owned runtime's restoration requirement. Activation of those later obligations requires the roadmap milestones and their own evidence, not this synthetic consumption proof.
+This probe's M1 tier proves contract consumption through synthetic producers and fixtures only; its M2 tier proves that the same Host drives the actual production runtime and tool batches through one mixed production, with the ScriptedProvider still standing in for real transport. Product acceptance and full M7 behavior, real checkpoint or campaign accounting, domain evidence and patches, storage and external effects, production budget enforcement, real provider transport and adapters, complete runtime restoration and its codec, packaging and downstream migration all remain unproved and belong to their own milestones. The Host's fresh choice is a product-side lifecycle decision that never weakens the self-owned runtime's restoration requirement. Activation of those later obligations requires the roadmap milestones and their own evidence, not this consumption proof.

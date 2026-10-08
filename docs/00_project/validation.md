@@ -97,6 +97,14 @@ Runtime.Candidates tests execute the actual public `ICandidateAgent` returned by
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Candidates"
 ```
 
+Runtime.Consumption tests compose the production runtime startup with the independently compiled ScriptedProvider, the narrow CustomTools CounterTool and TransformTool bindings and the Api-only AprHost and ScribeHost business Hosts. They prove the mixed five-turn tool/candidate production with tool- and correction-derived candidate values and correction metamorphism, once-per-episode correction and repair/continuation accounting across intermediate tool turns, literal `WorkUnitLimit` before every model admission, submission ceilings that ignore tool turns and End at exact ceilings, retained earlier Host acceptance and usage after later provider failure, resource bound, cancellation, unknown feedback and Host End, whole-batch rejection with zero new effects, closure gating of tools and candidate submission, held tool/provider/Host completion observed after the cut without rewriting returned snapshots, Scribe fresh re-identification without transcript or restoration, positively overlapped equal-execution-ID runs with isolated histories and receipts, and restricted/credential canary confinement. Run the focused path first:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Consumption"
+```
+
+These are M2 scripted-transport consumption checks: they prove the production runtime, tool batches and both business Host consumption patterns under the independent ScriptedProvider, not a real model adapter, live transport, product acceptance, budget enforcement or restoration. The controlled DeepSeek adapter transport evidence for the same consumption obligations is owned by #35 and stays pending until that work reports its own proven result.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same restore, build, and test commands on `push` and `pull_request` with read-only `contents` permission, checking out the repository and installing the SDK selected by `global.json` on `ubuntu-latest`. It requires no provider secrets, live model access, sibling checkouts, or machine-local paths, and it must keep commands identical to those documented above. Ordinary CI executes the same checks as a local run on a different platform; it is not release qualification and does not authorize live or paid execution under [Security boundary](../20_architecture/security-boundary.md).

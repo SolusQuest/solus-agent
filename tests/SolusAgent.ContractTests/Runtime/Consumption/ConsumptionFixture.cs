@@ -179,6 +179,21 @@ internal sealed class ExchangeChannel(IReadOnlyList<ExchangePolicy> plan) : ICan
             policy.Accepted ? null : ConsumptionFixture.Correction(policy.CorrectedValue ?? 0));
 }
 
+/// <summary>Host channel decorator that publishes the actual delivery operation task so tests can await it after release.</summary>
+internal sealed class WitnessingChannel(ICandidateHost inner) : ICandidateHost
+{
+    private readonly TaskCompletionSource<Task<CandidateFeedback?>> published = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task<Task<CandidateFeedback?>> DeliveryPublished => published.Task;
+
+    public ValueTask<CandidateFeedback?> SubmitAsync(CandidateSubmission submission, CancellationToken cancellationToken = default)
+    {
+        var delivery = inner.SubmitAsync(submission, cancellationToken).AsTask();
+        published.TrySetResult(delivery);
+        return new ValueTask<CandidateFeedback?>(delivery);
+    }
+}
+
 /// <summary>Builds the Scribe exchange plan carrying the same scripted policies through the Host's own grammar.</summary>
 internal static class ExchangePlans
 {
