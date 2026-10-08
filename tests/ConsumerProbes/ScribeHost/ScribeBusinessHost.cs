@@ -206,6 +206,27 @@ public sealed class ScribeBusinessHost : ICandidateHost
         return new ContextExecutionRequest(request, ContextExecutionIntent.Fresh);
     }
 
+    /// <summary>
+    /// Executes one explicit fresh candidate run through the injected Api-only candidate execution seam.
+    /// The current validated progress is reconstructed through <see cref="CreateFreshRequest"/> and consumed
+    /// by the existing <see cref="ScribeCandidateStartup.Adopt"/> adapter before execution, and every
+    /// submission returns to this Host through its own <see cref="SubmitAsync"/>. The seam needs only the
+    /// Api-level <see cref="ICandidateAgent.ExecuteCandidatesAsync"/> entrypoint; no runtime type, transcript,
+    /// continuation or saved state crosses this boundary, and supplied-context intent is never produced here.
+    /// </summary>
+    /// <param name="candidates">The injected Api-only candidate execution seam.</param>
+    /// <param name="progress">Optional ordinary production observations without candidate or feedback data.</param>
+    /// <param name="cancellationToken">Caller cancellation, cooperatively observed when advertised.</param>
+    /// <returns>A safe terminal candidate observation; product acceptance and effects remain Host-owned.</returns>
+    /// <exception cref="ArgumentNullException">The candidate execution seam is null.</exception>
+    public ValueTask<CandidateExecutionResult> ExecuteFreshCandidatesAsync(ICandidateAgent candidates,
+        IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        var startup = new ScribeCandidateStartup(Control.CandidateBounds);
+        return candidates.ExecuteCandidatesAsync(startup.Adopt(CreateFreshRequest()), this, progress, cancellationToken);
+    }
+
     /// <summary>Validates and commits one submission before any delivery, then performs its scripted exchange.</summary>
     /// <remarks>Commit precedes delivery: missing, unknown, failed and held exchanges can leave accepted facts in Host progress even when the agent observed no acceptance. The hold ignores caller cancellation because Host work already happened, and late delivery is never replayed into the agent.</remarks>
     /// <param name="submission">Untrusted candidate data for Host-owned synthetic validation.</param>
