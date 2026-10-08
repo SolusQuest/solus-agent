@@ -132,6 +132,78 @@ public sealed class TransportBoundaryTests
         using var provider = AdapterFixture.Provider(handler); var result = await provider.ExchangeAsync(AdapterFixture.Request());
         Assert.Equal(ProviderOutcome.Failed, result.Outcome); Assert.True(first.Length > 0); Assert.Equal(0, second.Length); Assert.Equal(1, handler.Sends);
     }
+
+    public static IEnumerable<object[]> ErrorBodyNeighbors()
+    {
+        foreach (var status in new[] { 200, 500 })
+            foreach (var defect in new[] { "declared-cap", "undeclared-cap", "truncated", "read-failure" }) yield return [status, defect];
+    }
+    [Theory]
+    [MemberData(nameof(ErrorBodyNeighbors))]
+    public async Task KnownHttpFailureTakesPrecedenceOverUnreadableBodyButSuccessKeepsValidationErrors(int status, string defect)
+    {
+        var bytes = Encoding.UTF8.GetBytes(AdapterFixture.Response());
+        CountedStream stream = defect == "read-failure" ? new FaultStream(null) : new CountedStream(bytes);
+        var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StreamContent(stream) };
+        response.Content.Headers.ContentType = new("application/json");
+        if (defect == "declared-cap") response.Content.Headers.ContentLength = bytes.Length;
+        if (defect == "truncated") response.Content.Headers.ContentLength = bytes.Length + 1;
+        using var handler = new FakeHandler((_, _) => Task.FromResult(response));
+        using var provider = AdapterFixture.Provider(handler, responseCap: defect.Contains("cap", StringComparison.Ordinal) ? bytes.Length - 1 : bytes.Length + 1);
+        var result = await provider.ExchangeAsync(AdapterFixture.Request());
+        var expectedError = status == 500 || defect == "read-failure" ? ProviderError.ProviderFailed
+            : defect == "truncated" ? ProviderError.InvalidResponse : ProviderError.LimitExceeded;
+        Assert.Equal(expectedError == ProviderError.ProviderFailed ? ProviderOutcome.Failed : ProviderOutcome.Rejected, result.Outcome);
+        Assert.Equal(expectedError, result.Error); Assert.Null(result.Response);
+        Assert.Equal(DispatchExposure.Dispatched, result.Observation.Exposure);
+        Assert.Equal(UsageCompleteness.Unavailable, result.Observation.Usage.Completeness);
+        Assert.Equal(1, handler.Sends); Assert.True(stream.Disposed);
+        if (defect == "declared-cap") Assert.Equal(0, stream.BytesRead);
+    }
+
+    public static IEnumerable<object[]> CancellationTokenNeighbors()
+    {
+        foreach (var relation in new[] { "supplied", "unrelated", "none" })
+        {
+            yield return [false, 200, relation];
+            yield return [true, 200, relation];
+            yield return [true, 500, relation];
+        }
+    }
+    [Theory]
+    [MemberData(nameof(CancellationTokenNeighbors))]
+    public async Task ConcurrentCallerCancellationDoesNotFabricateAssociationForSendOrBodyExceptions(bool bodyRead, int status, string relation)
+    {
+        using var caller = new CancellationTokenSource(); using var unrelated = new CancellationTokenSource(); unrelated.Cancel();
+        var stream = new CancellationRaceStream(caller, unrelated.Token, relation);
+        using var handler = new FakeHandler((_, token) =>
+        {
+            if (!bodyRead) ThrowCancellation(caller, unrelated.Token, relation, token);
+            var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StreamContent(stream) };
+            response.Content.Headers.ContentType = new("application/json"); return Task.FromResult(response);
+        });
+        using var provider = AdapterFixture.Provider(handler);
+        var result = await provider.ExchangeAsync(AdapterFixture.Request(), caller.Token);
+        Assert.Equal(relation == "supplied" ? ProviderOutcome.Cancelled : ProviderOutcome.Failed, result.Outcome);
+        Assert.Equal(relation == "supplied" ? ProviderError.Cancelled : ProviderError.ProviderFailed, result.Error);
+        Assert.Null(result.Response); Assert.Equal(bodyRead ? DispatchExposure.Dispatched : DispatchExposure.Unknown, result.Observation.Exposure);
+        Assert.Equal(UsageCompleteness.Unavailable, result.Observation.Usage.Completeness); Assert.Equal(1, handler.Sends);
+        if (bodyRead) Assert.True(stream.Disposed);
+        Assert.DoesNotContain("synthetic-cancellation-canary", System.Text.Json.JsonSerializer.Serialize(result.Diagnostic));
+    }
+
+    private static void ThrowCancellation(CancellationTokenSource caller, CancellationToken unrelated, string relation, CancellationToken supplied)
+    {
+        caller.Cancel();
+        throw new OperationCanceledException("synthetic-cancellation-canary", new IOException("synthetic-inner-canary"),
+            relation == "supplied" ? supplied : relation == "unrelated" ? unrelated : CancellationToken.None);
+    }
+
+    private sealed class CancellationRaceStream(CancellationTokenSource caller, CancellationToken unrelated, string relation) : CountedStream([])
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        { ThrowCancellation(caller, unrelated, relation, token); return ValueTask.FromResult(0); }
+    }
     private class CountedStream(byte[] body) : Stream
     {
         private int position;

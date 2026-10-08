@@ -31,6 +31,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
     protected override async ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken cancellationToken)
     {
         var sendStarted = false;
+        var sendToken = CancellationToken.None;
         try
         {
             if (Volatile.Read(ref disposed) != 0) throw new ObjectDisposedException(nameof(DeepSeekProvider));
@@ -46,24 +47,34 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
             message.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
             using var deadline = new CancellationTokenSource(options.Timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+            sendToken = linked.Token;
             using var ownedInvoker = injectedInvoker is null ? new HttpMessageInvoker(new SafeHandler(CreateProductionHandler())) : null;
-            cancellationToken.ThrowIfCancellationRequested();
             linked.Token.ThrowIfCancellationRequested();
             // Also verifies an externally sealed observation channel before entering the transport.
             observation.ObserveDispatch(DispatchExposure.Unknown);
             sendStarted = true;
             using var response = await (injectedInvoker ?? ownedInvoker!).SendAsync(message, linked.Token).ConfigureAwait(false);
             observation.ObserveDispatch(DispatchExposure.Dispatched);
-            var bytes = await ReadBodyAsync(response.Content, options.MaximumResponseBodyBytes, linked.Token).ConfigureAwait(false);
+            byte[] bytes;
+            try { bytes = await ReadBodyAsync(response.Content, options.MaximumResponseBodyBytes, linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception exception) when (response.StatusCode != HttpStatusCode.OK && exception is not (OutOfMemoryException or StackOverflowException))
+            { throw new HttpRequestException("The provider returned an error status."); }
             var candidate = DeepSeekResponseParser.Parse(bytes, response, request, observation);
             // Usage has already been captured if the complete body could be validated.
-            cancellationToken.ThrowIfCancellationRequested(); linked.Token.ThrowIfCancellationRequested();
+            linked.Token.ThrowIfCancellationRequested();
             return candidate;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested
+            && sendToken.IsCancellationRequested && exception.CancellationToken == sendToken)
         {
             if (!sendStarted) observation.ObserveDispatch(DispatchExposure.NotDispatched);
             throw new OperationCanceledException("The provider call was cancelled.", null, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!sendStarted) observation.ObserveDispatch(DispatchExposure.NotDispatched);
+            throw new SafeTransportException();
         }
         catch
         {
@@ -104,7 +115,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             try { return await base.SendAsync(request, token).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (OperationCanceledException exception) when (token.IsCancellationRequested && exception.CancellationToken == token)
             { throw new OperationCanceledException("The provider transport was cancelled.", null, token); }
             catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
             { throw new SafeTransportException(); }

@@ -19,13 +19,24 @@ public sealed class HttpInstrumentationCollection;
 [Collection("DeepSeek standard HTTP instrumentation")]
 public sealed class TransportDiagnosticsTests
 {
-    [Fact]
-    public async Task SanitizationOccursInsideInvokerBeforeEnabledStandardTelemetry()
+    [Theory]
+    [InlineData("http")]
+    [InlineData("unrelated-cancel")]
+    [InlineData("none-cancel")]
+    [InlineData("matching-cancel")]
+    public async Task SanitizationOccursInsideInvokerBeforeEnabledStandardTelemetry(string mode)
     {
         using var telemetry = new StandardHttpTelemetry();
-        using var handler = new FakeHandler((_, _) => throw new HttpRequestException("synthetic-exception-canary", new IOException(AdapterFixture.Credential)));
-        using var provider = AdapterFixture.Provider(handler); var result = await provider.ExchangeAsync(AdapterFixture.Request());
-        Assert.Equal(ProviderOutcome.Failed, result.Outcome); Assert.Equal(1, handler.Sends);
+        using var caller = new CancellationTokenSource();
+        using var handler = new FakeHandler((_, token) =>
+        {
+            if (mode == "http") throw new HttpRequestException("synthetic-exception-canary", new IOException(AdapterFixture.Credential));
+            caller.Cancel();
+            throw new OperationCanceledException("synthetic-exception-canary", new IOException(AdapterFixture.Credential),
+                mode == "matching-cancel" ? token : mode == "unrelated-cancel" ? new CancellationToken(true) : CancellationToken.None);
+        });
+        using var provider = AdapterFixture.Provider(handler); var result = await provider.ExchangeAsync(AdapterFixture.Request(), caller.Token);
+        Assert.Equal(mode == "matching-cancel" ? ProviderOutcome.Cancelled : ProviderOutcome.Failed, result.Outcome); Assert.Equal(1, handler.Sends);
         Assert.Contains("RequestFailed", telemetry.Text);
         foreach (var secret in new[] { "synthetic-exception-canary", AdapterFixture.Credential, AdapterFixture.Replay }) Assert.DoesNotContain(secret, telemetry.Text);
     }
