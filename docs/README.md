@@ -32,6 +32,7 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 - [Candidate feedback draft](20_architecture/drafts/candidate-feedback.md): individually correlated Host submissions and retained acknowledgement observations.
 - [Run limits and usage draft](20_architecture/drafts/usage.md).
 - [Provider exchange draft](20_architecture/drafts/provider-exchange.md).
+- [DeepSeek provider draft](20_architecture/drafts/deepseek-provider.md): bounded thinking/tool HTTP exchange, restricted in-run replay and invocation-owned observations.
 - [Runtime configuration and exposure draft](20_architecture/drafts/runtime-configuration.md): live Host bindings and ordered same-attempt acknowledgement/closure.
 - [Managed runtime execution draft](20_architecture/drafts/runtime-execution.md): public construction, the first production provider turn, whole-run local cuts and retained observations.
 
