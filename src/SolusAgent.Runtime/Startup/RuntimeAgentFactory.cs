@@ -20,7 +20,7 @@ public static class RuntimeAgentFactory
         RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>
-    /// <remarks>Tool calls use complete effect-free admission and sequential guarded execution; candidate delivery, context restoration and provider retry are not implemented by this path.</remarks>
+    /// <remarks>Ordinary execution uses complete tool admission and sequential guarded invocation. The returned agent also implements ICandidateAgent for explicitly selected Final-response feedback. Context restoration and provider retry are not implemented.</remarks>
     public static IAgent Create(RuntimeConfiguration configuration, RuntimeOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);

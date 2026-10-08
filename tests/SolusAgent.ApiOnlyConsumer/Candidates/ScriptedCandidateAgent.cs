@@ -176,8 +176,8 @@ public sealed class ScriptedCandidateAgent : ICandidateAgent
             var reason = stop switch
             {
                 CandidateStopReason.Completed => AgentTerminationReason.Completed,
-                CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement => AgentTerminationReason.Partial,
-                CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit => AgentTerminationReason.ResourceLimit,
+                CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.ProductionStopped => AgentTerminationReason.Partial,
+                CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit or CandidateStopReason.DurationLimit or CandidateStopReason.RuntimeLimit => AgentTerminationReason.ResourceLimit,
                 CandidateStopReason.Cancelled => AgentTerminationReason.Cancelled,
                 CandidateStopReason.UnsupportedCapability => AgentTerminationReason.UnsupportedCapability,
                 _ => AgentTerminationReason.Failed,

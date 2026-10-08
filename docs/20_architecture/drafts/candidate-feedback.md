@@ -1,6 +1,6 @@
 # Candidate delivery and Host feedback draft
 
-`SolusAgent.Api.Candidates` expresses individually correlated candidate delivery and Host feedback through the optional `ICandidateAgent : IAgent` contract. `ExecuteCandidatesAsync` composes the existing `AgentRequest` with candidate bounds and an explicitly supplied `ICandidateHost`. The separate Api-only consumer library contains the actual test-only producer, Host and calling consumer. This is an executable M1 draft, with no production loop, provider, durable transaction, context restoration, domain acceptance policy or supported compatibility commitment.
+`SolusAgent.Api.Candidates` expresses individually correlated candidate delivery and Host feedback through the optional `ICandidateAgent : IAgent` contract. `ExecuteCandidatesAsync` composes the existing `AgentRequest` with candidate bounds and an explicitly supplied `ICandidateHost`. The separate Api-only consumer library contains the actual test-only producer, Host and calling consumer. The [managed runtime candidate path](runtime-candidates.md) now implements this protocol over actual bounded provider turns; the M1 producer retains its synthetic expressibility identity. Neither establishes durable transactions, context restoration, domain acceptance policy or a supported compatibility commitment.
 
 ## Separate observations and channels
 
@@ -48,7 +48,7 @@ Each production is awaited, structurally checked, counted and reported to the or
 
 A delivered correlated acknowledgement is retained even if caller cancellation was signalled before its successful await resumed. Final accepted scripted work completes without consuming an unnecessary continuation allowance, including at an exact bound. Host End with scripted work incomplete returns Partial/HostEnded. A final rejection requiring an unavailable correction returns Partial/ProductionExhausted; it cannot become acceptance or successful completion. Cancellation prevents subsequent admissions after an already delivered acknowledgement. Rejection/End returns an incomplete HostEnded result even on the last scripted item.
 
-These policies demonstrate expressibility through a deterministic producer/consumer. The interface alone does not enforce a runtime loop, resource engine, durable acknowledgement retention or exactly-once Host effects. Production mechanisms belong to their later milestones; implementation-scoped context is a separate member family.
+These policies demonstrate expressibility through a deterministic producer/consumer. The interface alone does not enforce a runtime loop, resource engine, durable acknowledgement retention or exactly-once Host effects. The actual production candidate implementation is described in the [runtime candidate draft](runtime-candidates.md); implementation-scoped context remains a separate member family.
 
 ## Validation
 

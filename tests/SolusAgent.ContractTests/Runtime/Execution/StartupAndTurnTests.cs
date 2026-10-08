@@ -34,7 +34,7 @@ public sealed class StartupAndTurnTests
         Assert.True(hooks.Exposures[0].Matches(hooks.Settlements[0].Exposure));
         Assert.Equal(UsageInventoryCoverage.Complete, outcome.Usage.Coverage);
         Assert.DoesNotContain("DATA_CANARY", JsonSerializer.Serialize(outcome));
-        Assert.False(agent is SolusAgent.Api.Candidates.ICandidateAgent); Assert.False(agent is SolusAgent.Api.Context.IContextAgent);
+        Assert.True(agent is SolusAgent.Api.Candidates.ICandidateAgent); Assert.False(agent is SolusAgent.Api.Context.IContextAgent);
     }
 
     [Theory]
