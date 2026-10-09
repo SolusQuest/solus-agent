@@ -12,6 +12,23 @@ public sealed class AccountingExchangeTests
 {
     [Theory]
     [InlineData(false)] [InlineData(true)]
+    public async Task IndependentHostReordersHistoryAndSettlementWithoutBlockingProduction(bool candidate)
+    {
+        var provider = new ScriptedProvider([AccountingTests.Step(new(3, 2), "a"),
+            AccountingTests.Step(new(1, 1), "b"), AccountingTests.Step(new(2, 1))]);
+        var tool = new CustomTools.CounterCapability();
+        var host = new AccountingHostProbe { ReverseAccountingInventory = true };
+        var result = await AccountingTests.Execute(AccountingTests.Agent(provider, host, tool),
+            AccountingTests.Request(new(new(8, 5), 100, 100)), candidate);
+        Assert.Equal(AgentTerminationReason.Completed, result.Reason);
+        Assert.Equal(3, provider.Effects); Assert.Equal(2, tool.Effects);
+        Assert.Equal(3, host.Exposures.Count); Assert.Equal(3, host.Settlements.Count);
+        Assert.Equal(6, result.Usage!.Accounting!.Input.MeasuredTokens);
+        Assert.Equal(4, result.Usage.Accounting.Output.MeasuredTokens);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
     public async Task DurablePermissionSeesReservedNumbersAndGatesAllProviderEffects(bool candidate)
     {
         var entered = RuntimeFixture.Barrier<RuntimeExposure>(); var release = RuntimeFixture.Barrier<ExposureAcknowledgement?>();

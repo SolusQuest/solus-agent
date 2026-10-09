@@ -118,10 +118,15 @@ public sealed class AgentRunUsage
         ToolInvocations = toolInvocations;
         InputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.InputTokens);
         OutputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.OutputTokens);
-        if (accounting is not null && (accounting.ExecutionId != executionId || coverage != UsageInventoryCoverage.Complete
-            || accounting.Attempts.Count != snapshot.Length || !accounting.Attempts.Zip(snapshot).All(pair =>
-                pair.First.MatchesObservation(pair.Second, accounting.Policy.UnknownUsage))))
-            throw new ArgumentException("Runtime accounting must match the complete finalized observation inventory.", nameof(accounting));
+        if (accounting is not null)
+        {
+            var observationsById = snapshot.ToDictionary(attempt => attempt.PhysicalAttemptId);
+            if (accounting.ExecutionId != executionId || coverage != UsageInventoryCoverage.Complete
+                || accounting.Attempts.Count != snapshot.Length || !accounting.Attempts.All(entry =>
+                    observationsById.TryGetValue(entry.PhysicalAttemptId, out var observation)
+                    && entry.MatchesObservation(observation, accounting.Policy.UnknownUsage)))
+                throw new ArgumentException("Runtime accounting must match the complete finalized observation inventory.", nameof(accounting));
+        }
         Accounting = accounting;
     }
     /// <summary>Gets the Host execution correlation.</summary>

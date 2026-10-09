@@ -182,11 +182,13 @@ public sealed class RuntimeSettlement
         Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError;
         ProviderInvoked = providerInvoked;
         var before = exposure.Accounting;
+        var settledById = accounting?.Attempts.ToDictionary(entry => entry.PhysicalAttemptId);
         if ((before is null) != (accounting is null) || (before is not null && accounting is not null
             && (accounting.ExecutionId != before.ExecutionId || !accounting.Policy.Matches(before.Policy)
                 || accounting.Attempts.Count != before.Attempts.Count
                 || !accounting.Attempts[^1].MatchesObservation(observation, accounting.Policy.UnknownUsage)
-                || !before.Attempts.Take(before.Attempts.Count - 1).Zip(accounting.Attempts).All(p => p.First.Matches(p.Second)))))
+                || !before.Attempts.Take(before.Attempts.Count - 1).All(entry =>
+                    settledById!.TryGetValue(entry.PhysicalAttemptId, out var settled) && entry.Matches(settled)))))
             throw new ArgumentException("Settlement accounting must finalize only the original reserved attempt.", nameof(accounting));
         Accounting = accounting;
     }

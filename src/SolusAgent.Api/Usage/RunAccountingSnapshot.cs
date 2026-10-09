@@ -183,7 +183,11 @@ public sealed class RunAccountingSnapshot
     public RunAccountingDimension Input { get; }
     /// <summary>Gets derived output balances.</summary>
     public RunAccountingDimension Output { get; }
-    /// <summary>Compares the policy and every correlated numeric entry; derived totals necessarily agree.</summary>
-    public bool Matches(RunAccountingSnapshot other) => other is not null && ExecutionId == other.ExecutionId && Policy.Matches(other.Policy)
-        && Attempts.Count == other.Attempts.Count && Attempts.Zip(other.Attempts).All(pair => pair.First.Matches(pair.Second));
+    /// <summary>Compares the policy and every fully correlated numeric entry independently of inventory order; derived totals necessarily agree.</summary>
+    public bool Matches(RunAccountingSnapshot other)
+    {
+        if (other is null || ExecutionId != other.ExecutionId || !Policy.Matches(other.Policy) || Attempts.Count != other.Attempts.Count) return false;
+        var otherById = other.Attempts.ToDictionary(entry => entry.PhysicalAttemptId);
+        return Attempts.All(entry => otherById.TryGetValue(entry.PhysicalAttemptId, out var counterpart) && entry.Matches(counterpart));
+    }
 }

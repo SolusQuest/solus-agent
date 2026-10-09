@@ -6,12 +6,14 @@ namespace SolusAgent.ConsumerProbes.CustomProvider;
 /// <summary>Independent Runtime.Api-only Host consuming numeric accounting through the actual ordered hook contract.</summary>
 public sealed class AccountingHostProbe : IRuntimeExposureHooks
 {
+    public bool ReverseAccountingInventory { get; init; }
     public List<RuntimeExposure> Exposures { get; } = [];
     public List<RuntimeSettlement> Settlements { get; } = [];
     public ValueTask<ExposureAcknowledgement?> BeforeDispatchAsync(RuntimeExposure exposure, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Exposures.Add(exposure);
-        var equivalent = new RuntimeExposure(exposure.Scope, exposure.Attempt, exposure.RequiredAcknowledgement, Copy(exposure.Accounting));
+        var equivalent = new RuntimeExposure(exposure.Scope, exposure.Attempt, exposure.RequiredAcknowledgement,
+            Reorder(Copy(exposure.Accounting), preserveCurrentLast: true));
         return ValueTask.FromResult<ExposureAcknowledgement?>(new(equivalent, RuntimeHookStatus.Acknowledged,
             ExposureDecision.Permit, exposure.RequiredAcknowledgement));
     }
@@ -19,7 +21,13 @@ public sealed class AccountingHostProbe : IRuntimeExposureHooks
     {
         token.ThrowIfCancellationRequested(); Settlements.Add(settlement);
         return ValueTask.FromResult<SettlementAcknowledgement?>(new(settlement.Exposure, RuntimeHookStatus.Acknowledged,
-            RuntimeContinuation.Continue, Copy(settlement.Accounting)));
+            RuntimeContinuation.Continue, Reorder(Copy(settlement.Accounting), preserveCurrentLast: false)));
+    }
+    private RunAccountingSnapshot? Reorder(RunAccountingSnapshot? snapshot, bool preserveCurrentLast)
+    {
+        if (!ReverseAccountingInventory || snapshot is null || snapshot.Attempts.Count == 0) return snapshot;
+        var entries = preserveCurrentLast ? snapshot.Attempts.SkipLast(1).Reverse().Append(snapshot.Attempts[^1]) : snapshot.Attempts.Reverse();
+        return new(snapshot.ExecutionId, snapshot.Policy, entries.ToArray());
     }
     public static RunAccountingSnapshot? Copy(RunAccountingSnapshot? snapshot) => snapshot is null ? null : new(snapshot.ExecutionId,
         new(new(snapshot.Policy.Reservation.InputTokens, snapshot.Policy.Reservation.OutputTokens), snapshot.Policy.InputAllowance,
