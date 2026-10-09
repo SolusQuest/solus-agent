@@ -153,14 +153,15 @@ public sealed class ProtocolTests
 
     [Theory]
     [InlineData(AgentCapability.UsageThresholds)] [InlineData(AgentCapability.DispatchLimits | AgentCapability.UsageThresholds)]
-    public async Task UnsupportedRequirementsWinBeforeCancellationAndAllEffects(AgentCapability required)
+    [InlineData(AgentCapability.DispatchLimits)]
+    public async Task SupportedCountAndThresholdRequirementsStillHonorPreCancellationBeforeEffects(AgentCapability required)
     {
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
         var hooks = new RuntimeHooks(); var provider = CandidateFixture.Provider();
         var host = new ScriptedCandidateHost((_, _) => throw new InvalidOperationException());
         var result = await CandidateFixture.Agent(provider, hooks).ExecuteCandidatesAsync(CandidateFixture.Request(required: required), host,
             new InlineProgress(_ => throw new InvalidOperationException()), cancellation.Token);
-        Assert.Equal(CandidateStopReason.UnsupportedCapability, result.StopReason); Assert.Equal(AgentCapability.UsageThresholds, result.Outcome.UnsupportedCapabilities);
+        Assert.Equal(CandidateStopReason.Cancelled, result.StopReason); Assert.Equal(AgentCapability.None, result.Outcome.UnsupportedCapabilities);
         Assert.Empty(result.Outcome.Usage!.Attempts); Assert.Empty(result.Receipts); Assert.Empty(hooks.Exposures); Assert.Empty(host.Submissions);
         Assert.Equal(0, provider.Effects);
     }

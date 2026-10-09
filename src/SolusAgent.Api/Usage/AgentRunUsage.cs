@@ -65,7 +65,7 @@ public sealed class UsageAttemptObservation
     public UsageAccounting? Accounting { get; }
 }
 
-/// <summary>An immutable attempt inventory snapshot without inferred aggregation or durable ledger machinery.</summary>
+/// <summary>An immutable validated attempt inventory with checked per-dimension core token observations.</summary>
 public sealed class AgentRunUsage
 {
     /// <summary>Copies attempts and validates unique identities, same-run association and complete ordinal coverage.</summary>
@@ -92,6 +92,8 @@ public sealed class AgentRunUsage
         ExecutionId = executionId;
         Coverage = coverage;
         Attempts = Array.AsReadOnly(snapshot);
+        InputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.InputTokens);
+        OutputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.OutputTokens);
     }
     /// <summary>Gets the Host execution correlation.</summary>
     public Guid ExecutionId { get; }
@@ -99,4 +101,8 @@ public sealed class AgentRunUsage
     public UsageInventoryCoverage Coverage { get; }
     /// <summary>Gets the copied read-only observations. Complete empty inventory proves no attempt up to this snapshot; unavailable empty inventory does not.</summary>
     public IReadOnlyList<UsageAttemptObservation> Attempts { get; }
+    /// <summary>Gets checked input observations; incomplete subtotals do not claim whole-run consumption.</summary>
+    public RunTokenObservation InputTokens { get; }
+    /// <summary>Gets checked output observations, independently of input availability.</summary>
+    public RunTokenObservation OutputTokens { get; }
 }

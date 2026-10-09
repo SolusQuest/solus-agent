@@ -42,10 +42,13 @@ Submission, work, repair and continuation ceilings apply before next production.
 | Follow-on allowance | `RepairLimit` / `ContinuationLimit` | ResourceLimit |
 | Provider/record/retained capacity | `RuntimeLimit` | ResourceLimit |
 | Exposure denial or settlement Stop | `ProductionStopped` | Partial |
+| Required next-production token comparison missing or overflowed | `UsageAccountingUnavailable` | Partial |
 | Provider/integration failure | `ProductionFailed` | Failed |
 | Candidate Host Reject / End | `HostEnded` | Partial |
 
-The three appended draft categories distinguish deadline/capacity from caller cancellation/work counts, and provider integration Stop from candidate Host End. Existing acknowledgement-specific stops still require the corresponding last receipt. Generic cut/resource/production stops can retain earlier receipts or Unknown pending delivery without inventing acknowledgements.
+The draft categories distinguish deadline/capacity from caller cancellation/work counts, provider integration Stop from candidate Host End, and unknown token accounting from both. Existing acknowledgement-specific stops still require the corresponding last receipt. Generic cut/resource/production/accounting stops can retain earlier receipts or Unknown pending delivery without inventing acknowledgements.
+
+The [token threshold gate](runtime-execution.md#token-thresholds-at-next-production) runs before correction append and before every model admission, including intermediate tool turns. An already accepted response can finish its tool batch or candidate delivery subject to existing cuts and Host closure. Reached thresholds prevent the next production as RuntimeLimit; missing or overflowed required comparisons produce UsageAccountingUnavailable. Accept/End still completes and Reject/End remains HostEnded, because neither needs another model production. Denied repair/continuation is never counted as admitted.
 
 The [same whole-run cut](runtime-execution.md#deadline-cancellation-and-completion) bounds Host feedback observation. At feedback selection, an already completed callback is observed and classified even when cancellation or duration is now observable. The cut determines the terminal result and forbids further effects. A callback still pending at that selection, or one cooperatively cancelled while the actual run cut is observable, yields Unknown delivery. Host cancellation without a run cut remains a failed acknowledgement. Abandoned success/fault cannot alter returned receipt or usage snapshots. Tests require terminal return before releasing held callbacks. This preserves delivered facts without promising remote stop or granting late feedback authority.
 
