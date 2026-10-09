@@ -119,6 +119,32 @@ public sealed class ProviderRetryTests
         Assert.Equal(1, forwarding.Calls);
     }
 
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)]
+    public async Task ForwardedPositiveFailureCannotImportAnotherProviderScopeWithTheSameAttempt(int field)
+    {
+        var declared = new ProviderScope("p", "m");
+        var actual = new ProviderScope(field == 1 ? "p" : "foreign-provider", field == 0 ? "m" : "foreign-model");
+        var guarded = new ScriptedProvider([ScriptedProvider.Failure(new(ProviderRetryKind.Throttled))], actual);
+        ProviderExchangeResult? foreign = null;
+        var forwarding = new InterfaceScriptedProvider(declared, async (request, token) =>
+        {
+            foreign = await guarded.ExchangeAsync(new(actual, request.Attempt, request.Inputs), token); return foreign;
+        });
+        var hostRequest = RuntimeFixture.Request();
+        var consumer = new ConfigurationConsumer(new(forwarding, [], new RuntimeHooks()), hostRequest);
+        var request = consumer.CreateRequest(new(hostRequest.ExecutionId, Guid.NewGuid(), Guid.NewGuid()));
+        var result = await consumer.RunAsync(request);
+        Assert.Null(result.Provider); Assert.Equal(ProviderError.InvalidAssociation, result.Settlement!.ProviderError);
+        Assert.Null(result.Observation.Usage.InputTokens); Assert.Equal(DispatchExposure.Unknown, result.Observation.Exposure);
+        Assert.Equal(1, forwarding.Calls);
+        Assert.Same(actual, foreign!.Scope); Assert.Equal(ProviderRetryKind.Throttled, foreign.Retry!.Kind);
+        Assert.Equal(ProviderError.InvalidAssociation, Assert.Throws<ProviderContractException>(() => foreign.ValidateFor(request)).Error);
+        var replayed = new InterfaceScriptedProvider(declared, (_, _) => ValueTask.FromResult(foreign));
+        await Assert.ThrowsAsync<ProviderContractException>(() => CustomProviderConsumer.ExchangeAsync(replayed, request).AsTask());
+        Assert.DoesNotContain("foreign-", JsonSerializer.Serialize(foreign.Diagnostic));
+    }
+
     [Fact]
     public async Task ProductionRuntimeDoesNotEnableAutomaticRetryFromScriptedMetadata()
     {

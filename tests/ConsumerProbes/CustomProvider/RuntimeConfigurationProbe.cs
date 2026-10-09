@@ -189,7 +189,7 @@ public sealed class ConfigurationConsumer
                 {
                     provider = await Configuration.Provider.ExchangeAsync(request, token);
                     observation = provider.Observation; outcome = provider.Outcome; error = provider.Error;
-                    if (observation.ExecutionId != attempt.ExecutionId || observation.LogicalCallId != attempt.LogicalCallId
+                    if (!provider.Scope.Matches(request.Scope) || observation.ExecutionId != attempt.ExecutionId || observation.LogicalCallId != attempt.LogicalCallId
                         || observation.PhysicalAttemptId != attempt.PhysicalAttemptId || observation.AttemptNumber != attempt.AttemptNumber)
                     {
                         // A foreign result cannot describe this invoked extension's effects or authorize its output.

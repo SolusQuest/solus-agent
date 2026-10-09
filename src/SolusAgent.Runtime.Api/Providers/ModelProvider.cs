@@ -24,7 +24,7 @@ public sealed record ProviderDiagnostic(Guid ExecutionId, Guid LogicalCallId, Gu
 /// <summary>Exchange result retaining usage independently of payload acceptance.</summary>
 public sealed class ProviderExchangeResult
 {
-    internal ProviderExchangeResult(ProviderOutcome outcome, ProviderError error, UsageAttemptObservation observation, ProviderResponse? response = null,
+    internal ProviderExchangeResult(ProviderScope scope, ProviderOutcome outcome, ProviderError error, UsageAttemptObservation observation, ProviderResponse? response = null,
         ProviderRetry? retry = null)
     {
         ProviderBoundary.Require(Enum.IsDefined(outcome) && Enum.IsDefined(error)
@@ -33,10 +33,12 @@ public sealed class ProviderExchangeResult
             && (outcome != ProviderOutcome.Failed || error == ProviderError.ProviderFailed)
             && (outcome != ProviderOutcome.Cancelled || error == ProviderError.Cancelled)
             && (retry is null || outcome == ProviderOutcome.Failed && error == ProviderError.ProviderFailed), ProviderError.InvalidResponse);
-        Outcome = outcome; Error = error; Observation = observation; Response = response; Retry = retry;
+        Scope = scope; Outcome = outcome; Error = error; Observation = observation; Response = response; Retry = retry;
         Diagnostic = new(observation.ExecutionId, observation.LogicalCallId, observation.PhysicalAttemptId, observation.AttemptNumber,
             outcome, error, observation.Exposure, observation.Usage.Completeness, response?.Calls.Count ?? 0, retry?.Kind, retry?.RetryAfter);
     }
+    /// <summary>Gets restricted request provider/model association, including for payload-free failures.</summary>
+    public ProviderScope Scope { get; }
     /// <summary>Gets the normalized outcome.</summary>
     public ProviderOutcome Outcome { get; }
     /// <summary>Gets content-free error classification.</summary>
@@ -54,7 +56,7 @@ public sealed class ProviderExchangeResult
     {
         ArgumentNullException.ThrowIfNull(request);
         var attempt = request.Attempt;
-        ProviderBoundary.Require(Observation.ExecutionId == attempt.ExecutionId && Observation.LogicalCallId == attempt.LogicalCallId
+        ProviderBoundary.Require(Scope.Matches(request.Scope) && Observation.ExecutionId == attempt.ExecutionId && Observation.LogicalCallId == attempt.LogicalCallId
             && Observation.PhysicalAttemptId == attempt.PhysicalAttemptId && Observation.AttemptNumber == attempt.AttemptNumber,
             ProviderError.InvalidAssociation);
         Response?.ValidateFor(request);
@@ -152,7 +154,7 @@ public abstract class ModelProvider : IModelProvider
     {
         ArgumentNullException.ThrowIfNull(request);
         var capture = request.Observation;
-        if (!capture.TryBegin()) return new(ProviderOutcome.Rejected, ProviderError.ObservationClosed, capture.Seal());
+        if (!capture.TryBegin()) return new(request.Scope, ProviderOutcome.Rejected, ProviderError.ObservationClosed, capture.Seal());
         if (!Scope.Matches(request.Scope)) return BeforeCore(ProviderOutcome.Rejected, ProviderError.InvalidAssociation);
         if ((request.RequiredCapabilities & ~Capabilities) != 0) return BeforeCore(ProviderOutcome.Rejected, ProviderError.UnsupportedCapability);
         if (cancellationToken.IsCancellationRequested) return BeforeCore(ProviderOutcome.Cancelled, ProviderError.Cancelled);
@@ -171,24 +173,24 @@ public abstract class ModelProvider : IModelProvider
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed; }
         finally { observation = capture.Seal(); }
-        if (error != ProviderError.None) return new(outcome, error, observation, retry: cancellationToken.IsCancellationRequested ? null : retry);
-        if (cancellationToken.IsCancellationRequested) return new(ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
+        if (error != ProviderError.None) return new(request.Scope, outcome, error, observation, retry: cancellationToken.IsCancellationRequested ? null : retry);
+        if (cancellationToken.IsCancellationRequested) return new(request.Scope, ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
         try
         {
             ProviderBoundary.Require(candidate is not null, ProviderError.InvalidResponse);
             candidate!.ValidateFor(request);
         }
-        catch (ProviderContractException exception) { return new(ProviderOutcome.Rejected, exception.Error, observation); }
+        catch (ProviderContractException exception) { return new(request.Scope, ProviderOutcome.Rejected, exception.Error, observation); }
         // This final check is the acceptance cut; later cancellation cannot rewrite this immutable result.
-        if (cancellationToken.IsCancellationRequested) return new(ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
-        return new(ProviderOutcome.Succeeded, ProviderError.None, observation, candidate.Accept());
+        if (cancellationToken.IsCancellationRequested) return new(request.Scope, ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
+        return new(request.Scope, ProviderOutcome.Succeeded, ProviderError.None, observation, candidate.Accept());
 
         ProviderExchangeResult BeforeCore(ProviderOutcome result, ProviderError failure)
         {
             try { capture.ObserveDispatch(DispatchExposure.NotDispatched); }
             // A forwarding extension may already have supplied valid facts. Pre-core rejection cannot erase them.
             catch (ProviderContractException) { }
-            return new(result, failure, capture.Seal());
+            return new(request.Scope, result, failure, capture.Seal());
         }
     }
     /// <summary>Report known dispatch and normalized usage before constructing/validating output; bound own allocations and pass cancellation to effects.</summary>
