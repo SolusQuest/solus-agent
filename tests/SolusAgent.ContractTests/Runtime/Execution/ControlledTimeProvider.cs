@@ -5,6 +5,7 @@ internal sealed class ControlledTimeProvider : TimeProvider
     private readonly object gate = new();
     private readonly List<ControlledTimer> timers = [];
     private long ticks;
+    public Action<TimeSpan>? TimerCreated { get; set; }
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     public override long GetTimestamp() { lock (gate) return ticks; }
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch + TimeSpan.FromTicks(GetTimestamp());
@@ -12,6 +13,7 @@ internal sealed class ControlledTimeProvider : TimeProvider
     {
         var timer = new ControlledTimer(this, callback, state);
         lock (gate) { timers.Add(timer); timer.Change(dueTime, period); }
+        TimerCreated?.Invoke(dueTime);
         return timer;
     }
     public void Advance(TimeSpan duration)

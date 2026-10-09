@@ -73,7 +73,10 @@ internal static class CandidateExecutionDriver
                             else continuations++;
                         }
                     }
-                    var attempt = await ProviderAttemptOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
+                    var call = await ProviderCallOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
+                    if (call is null) return StateStop();
+                    providerRequest = call.Request;
+                    var attempt = call.Attempt;
                     if (cut.Check() != RuntimeStop.None) return CutStop();
                     if (attempt.Stop != RuntimeStop.None) return StateStop();
                     if (attempt.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped))

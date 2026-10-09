@@ -32,7 +32,10 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
             {
                 var providerRequest = state.AdmitTurn();
                 if (providerRequest is null) return StopOutcome(state);
-                var attempt = await ProviderAttemptOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
+                var call = await ProviderCallOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
+                if (call is null) return StopOutcome(state);
+                providerRequest = call.Request;
+                var attempt = call.Attempt;
                 if (cut.Check() != RuntimeStop.None) return CutOutcome(state);
                 if (attempt.Stop != RuntimeStop.None) return StopOutcome(state);
                 if (attempt.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped))

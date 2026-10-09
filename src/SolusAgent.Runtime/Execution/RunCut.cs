@@ -16,6 +16,7 @@ internal sealed class RunCut : IDisposable
     private readonly ITimer timer;
     private readonly CancellationTokenRegistration registration;
     private ProviderObservation? observation;
+    private Task? cancellationCompletion;
     private RuntimeStop stop;
     private bool disposed;
     private static readonly TimeSpan TimerSlice = TimeSpan.FromDays(20);
@@ -43,7 +44,7 @@ internal sealed class RunCut : IDisposable
             observation?.Seal();
             interrupted.TrySetResult();
             // CancelAsync does not synchronously wait for uncooperative extension registrations.
-            ObserveLate(operationCancellation.CancelAsync());
+            BeginCancellation();
         }
         return stop;
     }
@@ -95,13 +96,27 @@ internal sealed class RunCut : IDisposable
     }
     internal static void ObserveLate(Task pending) => _ = pending.ContinueWith(task => { _ = task.Exception; },
         CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+    // Called under gate. A repeated CancelAsync can finish before the original callback dispatch.
+    private Task BeginCancellation()
+    {
+        if (cancellationCompletion is null)
+        {
+            cancellationCompletion = operationCancellation.CancelAsync();
+            ObserveLate(cancellationCompletion);
+        }
+        return cancellationCompletion;
+    }
     public void Dispose()
     {
-        lock (gate) { disposed = true; observation?.Seal(); timer.Dispose(); }
+        Task cancelled;
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true; observation?.Seal(); timer.Dispose();
+            cancelled = BeginCancellation();
+        }
         registration.Dispose();
         // Tokens may still be held by abandoned extension work. Dispose after cancellation callbacks, without waiting here.
-        var cancelled = operationCancellation.CancelAsync();
-        ObserveLate(cancelled);
         _ = cancelled.ContinueWith(_ => operationCancellation.Dispose(), CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }

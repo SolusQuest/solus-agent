@@ -9,7 +9,7 @@ CandidateExecutionResult result = await candidates.ExecuteCandidatesAsync(
     candidateRequest, candidateHost, progress, cancellationToken);
 ```
 
-This path reuses the actual bounded [provider-turn operation](runtime-execution.md), with one physical attempt per logical response and no provider or Host-effect replay. Candidate payload is untrusted data delivered only to `ICandidateHost`. Product acceptance, effects, storage and reconciliation remain Host-owned.
+This path reuses the actual bounded [provider-turn operation](runtime-execution.md), with one physical attempt by default and explicit bounded provider-only retries under the [same run ledger and cut](runtime-execution.md#explicit-provider-retries). Tool effects and candidate Host submissions are never automatically replayed. Candidate payload is untrusted data delivered only to `ICandidateHost`. Product acceptance, effects, storage and reconciliation remain Host-owned.
 
 ## Production, delivery and continuation
 
@@ -18,6 +18,8 @@ Each invocation owns its classified records, latest provider continuation, attem
 Candidate handling requires an accepted Final and settlement permitting continuation. Exposure denial or settlement Stop prevents delivery, including for an accepted Final. A failed or rejected provider result retains its failure/capacity category even when settlement returns Stop; that Stop cannot mask the observed production result. Missing, failed, unknown or wrong integration also prevents delivery.
 
 One candidate-production episode admits its first provider turn, then reuses the same RunState, provider attempt and [tool batch](runtime-tools.md) operations on the same run cut across intermediate accepted tool turns until an accepted Final is produced. A tool turn executes only after the accepted response passes the same closure gate that guards delivery, so Stop, unknown or missing closure blocks both new tool effects and candidate submission. Tool turns consume accepted-model work, attempt, record and retention limits but no submission and no follow-on allowance; a rejected or failed batch maps to the same runtime, resource, cancellation and production stops as any other admitted work. Safe synchronous progress precedes the Host invocation and follows each successful tool batch, consistently with ordinary execution. Observer failure preserves work/usage and prevents subsequent work. The final shared admission cut gates the Host call.
+
+Physical retries stay inside their original logical call and production episode. They add physical inventory and accounting, not model work, repair/continuation counters, correction records or Host submissions. A repair still starts a new logical call with the original run allowances. The successful retry request supplies the exact attempt association for tool batches and retained model history. Progress observer failure after eventual success preserves accepted work and all failed attempts, and never triggers another provider attempt.
 
 Each submission is invoked once and has a fresh ID. A repair backlink identifies only the actual immediately rejected predecessor. Full feedback association is checked before using decisions or instructions: wrong execution or unknown submission is Mismatched, while an earlier submission ID from this invocation is Duplicate. Missing, failed and unknown feedback retain their distinct [draft](candidate-feedback.md) receipts and stops. Earlier accepted receipts survive every later stop. Correlation proves neither authentication, durable storage nor effect rollback.
 
