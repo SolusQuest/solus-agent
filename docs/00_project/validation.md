@@ -79,6 +79,17 @@ DeepSeek.RuntimeIntegration tests compose the actual adapter with the production
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.DeepSeek.RuntimeIntegration"
 ```
 
+The M3 actual-adapter conformance additions are `RetryCompositionTests`, `RetryAccountingCompositionTests` and `RetryCutCompositionTests`. They prove real HTTP failure classification driving admitted production retries; unchanged retry bodies and logical identity with distinct physical attempts; retained failed-attempt measurements and per-axis accounting under Stop, ConservativeCharge and ContinueUnknown; typed response loss and malformed-content neighbors; exact dispatch, inventory, token, accounting and whole-tool-batch admission; validated closure and fresh permission; and controlled backoff/deadline/cancellation with immutable late snapshots. Nonzero earlier tool and Host effects make the provider-only replay checks observable. Attempt inventory, actual handler sends, tool invocation-interface counts and guarded business effects are separate assertions. These tests extend selected production enforcement evidence under controlled HTTP; they do not qualify live interoperability, billing, remote stop, restoration or APR/Scribe product migration.
+
+After the owning suite, run the related adapter/runtime/usage/provider regressions and the complete runner, using the successful restore and Release build above:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.DeepSeek.Adapter|FullyQualifiedName~SolusAgent.ContractTests.Runtime|FullyQualifiedName~SolusAgent.ContractTests.Usage|FullyQualifiedName~SolusAgent.ContractTests.Providers"
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
+```
+
+Record actual executed counts and distinguish local Windows evidence from the exact pushed head's Linux CI. The existing adapter and scripted Runtime suites supply broader component matrices; neither alone substitutes for these actual-adapter composition scenarios.
+
 ## Production runtime checks
 
 Runtime.Execution tests invoke the production public factory and `IAgent` with the independently compiled finite Scripted Provider. They prove whole-run deadline/cancellation cuts while operations remain held, atomic retained observation, same-attempt permission/settlement, original-request payload revalidation, capacity and UTF-8 neighbors, closure/progress failures, canary confinement and concurrent same-identity isolation. A closed settlement phase matrix covers invocation, obtained result, local stop, exposure and measurement availability. Real internal two-turn operation tests demonstrate work/attempt admission, required continuation replay and non-vacuous Stop/uncertain-closure gating; tool execution now uses the owning Runtime.Tools integration tests; Runtime.Candidates owns separate public candidate execution proof. The [runtime execution draft](../20_architecture/drafts/runtime-execution.md) owns the implemented support and bounded closure allowance. Run focused tests first:
