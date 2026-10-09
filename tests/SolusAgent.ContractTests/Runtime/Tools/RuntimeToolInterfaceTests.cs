@@ -43,6 +43,8 @@ public sealed class RuntimeToolInterfaceTests
         Assert.Equal(AgentTerminationReason.Failed, outcome.Reason); Assert.Equal(1, outcome.CompletedWorkUnits);
         Assert.Equal(mode is "loose_bytes" or "loose_schema" or "foreign" ? 2 : 1, cap.Effects);
         Assert.Equal(1, provider.Effects); Assert.Single(outcome.Usage!.Attempts);
+        // Interface entry is counted even when the guarded core reports pre-effect cancellation.
+        ToolAllowanceTests.Counts(outcome.Usage, 2, 0, 1);
     }
 
     [Theory]
@@ -57,6 +59,7 @@ public sealed class RuntimeToolInterfaceTests
         Assert.Equal(ToolMemberState.Succeeded, records[0].State); Assert.NotNull(records[0].Result);
         Assert.Null(records[1].Result); Assert.Null(records[1].InvocationStarted); Assert.False(records[2].InvocationStarted);
         Assert.Single(accepted.State.Records, record => record.ToolResult is not null);
+        ToolAllowanceTests.Counts(accepted.State.Usage(), 2, 0, 1);
     }
 
     private static ScriptedProvider Script() => new([(r, o, _) => ToolFixture.Calls(r, o, [ToolFixture.Counter("first"), ToolFixture.Counter("last"), ToolFixture.Counter("unstarted")]), ScriptedProvider.Final]);

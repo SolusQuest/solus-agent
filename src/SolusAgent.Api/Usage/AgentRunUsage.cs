@@ -65,14 +65,36 @@ public sealed class UsageAttemptObservation
     public UsageAccounting? Accounting { get; }
 }
 
-/// <summary>An immutable attempt inventory snapshot without inferred aggregation or durable ledger machinery.</summary>
+/// <summary>Immutable known tool-interface invocation counts, independent of provider attempts, tokens and confirmed business effects.</summary>
+public sealed class ToolInvocationUsage
+{
+    /// <summary>Creates nonnegative counts whose sum fits the supported count range.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">A count is negative or the total exceeds the supported range.</exception>
+    public ToolInvocationUsage(int invoked = 0, int reservedUnstarted = 0, int releasedUnstarted = 0)
+    {
+        if (invoked < 0) throw new ArgumentOutOfRangeException(nameof(invoked));
+        if (reservedUnstarted < 0) throw new ArgumentOutOfRangeException(nameof(reservedUnstarted));
+        if (releasedUnstarted < 0) throw new ArgumentOutOfRangeException(nameof(releasedUnstarted));
+        if ((long)invoked + reservedUnstarted + releasedUnstarted > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(invoked));
+        Invoked = invoked; ReservedUnstarted = reservedUnstarted; ReleasedUnstarted = releasedUnstarted;
+    }
+    /// <summary>Gets entries into the tool invocation interface, including rejected, failed and unknown effects; not a count of successful effects.</summary>
+    public int Invoked { get; }
+    /// <summary>Gets admitted members not yet entered whose invocation allowances are still reserved.</summary>
+    public int ReservedUnstarted { get; }
+    /// <summary>Gets cumulative admitted members proved never entered whose reservations were released; these no longer consume allowance.</summary>
+    public int ReleasedUnstarted { get; }
+}
+
+/// <summary>An immutable provider attempt inventory with independent optional tool observations.</summary>
 public sealed class AgentRunUsage
 {
     /// <summary>Copies attempts and validates unique identities, same-run association and complete ordinal coverage.</summary>
     /// <exception cref="ArgumentException">The identity, inventory associations or coverage are inconsistent.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Coverage is undefined.</exception>
     /// <exception cref="ArgumentNullException">The attempt list is null.</exception>
-    public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts)
+    public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts, ToolInvocationUsage? toolInvocations = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("An execution identity is required.", nameof(executionId));
         if (!Enum.IsDefined(coverage)) throw new ArgumentOutOfRangeException(nameof(coverage));
@@ -92,6 +114,7 @@ public sealed class AgentRunUsage
         ExecutionId = executionId;
         Coverage = coverage;
         Attempts = Array.AsReadOnly(snapshot);
+        ToolInvocations = toolInvocations;
     }
     /// <summary>Gets the Host execution correlation.</summary>
     public Guid ExecutionId { get; }
@@ -99,4 +122,6 @@ public sealed class AgentRunUsage
     public UsageInventoryCoverage Coverage { get; }
     /// <summary>Gets the copied read-only observations. Complete empty inventory proves no attempt up to this snapshot; unavailable empty inventory does not.</summary>
     public IReadOnlyList<UsageAttemptObservation> Attempts { get; }
+    /// <summary>Gets independent immutable tool counts, or null when unavailable. Provider inventory coverage does not establish tool knowledge.</summary>
+    public ToolInvocationUsage? ToolInvocations { get; }
 }

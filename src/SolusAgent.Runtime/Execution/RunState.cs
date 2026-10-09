@@ -19,6 +19,10 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     private ProviderResponse? latestResponse;
     private bool toolBatchClaimed;
     private readonly List<ToolExecutionRecord> toolRecords = [];
+    private readonly object toolUsageGate = new();
+    private int invokedTools;
+    private int reservedTools;
+    private int releasedTools;
     public AgentRequest Request { get; } = request;
     public RuntimeConfiguration Configuration { get; } = configuration;
     public RuntimeOptions Options { get; } = options;
@@ -101,11 +105,46 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         for (var i = 0; i < count; i++) reservation += ToolCallBytes(response.Calls[i]) + bindings[i].Descriptor.MaximumResultBytes;
         if (reservation > Options.MaximumRetainedBytes - retainedBytes)
         { Close(RuntimeStop.ResourceLimit); return -1; }
-        var first = toolRecords.Count;
-        for (var i = 0; i < count; i++) toolRecords.Add(new(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted));
-        return first;
+        lock (toolUsageGate)
+        {
+            if (Request.UsageLimits?.MaximumToolInvocations is { } limit && count > limit - invokedTools - reservedTools)
+            { Close(RuntimeStop.ResourceLimit); return -1; }
+            var first = toolRecords.Count;
+            for (var i = 0; i < count; i++)
+                toolRecords.Add(new(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted, ReservationHeld: true));
+            reservedTools += count;
+            return first;
+        }
     }
-    public void EnterTool(int index) => toolRecords[index] = toolRecords[index] with { State = ToolMemberState.InvokedUnknown };
+    public void EnterTool(int index)
+    {
+        lock (toolUsageGate)
+        {
+            var member = toolRecords[index];
+            if (!member.ReservationHeld || member.State != ToolMemberState.Unstarted)
+                throw new ProviderContractException(ProviderError.InvalidAssociation);
+            toolRecords[index] = member with { State = ToolMemberState.InvokedUnknown, ReservationHeld = false };
+            reservedTools--; invokedTools++;
+        }
+    }
+    // Bookkeeping only: a cut forbids new execution commits but must not retain never-started quota.
+    public void ReleaseToolBatch(int first, int count)
+    {
+        lock (toolUsageGate)
+        {
+            for (var i = first; i < first + count; i++)
+            {
+                var member = toolRecords[i];
+                if (member.State != ToolMemberState.Unstarted || !member.ReservationHeld) continue;
+                toolRecords[i] = member with { ReservationHeld = false };
+                reservedTools--; releasedTools++;
+            }
+        }
+    }
+    private ToolInvocationUsage ToolUsage()
+    {
+        lock (toolUsageGate) return new(invokedTools, reservedTools, releasedTools);
+    }
     public void RejectToolResult(int index, ToolError error) => toolRecords[index] = toolRecords[index] with
         { State = ToolMemberState.Rejected, Error = error };
     public void FailToolInvocation(int index) => toolRecords[index] = toolRecords[index] with
@@ -129,7 +168,7 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     internal static int ToolCallBytes(ToolCall call) => Encoding.UTF8.GetByteCount(call.CallId)
         + Encoding.UTF8.GetByteCount(call.ToolName) + Encoding.UTF8.GetByteCount(call.ArgumentsJson);
     public void Close(RuntimeStop reason) { if (AdmissionStop == RuntimeStop.None) AdmissionStop = reason; }
-    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts);
+    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts, toolInvocations: ToolUsage());
     public AgentOutcome Outcome(AgentTerminationReason reason, AgentFailureCode failure = AgentFailureCode.None) =>
         new(Request.ExecutionId, reason, Completed, failureCode: failure, usage: Usage());
     public static bool Matches(ProviderAttempt attempt, UsageAttemptObservation value) => attempt.ExecutionId == value.ExecutionId
