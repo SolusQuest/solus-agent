@@ -87,7 +87,7 @@ public sealed class ToolInvocationUsage
     public int ReleasedUnstarted { get; }
 }
 
-/// <summary>An immutable provider attempt inventory with independent optional tool observations.</summary>
+/// <summary>An immutable validated provider inventory with checked core token observations and independent optional tool counts.</summary>
 public sealed class AgentRunUsage
 {
     /// <summary>Copies attempts and validates unique identities, same-run association and complete ordinal coverage.</summary>
@@ -115,6 +115,8 @@ public sealed class AgentRunUsage
         Coverage = coverage;
         Attempts = Array.AsReadOnly(snapshot);
         ToolInvocations = toolInvocations;
+        InputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.InputTokens);
+        OutputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.OutputTokens);
     }
     /// <summary>Gets the Host execution correlation.</summary>
     public Guid ExecutionId { get; }
@@ -124,4 +126,8 @@ public sealed class AgentRunUsage
     public IReadOnlyList<UsageAttemptObservation> Attempts { get; }
     /// <summary>Gets independent immutable tool counts, or null when unavailable. Provider inventory coverage does not establish tool knowledge.</summary>
     public ToolInvocationUsage? ToolInvocations { get; }
+    /// <summary>Gets checked input observations; incomplete subtotals do not claim whole-run consumption.</summary>
+    public RunTokenObservation InputTokens { get; }
+    /// <summary>Gets checked output observations, independently of input availability.</summary>
+    public RunTokenObservation OutputTokens { get; }
 }

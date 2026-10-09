@@ -19,9 +19,10 @@ public sealed class AgentUsageLimits
         MaximumToolInvocations = maximumToolInvocations;
     }
 
-    /// <summary>Gets the requested pre-dispatch maximum distinct logical calls.</summary>
+    /// <summary>Gets the requested maximum admitted distinct logical calls, including calls that fail or never dispatch.</summary>
     public int? MaximumLogicalCalls { get; }
-    /// <summary>Gets the requested pre-dispatch maximum physical attempts, including retries.</summary>
+    /// <summary>Gets the requested maximum possible physical dispatches, including retries, reserved before exposure.</summary>
+    /// <remarks>Confirmed NotDispatched releases its slot once; Dispatched or Unknown retains it. Attempt inventory remains independently bounded.</remarks>
     public int? MaximumPhysicalDispatches { get; }
     /// <summary>Gets the cumulative observed input threshold for stopping subsequent work, not a strict ceiling.</summary>
     public long? InputTokenThreshold { get; }

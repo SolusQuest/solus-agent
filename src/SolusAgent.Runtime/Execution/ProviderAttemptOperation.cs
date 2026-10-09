@@ -85,6 +85,7 @@ internal static class ProviderAttemptOperation
                 }
             }
         }
+        // Finalize the reserved send slot from these sealed, association-checked facts before Host closure.
         state.Retain(request.Attempt, observation);
 
         if (stop == RuntimeStop.None && result?.Outcome == ProviderOutcome.Succeeded)

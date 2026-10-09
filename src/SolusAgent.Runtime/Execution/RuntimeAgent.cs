@@ -76,6 +76,7 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
         ? AgentTerminationReason.Cancelled : AgentTerminationReason.ResourceLimit);
     private static AgentOutcome StopOutcome(RunState state) => state.Cut.Check() != RuntimeStop.None ? CutOutcome(state)
         : state.AdmissionStop == RuntimeStop.ResourceLimit ? state.Outcome(AgentTerminationReason.ResourceLimit)
+        : state.UsageAccountingUnavailable ? state.Outcome(AgentTerminationReason.Partial)
         : state.AdmissionStop is RuntimeStop.ExposureDenied or RuntimeStop.HostStopped ? state.Outcome(AgentTerminationReason.Partial)
         : state.Outcome(AgentTerminationReason.Failed, AgentFailureCode.ExecutionFailed);
 }

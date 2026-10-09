@@ -38,20 +38,20 @@ public sealed class StartupAndTurnTests
     }
 
     [Theory]
-    [InlineData(AgentCapability.DispatchLimits)] [InlineData(AgentCapability.UsageThresholds)]
+    [InlineData(AgentCapability.UsageThresholds)] [InlineData(AgentCapability.DispatchLimits)]
     [InlineData(AgentCapability.DispatchLimits | AgentCapability.UsageThresholds)]
-    public async Task UnsupportedRequirementsWinBeforeCancellationProgressOrEffects(AgentCapability required)
+    public async Task SupportedCountAndThresholdRequirementsStillHonorPreCancellationBeforeEffects(AgentCapability required)
     {
         var provider = new ScriptedProvider([ScriptedProvider.Final]); var hooks = new RuntimeHooks();
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         var outcome = await RuntimeFixture.Agent(provider, hooks).ExecuteAsync(RuntimeFixture.Request(required: required),
             new InlineProgress(_ => throw new InvalidOperationException()), cancelled.Token);
-        Assert.Equal(AgentTerminationReason.UnsupportedCapability, outcome.Reason); Assert.Equal(required, outcome.UnsupportedCapabilities);
+        Assert.Equal(AgentTerminationReason.Cancelled, outcome.Reason); Assert.Equal(AgentCapability.None, outcome.UnsupportedCapabilities);
         Assert.Empty(outcome.Usage!.Attempts); Assert.Empty(hooks.Exposures); Assert.Equal(0, provider.Effects);
     }
 
     [Fact]
-    public async Task PreCancellationHasNoAttemptOrHookAndOptionalUnsupportedUsagePoliciesAreAdvisory()
+    public async Task PreCancellationHasNoAttemptOrHookAndOptionalPoliciesAllowCurrentFinalCompletion()
     {
         var provider = new ScriptedProvider([ScriptedProvider.Final]); var hooks = new RuntimeHooks();
         var agent = RuntimeFixture.Agent(provider, hooks); using var cancel = new CancellationTokenSource(); cancel.Cancel();

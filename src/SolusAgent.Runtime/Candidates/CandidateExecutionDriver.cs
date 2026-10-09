@@ -45,11 +45,12 @@ internal static class CandidateExecutionDriver
                     if (previous.Decision == CandidateDecision.Reject)
                     {
                         if (repairs >= request.Bounds.MaximumRepairs) return Stop(CandidateStopReason.RepairLimit);
-                        if (previous.CorrectionText is { } correction
-                            && !cut.TryCommit(() => state.AppendCandidateCorrection(correction))) return CutStop();
                     }
                     else if (continuations >= request.Bounds.MaximumContinuations) return Stop(CandidateStopReason.ContinuationLimit);
                 }
+                if (!state.PreflightTurn()) return StateStop();
+                if (previous?.Decision == CandidateDecision.Reject && previous.CorrectionText is { } correction
+                    && !cut.TryCommit(() => state.AppendCandidateCorrection(correction))) return CutStop();
 
                 // One candidate-production episode admits its first provider turn, then reuses the same RunState,
                 // provider attempt and tool batch operations on the same run cut across intermediate tool turns
@@ -175,6 +176,7 @@ internal static class CandidateExecutionDriver
         CandidateExecutionResult CutStop() => Stop(cut.Check() == RuntimeStop.Cancelled ? CandidateStopReason.Cancelled : CandidateStopReason.DurationLimit);
         CandidateExecutionResult StateStop() => cut.Check() != RuntimeStop.None ? CutStop()
             : Stop(state.AdmissionStop == RuntimeStop.ResourceLimit ? CandidateStopReason.RuntimeLimit
+                : state.UsageAccountingUnavailable ? CandidateStopReason.UsageAccountingUnavailable
                 : state.AdmissionStop is RuntimeStop.ExposureDenied or RuntimeStop.HostStopped ? CandidateStopReason.ProductionStopped
                 : CandidateStopReason.ProductionFailed);
         CandidateExecutionResult Stop(CandidateStopReason stop)
@@ -183,7 +185,7 @@ internal static class CandidateExecutionDriver
             {
                 CandidateStopReason.Completed => AgentTerminationReason.Completed,
                 CandidateStopReason.HostEnded or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement
-                    or CandidateStopReason.ProductionStopped => AgentTerminationReason.Partial,
+                    or CandidateStopReason.ProductionStopped or CandidateStopReason.UsageAccountingUnavailable => AgentTerminationReason.Partial,
                 CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit
                     or CandidateStopReason.ContinuationLimit or CandidateStopReason.DurationLimit or CandidateStopReason.RuntimeLimit => AgentTerminationReason.ResourceLimit,
                 CandidateStopReason.Cancelled => AgentTerminationReason.Cancelled,
