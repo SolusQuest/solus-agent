@@ -3,6 +3,7 @@ using System.Text.Json;
 using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
+using SolusAgent.Api.Usage;
 using SolusAgent.ContractTests.DeepSeek.Adapter;
 using SolusAgent.Providers.DeepSeek;
 using SolusAgent.Runtime.Api.Exposure;
@@ -29,9 +30,9 @@ internal static class IntegrationFixture
         new(clock, maximumAttempts, requireContinuation: true);
 
     internal static CandidateExecutionRequest Request(int units = 8, int submissions = 8, int repairs = 8,
-        int continuations = 8, TimeSpan? duration = null, Guid? executionId = null) =>
+        int continuations = 8, TimeSpan? duration = null, Guid? executionId = null, AgentUsageLimits? usageLimits = null) =>
         new(new AgentRequest(executionId ?? Guid.NewGuid(), Instruction, [new AgentInput(AgentInputSource.Repository, InputData)],
-            new AgentExecutionBounds(units, duration ?? TimeSpan.FromSeconds(10)), AgentCapability.None),
+            new AgentExecutionBounds(units, duration ?? TimeSpan.FromSeconds(10)), AgentCapability.None, usageLimits),
             new CandidateExecutionBounds(submissions, repairs, continuations));
 
     internal static AgentRequest Execution(int units = 8) =>
@@ -131,16 +132,19 @@ internal sealed class HeldContent(byte[] body, TaskCompletionSource drained, Tas
 /// Transparent fixture-only observer of the actual guarded provider invocation. It forwards the exact request,
 /// observation and token exactly once to the real adapter and signals only when that invocation has returned.
 /// </summary>
-internal sealed class ObservedProvider(IModelProvider inner) : IModelProvider
+internal sealed class ObservedProvider(IModelProvider inner, int observedReturn = 1) : IModelProvider
 {
     private readonly TaskCompletionSource returned = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource Returned => returned;
+    internal List<ProviderRequest> Requests { get; } = [];
     public ProviderScope Scope => inner.Scope;
     public ProviderCapabilities Capabilities => inner.Capabilities;
     public async ValueTask<ProviderExchangeResult> ExchangeAsync(ProviderRequest request, CancellationToken cancellationToken = default)
     {
+        int number;
+        lock (Requests) { Requests.Add(request); number = Requests.Count; }
         try { return await inner.ExchangeAsync(request, cancellationToken).ConfigureAwait(false); }
-        finally { returned.TrySetResult(); }
+        finally { if (number == observedReturn) returned.TrySetResult(); }
     }
 }
 
