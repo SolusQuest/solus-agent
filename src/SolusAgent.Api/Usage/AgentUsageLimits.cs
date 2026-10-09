@@ -6,12 +6,13 @@ public sealed class AgentUsageLimits
     /// <summary>Creates positive optional limits. Null means no configured limit in that dimension.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A configured value is not positive.</exception>
     public AgentUsageLimits(int? maximumLogicalCalls = null, int? maximumPhysicalDispatches = null, long? inputTokenThreshold = null, long? outputTokenThreshold = null,
-        AgentAccountingPolicy? accountingPolicy = null)
+        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null)
     {
         if (maximumLogicalCalls is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumLogicalCalls));
         if (maximumPhysicalDispatches is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumPhysicalDispatches));
         if (inputTokenThreshold is <= 0) throw new ArgumentOutOfRangeException(nameof(inputTokenThreshold));
         if (outputTokenThreshold is <= 0) throw new ArgumentOutOfRangeException(nameof(outputTokenThreshold));
+        if (maximumToolInvocations is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumToolInvocations));
         MaximumLogicalCalls = maximumLogicalCalls;
         MaximumPhysicalDispatches = maximumPhysicalDispatches;
         InputTokenThreshold = inputTokenThreshold;
@@ -19,6 +20,7 @@ public sealed class AgentUsageLimits
         if (accountingPolicy is { UnknownUsage: not UnknownUsagePolicy.Stop } && maximumPhysicalDispatches is null)
             throw new ArgumentException("Unknown continuation requires an explicit finite physical-dispatch limit.", nameof(maximumPhysicalDispatches));
         AccountingPolicy = accountingPolicy;
+        MaximumToolInvocations = maximumToolInvocations;
     }
 
     /// <summary>Gets the requested maximum admitted distinct logical calls, including calls that fail or never dispatch.</summary>
@@ -32,4 +34,6 @@ public sealed class AgentUsageLimits
     public long? OutputTokenThreshold { get; }
     /// <summary>Gets optional Host accounting policy, distinct from observed thresholds and authoritative only in supporting implementations.</summary>
     public AgentAccountingPolicy? AccountingPolicy { get; }
+    /// <summary>Gets the run-level invocation allowance, reserved for complete batches and charged on tool-interface entry, including failed or unknown effects.</summary>
+    public int? MaximumToolInvocations { get; }
 }

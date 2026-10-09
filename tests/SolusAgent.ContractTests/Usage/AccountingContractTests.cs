@@ -53,11 +53,11 @@ public sealed class AccountingContractTests
         Assert.Throws<ArgumentException>(() => new AttemptAccounting(id, call, physical, 1, policy.Reservation,
             new(AccountingDisposition.Measured, 3), new(AccountingDisposition.Unresolved, 4)));
         var observation = new UsageAttemptObservation(id, call, physical, 1, DispatchExposure.Dispatched, new(3, null));
-        Assert.Same(snapshot, new AgentRunUsage(id, UsageInventoryCoverage.Complete, [observation], snapshot).Accounting);
-        Assert.Throws<ArgumentException>(() => new AgentRunUsage(id, UsageInventoryCoverage.Partial, [observation], snapshot));
-        Assert.Throws<ArgumentException>(() => new AgentRunUsage(id, UsageInventoryCoverage.Complete, [], snapshot));
+        Assert.Same(snapshot, new AgentRunUsage(id, UsageInventoryCoverage.Complete, [observation], accounting: snapshot).Accounting);
+        Assert.Throws<ArgumentException>(() => new AgentRunUsage(id, UsageInventoryCoverage.Partial, [observation], accounting: snapshot));
+        Assert.Throws<ArgumentException>(() => new AgentRunUsage(id, UsageInventoryCoverage.Complete, [], accounting: snapshot));
         Assert.Throws<ArgumentException>(() => new AgentRunUsage(id, UsageInventoryCoverage.Complete,
-            [new(id, call, physical, 1, DispatchExposure.Dispatched, new(4, null))], snapshot));
+            [new(id, call, physical, 1, DispatchExposure.Dispatched, new(4, null))], accounting: snapshot));
         Assert.Equal(AccountingBalanceCoverage.Known, snapshot.Input.Coverage);
         Assert.Equal(AccountingBalanceCoverage.Unknown, snapshot.Output.Coverage);
         Assert.Equal(15, snapshot.Output.RemainingAllowance);

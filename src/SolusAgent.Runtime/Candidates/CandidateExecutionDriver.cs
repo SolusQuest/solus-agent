@@ -22,7 +22,7 @@ internal static class CandidateExecutionDriver
         var unsupported = execution.RequiredCapabilities & ~RuntimeAgentFactory.Support.SupportedCapabilities;
         if (unsupported != AgentCapability.None)
             return new(new(execution.ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, unsupported,
-                usage: new AgentRunUsage(execution.ExecutionId, UsageInventoryCoverage.Complete, [])),
+                usage: new AgentRunUsage(execution.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new())),
                 CandidateStopReason.UnsupportedCapability, []);
 
         using var cut = new RunCut(options.TimeProvider, execution.Bounds.MaximumDuration, cancellationToken);

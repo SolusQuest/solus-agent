@@ -54,40 +54,44 @@ internal static class ToolBatchOperation
         var first = -1;
         if (!cut.TryCommit(() => first = state.ReserveToolBatch(response, bindings))) return Stopped();
         if (first < 0) return Fail(ToolError.LimitExceeded);
-        for (var i = 0; i < prepared.Count; i++)
+        try
         {
-            if (!state.CanContinue) return Stopped();
-            var index = first + i;
-            var binding = bindings[i]; var call = response.Calls[i];
-            Task<ToolResult>? pending = null;
-            try
+            for (var i = 0; i < prepared.Count; i++)
             {
-                // Authority is checked again by the tool guard; preflight never grants lasting permission.
-                if (!cut.TryStart(() =>
+                if (!state.CanContinue) return Stopped();
+                var index = first + i;
+                var binding = bindings[i]; var call = response.Calls[i];
+                Task<ToolResult>? pending = null;
+                try
                 {
-                    state.EnterTool(index);
-                    return binding.Tool.InvokeAsync(prepared[i], call, binding.Capability, cut.Token).AsTask();
-                }, out pending)) return Stopped();
-                var completion = await cut.WaitAsync(pending!).ConfigureAwait(false);
-                if (!completion.Obtained) return Stopped();
-                var result = completion.Value;
-                var error = ValidateResult(result, call, binding.Descriptor);
-                if (error != ToolError.None)
-                {
-                    if (!cut.TryCommit(() => state.RejectToolResult(index, error))) return Stopped();
-                    return Fail(error);
+                    // Authority is checked again by the tool guard; preflight never grants lasting permission.
+                    if (!cut.TryStart(() =>
+                    {
+                        state.EnterTool(index);
+                        return binding.Tool.InvokeAsync(prepared[i], call, binding.Capability, cut.Token).AsTask();
+                    }, out pending)) return Stopped();
+                    var completion = await cut.WaitAsync(pending!).ConfigureAwait(false);
+                    if (!completion.Obtained) return Stopped();
+                    var result = completion.Value;
+                    var error = ValidateResult(result, call, binding.Descriptor);
+                    if (error != ToolError.None)
+                    {
+                        if (!cut.TryCommit(() => state.RejectToolResult(index, error))) return Stopped();
+                        return Fail(error);
+                    }
+                    if (!cut.TryCommit(() => state.CompleteTool(index, result!))) return Stopped();
+                    if (result!.Outcome != ToolOutcome.Succeeded) return Fail(result.Error);
                 }
-                if (!cut.TryCommit(() => state.CompleteTool(index, result!))) return Stopped();
-                if (result!.Outcome != ToolOutcome.Succeeded) return Fail(result.Error);
+                catch (Exception exception) when (Recoverable(exception))
+                {
+                    if (cut.Check() != RuntimeStop.None) return Stopped();
+                    if (!cut.TryCommit(() => state.FailToolInvocation(index))) return Stopped();
+                    return Fail(ToolError.InvocationFailed);
+                }
             }
-            catch (Exception exception) when (Recoverable(exception))
-            {
-                if (cut.Check() != RuntimeStop.None) return Stopped();
-                if (!cut.TryCommit(() => state.FailToolInvocation(index))) return Stopped();
-                return Fail(ToolError.InvocationFailed);
-            }
+            return new(ToolError.None, RuntimeStop.None);
         }
-        return new(ToolError.None, RuntimeStop.None);
+        finally { state.ReleaseToolBatch(first, prepared.Count); }
 
         ToolBatchExecution Fail(ToolError error)
         {

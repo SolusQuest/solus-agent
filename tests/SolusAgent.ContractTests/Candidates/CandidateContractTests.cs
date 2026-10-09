@@ -184,7 +184,7 @@ public sealed class CandidateContractTests
             if (Nullable.GetUnderlyingType(type) is Type underlying) { Inspect(underlying); return; }
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)) { Inspect(type.GenericTypeArguments[0]); return; }
             Assert.Contains(type, new[] { typeof(CandidateExecutionResult), typeof(CandidateReceipt), typeof(AgentOutcome),
-                typeof(AgentRunUsage), typeof(RunTokenObservation), typeof(UsageAttemptObservation), typeof(UsageObservation), typeof(ProviderTokenCounter),
+                typeof(AgentRunUsage), typeof(ToolInvocationUsage), typeof(RunTokenObservation), typeof(UsageAttemptObservation), typeof(UsageObservation), typeof(ProviderTokenCounter),
                 typeof(UsageAccounting), typeof(UsageTokenAmounts), typeof(UsageCostEstimate), typeof(AgentAccountingPolicy),
                 typeof(RunAccountingSnapshot), typeof(AttemptAccounting), typeof(AccountingDimension), typeof(RunAccountingDimension) });
             Assert.All(type.GetProperties(), property =>

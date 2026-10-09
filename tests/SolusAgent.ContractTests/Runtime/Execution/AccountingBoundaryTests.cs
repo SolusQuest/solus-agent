@@ -1,4 +1,5 @@
 using CustomTools;
+using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
 using SolusAgent.Api.Usage;
@@ -133,5 +134,39 @@ public sealed class AccountingBoundaryTests
         Assert.Equal(expected, result.Usage!.Accounting!.Attempts[0].Input.Disposition);
         Assert.Equal(exposure == DispatchExposure.NotDispatched ? 0 : 8, result.Usage.Accounting.Input.AccountedTokens);
         Assert.Null(result.Usage.Attempts[0].Usage.InputTokens);
+    }
+
+    [Theory]
+    [InlineData(false, 1)] [InlineData(true, 1)] [InlineData(false, 2)] [InlineData(true, 2)]
+    public async Task ToolAllowanceAndTokenAccountingRetainIndependentCombinedSnapshots(bool candidate, int toolLimit)
+    {
+        var provider = new ScriptedProvider([AccountingTests.Step(new(3, 2), "a"), AccountingTests.Step(new(4, 2), "b"), AccountingTests.Step(new(5, 2))]);
+        var tool = new CounterCapability(); var hooks = new AccountingHostProbe();
+        var request = new AgentRequest(Guid.NewGuid(), "i", [], new(8, TimeSpan.FromSeconds(10)),
+            AgentCapability.UsageAccounting | AgentCapability.ToolInvocationLimit,
+            new(maximumPhysicalDispatches: 3, maximumToolInvocations: toolLimit, accountingPolicy: new(new(1, 1), 100, 100)));
+        var result = await AccountingTests.Execute(AccountingTests.Agent(provider, hooks, tool), request, candidate);
+        Assert.Equal(toolLimit == 1 ? AgentTerminationReason.ResourceLimit : AgentTerminationReason.Completed, result.Reason);
+        Assert.Equal(toolLimit, tool.Effects); Assert.Equal(toolLimit, result.Usage!.ToolInvocations!.Invoked);
+        Assert.Equal(toolLimit + 1, provider.Effects); Assert.Equal(provider.Effects, result.Usage.Accounting!.Attempts.Count);
+        Assert.Equal(toolLimit == 1 ? 7 : 12, result.Usage.Accounting.Input.MeasuredTokens);
+        Assert.Equal(0, result.Usage.Accounting.Input.ReservedTokens); Assert.Equal(0, result.Usage.ToolInvocations.ReservedUnstarted);
+    }
+
+    [Theory]
+    [InlineData(false, false)] [InlineData(false, true)] [InlineData(true, false)] [InlineData(true, true)]
+    public async Task ForeignScopeCannotReleaseOrSettleRuntimeReservation(bool candidate, bool noSend)
+    {
+        var foreignScope = new ProviderScope("foreign", "foreign");
+        IModelProvider guarded = noSend ? new DelegateProvider(foreignScope, (_, observation, _) =>
+        { observation.ObserveDispatch(DispatchExposure.NotDispatched); throw new InvalidOperationException(); })
+            : new ScriptedProvider([ScriptedProvider.Final], foreignScope);
+        var provider = new InterfaceScriptedProvider(new("p", "m"), (r, token) => guarded.ExchangeAsync(new(foreignScope, r.Attempt, r.Inputs), token));
+        var hooks = new AccountingHostProbe();
+        var result = await AccountingTests.Execute(AccountingTests.Agent(provider, hooks), AccountingTests.Request(new(new(8, 5), 20, 20)), candidate);
+        Assert.Equal(AgentTerminationReason.Failed, result.Reason); Assert.Equal(ProviderError.InvalidAssociation, hooks.Settlements.Single().ProviderError);
+        Assert.Equal(DispatchExposure.Unknown, result.Usage!.Attempts.Single().Exposure);
+        Assert.Equal(AccountingDisposition.Unresolved, result.Usage.Accounting!.Attempts.Single().Input.Disposition);
+        Assert.Equal(8, result.Usage.Accounting.Input.UnresolvedTokens); Assert.Equal(0, result.Usage.Accounting.Input.MeasuredTokens);
     }
 }

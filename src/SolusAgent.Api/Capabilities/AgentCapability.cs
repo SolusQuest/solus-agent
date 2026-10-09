@@ -27,13 +27,16 @@ public enum AgentCapability
     /// <summary>Checks configured token thresholds after responses to stop subsequent work; not a strict pre-dispatch ceiling.</summary>
     UsageThresholds = 32,
 
+    /// <summary>Reserves complete tool batches against the configured invocation allowance, counts invocation-interface entries and releases only unstarted members.</summary>
+    ToolInvocationLimit = 64,
+
     /// <summary>Enforces explicit Host reservation/accounting policy with ordered permission and truthful run-local settlement.</summary>
     UsageAccounting = 128,
 }
 
 internal static class CapabilityValidation
 {
-    private const AgentCapability All = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.UsageAccounting;
+    private const AgentCapability All = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting;
 
     internal static void Validate(AgentCapability capabilities, string parameterName)
     {

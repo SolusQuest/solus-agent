@@ -21,6 +21,8 @@ public sealed class TransportDiagnosticsTests
 {
     [Theory]
     [InlineData("http")]
+    [InlineData("typed-http")]
+    [InlineData("caller-typed")]
     [InlineData("unrelated-cancel")]
     [InlineData("none-cancel")]
     [InlineData("matching-cancel")]
@@ -31,14 +33,19 @@ public sealed class TransportDiagnosticsTests
         using var handler = new FakeHandler((_, token) =>
         {
             if (mode == "http") throw new HttpRequestException("synthetic-exception-canary", new IOException(AdapterFixture.Credential));
+            if (mode == "typed-http") throw new HttpRequestException(HttpRequestError.ConnectionError,
+                "synthetic-exception-canary https://synthetic-endpoint-canary.invalid", new IOException(AdapterFixture.Credential));
             caller.Cancel();
+            if (mode == "caller-typed") throw new HttpRequestException(HttpRequestError.ConnectionError,
+                "synthetic-exception-canary", new IOException(AdapterFixture.Credential));
             throw new OperationCanceledException("synthetic-exception-canary", new IOException(AdapterFixture.Credential),
                 mode == "matching-cancel" ? token : mode == "unrelated-cancel" ? new CancellationToken(true) : CancellationToken.None);
         });
         using var provider = AdapterFixture.Provider(handler); var result = await provider.ExchangeAsync(AdapterFixture.Request(), caller.Token);
         Assert.Equal(mode == "matching-cancel" ? ProviderOutcome.Cancelled : ProviderOutcome.Failed, result.Outcome); Assert.Equal(1, handler.Sends);
+        Assert.Equal(mode == "typed-http" ? ProviderRetryKind.Transient : (ProviderRetryKind?)null, result.Retry?.Kind);
         Assert.Contains("RequestFailed", telemetry.Text);
-        foreach (var secret in new[] { "synthetic-exception-canary", AdapterFixture.Credential, AdapterFixture.Replay }) Assert.DoesNotContain(secret, telemetry.Text);
+        foreach (var secret in new[] { "synthetic-exception-canary", "synthetic-endpoint-canary", AdapterFixture.Credential, AdapterFixture.Replay }) Assert.DoesNotContain(secret, telemetry.Text);
     }
     [Theory]
     [InlineData("success", ProviderOutcome.Succeeded)]
