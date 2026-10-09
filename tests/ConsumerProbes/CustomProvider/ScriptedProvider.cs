@@ -36,6 +36,13 @@ public sealed class ScriptedProvider : ModelProvider
         observation.CaptureUsage(new(3, 2));
         return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.Final, "f", []));
     }
+    public static Func<ProviderRequest, ProviderObservation, CancellationToken, ValueTask<ProviderResponse>> Failure(ProviderRetry? retry = null) =>
+        (_, observation, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            observation.CaptureUsage(new(3, 2));
+            throw new ProviderFailureException(retry);
+        };
 }
 
 /// <summary>Independent interface seam for faults and guarded forwarding, without a Runtime reference.</summary>

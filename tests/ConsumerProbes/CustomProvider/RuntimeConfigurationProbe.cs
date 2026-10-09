@@ -197,7 +197,16 @@ public sealed class ConfigurationConsumer
                         observation = new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId, attempt.AttemptNumber, DispatchExposure.Unknown, new());
                         outcome = ProviderOutcome.Rejected; error = ProviderError.InvalidAssociation;
                     }
-                    else if (provider.Outcome == ProviderOutcome.Cancelled) stop = RuntimeStop.Cancelled;
+                    else
+                    {
+                        try { provider.ValidateFor(request); }
+                        catch (ProviderContractException exception)
+                        {
+                            // Current-attempt usage survives payload rejection; its response and retry metadata do not.
+                            provider = null; outcome = ProviderOutcome.Rejected; error = exception.Error;
+                        }
+                        if (provider?.Outcome == ProviderOutcome.Cancelled) stop = RuntimeStop.Cancelled;
+                    }
                 }
                 catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
                 {
