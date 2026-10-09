@@ -24,7 +24,7 @@ public sealed class RuntimeSupport
     public RuntimeSupport(AgentCapability supportedCapabilities, RuntimeGuarantee guarantees)
     {
         const AgentCapability all = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation
-            | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit;
+            | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting;
         if ((supportedCapabilities & ~all) != 0) throw new ArgumentOutOfRangeException(nameof(supportedCapabilities));
         Validate(guarantees);
         SupportedCapabilities = supportedCapabilities; Guarantees = guarantees;

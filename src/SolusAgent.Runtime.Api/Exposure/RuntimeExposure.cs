@@ -86,12 +86,18 @@ public enum RuntimeStop
 public sealed class RuntimeExposure
 {
     /// <summary>Creates immutable restricted Host association; no payload, endpoint, credential or new attempt identity.</summary>
-    public RuntimeExposure(ProviderScope scope, ProviderAttempt attempt, ExposureStrength requiredAcknowledgement)
+    public RuntimeExposure(ProviderScope scope, ProviderAttempt attempt, ExposureStrength requiredAcknowledgement,
+        RunAccountingSnapshot? accounting = null)
     {
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Attempt = attempt ?? throw new ArgumentNullException(nameof(attempt));
         if (!Enum.IsDefined(requiredAcknowledgement)) throw new ArgumentOutOfRangeException(nameof(requiredAcknowledgement));
         RequiredAcknowledgement = requiredAcknowledgement;
+        if (accounting is not null && (accounting.ExecutionId != attempt.ExecutionId || accounting.Attempts.Count == 0
+            || !MatchesAttempt(accounting.Attempts[^1], attempt) || accounting.Attempts[^1].IsFinalized
+            || accounting.Attempts.Take(accounting.Attempts.Count - 1).Any(e => !e.IsFinalized)))
+            throw new ArgumentException("Exposure accounting must reserve exactly the current last attempt.", nameof(accounting));
+        Accounting = accounting;
     }
     /// <summary>Gets exact scope in the trusted Host channel, excluded from ordinary diagnostics.</summary>
     public ProviderScope Scope { get; }
@@ -99,9 +105,14 @@ public sealed class RuntimeExposure
     public ProviderAttempt Attempt { get; }
     /// <summary>Gets the required Host-reported strength.</summary>
     public ExposureStrength RequiredAcknowledgement { get; }
+    /// <summary>Gets the current Runtime-owned ledger including this attempt's numeric reservation, before permission.</summary>
+    public RunAccountingSnapshot? Accounting { get; }
     /// <summary>Compares every scope/attempt/requirement field without normalization.</summary>
     public bool Matches(RuntimeExposure other) => other is not null && Scope.Matches(other.Scope) && Attempt.Matches(other.Attempt)
-        && RequiredAcknowledgement == other.RequiredAcknowledgement;
+        && RequiredAcknowledgement == other.RequiredAcknowledgement && SameAccounting(Accounting, other.Accounting);
+    internal static bool SameAccounting(RunAccountingSnapshot? a, RunAccountingSnapshot? b) => a is null ? b is null : b is not null && a.Matches(b);
+    internal static bool MatchesAttempt(AttemptAccounting entry, ProviderAttempt attempt) => entry.ExecutionId == attempt.ExecutionId
+        && entry.LogicalCallId == attempt.LogicalCallId && entry.PhysicalAttemptId == attempt.PhysicalAttemptId && entry.AttemptNumber == attempt.AttemptNumber;
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(RuntimeExposure);
 }
@@ -147,7 +158,8 @@ public sealed class RuntimeSettlement
 {
     /// <summary>Validates full association, original admission/provider phase and optional exchange outcome; does not implement accounting.</summary>
     public RuntimeSettlement(RuntimeExposure exposure, UsageAttemptObservation observation, RuntimeStop stop,
-        bool providerInvoked, ProviderOutcome? providerOutcome = null, ProviderError? providerError = null)
+        bool providerInvoked, ProviderOutcome? providerOutcome = null, ProviderError? providerError = null,
+        RunAccountingSnapshot? accounting = null)
     {
         Exposure = exposure ?? throw new ArgumentNullException(nameof(exposure));
         Observation = observation ?? throw new ArgumentNullException(nameof(observation));
@@ -169,6 +181,16 @@ public sealed class RuntimeSettlement
             throw new ArgumentException("The settlement outcome is incoherent.");
         Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError;
         ProviderInvoked = providerInvoked;
+        var before = exposure.Accounting;
+        var settledById = accounting?.Attempts.ToDictionary(entry => entry.PhysicalAttemptId);
+        if ((before is null) != (accounting is null) || (before is not null && accounting is not null
+            && (accounting.ExecutionId != before.ExecutionId || !accounting.Policy.Matches(before.Policy)
+                || accounting.Attempts.Count != before.Attempts.Count
+                || !accounting.Attempts[^1].MatchesObservation(observation, accounting.Policy.UnknownUsage)
+                || !before.Attempts.Take(before.Attempts.Count - 1).All(entry =>
+                    settledById!.TryGetValue(entry.PhysicalAttemptId, out var settled) && entry.Matches(settled)))))
+            throw new ArgumentException("Settlement accounting must finalize only the original reserved attempt.", nameof(accounting));
+        Accounting = accounting;
     }
     /// <summary>Gets original restricted Host exposure association.</summary>
     public RuntimeExposure Exposure { get; }
@@ -182,6 +204,8 @@ public sealed class RuntimeSettlement
     public ProviderOutcome? ProviderOutcome { get; }
     /// <summary>Gets actual provider error only when its exchange was invoked.</summary>
     public ProviderError? ProviderError { get; }
+    /// <summary>Gets the already settled Runtime ledger; delivery failure cannot roll back these facts.</summary>
+    public RunAccountingSnapshot? Accounting { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(RuntimeSettlement);
 }
@@ -190,12 +214,14 @@ public sealed class RuntimeSettlement
 public sealed class SettlementAcknowledgement
 {
     /// <summary>Creates a closed optional continuation decision; failed/unknown feedback has no instruction.</summary>
-    public SettlementAcknowledgement(RuntimeExposure exposure, RuntimeHookStatus status, RuntimeContinuation? continuation = null)
+    public SettlementAcknowledgement(RuntimeExposure exposure, RuntimeHookStatus status, RuntimeContinuation? continuation = null,
+        RunAccountingSnapshot? accounting = null)
     {
         Exposure = exposure ?? throw new ArgumentNullException(nameof(exposure));
         if (!Enum.IsDefined(status) || (continuation.HasValue && !Enum.IsDefined(continuation.Value))) throw new ArgumentOutOfRangeException(nameof(status));
         if ((status == RuntimeHookStatus.Acknowledged) != continuation.HasValue) throw new ArgumentException("The settlement receipt is incoherent.");
         Status = status; Continuation = continuation;
+        Accounting = accounting;
     }
     /// <summary>Gets asserted exposure whose full identity must match before using the instruction.</summary>
     public RuntimeExposure Exposure { get; }
@@ -203,6 +229,14 @@ public sealed class SettlementAcknowledgement
     public RuntimeHookStatus Status { get; }
     /// <summary>Gets Continue/Stop only on acknowledged delivery; neither automatically retries anything.</summary>
     public RuntimeContinuation? Continuation { get; }
+    /// <summary>Gets the acknowledged post-settlement numeric snapshot; active accounting requires an exact match.</summary>
+    public RunAccountingSnapshot? Accounting { get; }
+    /// <summary>Checks both original permission association and the post-settlement accounting contents.</summary>
+    public RuntimeStop Assess(RuntimeSettlement expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        return !RuntimeExposure.SameAccounting(expected.Accounting, Accounting) ? RuntimeStop.SettlementMismatch : Assess(expected.Exposure);
+    }
     /// <summary>Checks full correlation and classifies continuation without rewriting attempt evidence.</summary>
     public RuntimeStop Assess(RuntimeExposure expected)
     {

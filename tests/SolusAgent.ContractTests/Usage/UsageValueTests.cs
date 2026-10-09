@@ -161,13 +161,14 @@ public sealed class UsageValueTests
     public void OrdinaryUsageSurfacesHaveOnlyClosedMetadataAndNumericValues()
     {
         var types = typeof(UsageObservation).Assembly.GetExportedTypes().Where(type => type.Namespace == typeof(UsageObservation).Namespace && !type.IsEnum).ToHashSet();
-        var allowedCollections = new[] { typeof(IReadOnlyList<ProviderTokenCounter>), typeof(IReadOnlyList<UsageAttemptObservation>) };
+        var allowedCollections = new[] { typeof(IReadOnlyList<ProviderTokenCounter>), typeof(IReadOnlyList<UsageAttemptObservation>), typeof(IReadOnlyList<AttemptAccounting>) };
         foreach (var type in types)
         {
             Assert.All(type.GetProperties(BindingFlags.Public | BindingFlags.Instance), property =>
             {
                 var valueType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-                Assert.True(valueType.IsEnum || valueType == typeof(Guid) || valueType == typeof(int) || valueType == typeof(long) || valueType == typeof(decimal) || types.Contains(valueType) || allowedCollections.Contains(valueType) || type == typeof(UsageCostEstimate) && property.Name == nameof(UsageCostEstimate.Currency) && valueType == typeof(string), $"Unexpected ordinary property: {type.Name}.{property.Name}");
+                Assert.True(valueType.IsEnum || valueType == typeof(Guid) || valueType == typeof(int) || valueType == typeof(long) || valueType == typeof(decimal) || types.Contains(valueType) || allowedCollections.Contains(valueType) || type == typeof(UsageCostEstimate) && property.Name == nameof(UsageCostEstimate.Currency) && valueType == typeof(string)
+                    || type == typeof(AttemptAccounting) && property.Name == nameof(AttemptAccounting.IsFinalized) && valueType == typeof(bool), $"Unexpected ordinary property: {type.Name}.{property.Name}");
                 Assert.Null(property.SetMethod);
             });
         }

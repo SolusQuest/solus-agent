@@ -17,7 +17,7 @@ public static class RuntimeAgentFactory
     /// <summary>Gets exactly the implemented guarantees, including provider and complete-batch tool admission and post-response token thresholds.</summary>
     public static RuntimeSupport Support { get; } = new(
         AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting
-            | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit,
+            | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting,
         RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>

@@ -18,8 +18,8 @@ public sealed class ToolUsageValueTests
         var request = new AgentRequest(Guid.NewGuid(), "task", [], new(1, TimeSpan.FromSeconds(1)), AgentCapability.ToolInvocationLimit);
         Assert.Null(request.UsageLimits);
         Assert.Equal(AgentCapability.ToolInvocationLimit, new RuntimeSupport(request.RequiredCapabilities, RuntimeGuarantee.None).SupportedCapabilities);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRequest(Guid.NewGuid(), "task", [], new(1, TimeSpan.FromSeconds(1)), (AgentCapability)128));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSupport((AgentCapability)128, RuntimeGuarantee.None));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRequest(Guid.NewGuid(), "task", [], new(1, TimeSpan.FromSeconds(1)), (AgentCapability)1024));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSupport((AgentCapability)1024, RuntimeGuarantee.None));
     }
 
     [Fact]

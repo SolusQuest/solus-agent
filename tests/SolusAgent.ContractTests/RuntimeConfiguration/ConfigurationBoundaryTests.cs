@@ -90,7 +90,7 @@ public sealed class ConfigurationBoundaryTests
     public void UndefinedSupportAndAcknowledgementConfigurationCannotClaimGuarantees()
     {
         var f = new ConfigurationFixture();
-        Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSupport((AgentCapability)128, RuntimeGuarantee.None));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSupport((AgentCapability)1024, RuntimeGuarantee.None));
         Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSupport(AgentCapability.None, (RuntimeGuarantee)4));
         Assert.Throws<ArgumentOutOfRangeException>(() => new Configuration(f.Provider, [], f.Hooks, requiredAcknowledgement: (ExposureStrength)99));
         Assert.Throws<ArgumentOutOfRangeException>(() => new Configuration(f.Provider, [], f.Hooks, requiredGuarantees: (RuntimeGuarantee)4));

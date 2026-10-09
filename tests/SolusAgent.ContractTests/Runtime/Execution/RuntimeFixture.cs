@@ -26,7 +26,7 @@ internal sealed class RuntimeHooks : IRuntimeExposureHooks
     public static ExposureAcknowledgement Permit(RuntimeExposure exposure) =>
         new(exposure, RuntimeHookStatus.Acknowledged, ExposureDecision.Permit, exposure.RequiredAcknowledgement);
     public static SettlementAcknowledgement Continue(RuntimeSettlement settlement) =>
-        new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue);
+        new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue, settlement.Accounting);
 }
 
 internal static class RuntimeFixture

@@ -5,7 +5,8 @@ public sealed class AgentUsageLimits
 {
     /// <summary>Creates positive optional limits. Null means no configured limit in that dimension.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A configured value is not positive.</exception>
-    public AgentUsageLimits(int? maximumLogicalCalls = null, int? maximumPhysicalDispatches = null, long? inputTokenThreshold = null, long? outputTokenThreshold = null, int? maximumToolInvocations = null)
+    public AgentUsageLimits(int? maximumLogicalCalls = null, int? maximumPhysicalDispatches = null, long? inputTokenThreshold = null, long? outputTokenThreshold = null,
+        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null)
     {
         if (maximumLogicalCalls is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumLogicalCalls));
         if (maximumPhysicalDispatches is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumPhysicalDispatches));
@@ -16,6 +17,9 @@ public sealed class AgentUsageLimits
         MaximumPhysicalDispatches = maximumPhysicalDispatches;
         InputTokenThreshold = inputTokenThreshold;
         OutputTokenThreshold = outputTokenThreshold;
+        if (accountingPolicy is { UnknownUsage: not UnknownUsagePolicy.Stop } && maximumPhysicalDispatches is null)
+            throw new ArgumentException("Unknown continuation requires an explicit finite physical-dispatch limit.", nameof(maximumPhysicalDispatches));
+        AccountingPolicy = accountingPolicy;
         MaximumToolInvocations = maximumToolInvocations;
     }
 
@@ -28,6 +32,8 @@ public sealed class AgentUsageLimits
     public long? InputTokenThreshold { get; }
     /// <summary>Gets the cumulative observed output threshold for stopping subsequent work, not a strict ceiling.</summary>
     public long? OutputTokenThreshold { get; }
+    /// <summary>Gets optional Host accounting policy, distinct from observed thresholds and authoritative only in supporting implementations.</summary>
+    public AgentAccountingPolicy? AccountingPolicy { get; }
     /// <summary>Gets the run-level invocation allowance, reserved for complete batches and charged on tool-interface entry, including failed or unknown effects.</summary>
     public int? MaximumToolInvocations { get; }
 }
