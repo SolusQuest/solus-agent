@@ -18,10 +18,13 @@ internal static class DeepSeekResponseParser
             var measured = DeepSeekUsageReader.Read(root);
             observation.CaptureUsage(measured.Usage);
             // Even an error status can carry validated measurements, but never a successful payload.
-            if (http.StatusCode != System.Net.HttpStatusCode.OK) throw new HttpRequestException("The provider returned an error status.");
-            Require(http.Content.Headers.ContentEncoding.Count == 0);
-            var media = http.Content.Headers.ContentType;
-            Require(media?.MediaType == "application/json" && (media.CharSet is null || media.CharSet.Equals("utf-8", StringComparison.OrdinalIgnoreCase)));
+            if (http.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                try { ValidateContent(http); Require(measured.Valid); ValidateTree(root); }
+                catch (ProviderContractException) { throw new ProviderFailureException(); }
+                throw new ProviderFailureException(DeepSeekFailure.Status(http));
+            }
+            ValidateContent(http);
             Require(measured.Valid);
             ValidateTree(root);
             Shape(root, "id", "object", "model", "choices", "usage", "created", "system_fingerprint");
@@ -69,9 +72,15 @@ internal static class DeepSeekResponseParser
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or DecoderFallbackException or EncoderFallbackException)
         {
-            if (http.StatusCode != System.Net.HttpStatusCode.OK) throw new HttpRequestException("The provider returned an error status.");
+            if (http.StatusCode != System.Net.HttpStatusCode.OK) throw new ProviderFailureException();
             throw new ProviderContractException(ProviderError.InvalidResponse);
         }
+    }
+    private static void ValidateContent(HttpResponseMessage http)
+    {
+        Require(http.Content.Headers.ContentEncoding.Count == 0);
+        var media = http.Content.Headers.ContentType;
+        Require(media?.MediaType == "application/json" && (media.CharSet is null || media.CharSet.Equals("utf-8", StringComparison.OrdinalIgnoreCase)));
     }
     private static void ValidateTree(JsonElement node)
     {

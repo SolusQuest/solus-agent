@@ -32,6 +32,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
     {
         var sendStarted = false;
         var sendToken = CancellationToken.None;
+        using var deadline = new CancellationTokenSource();
         try
         {
             if (Volatile.Read(ref disposed) != 0) throw new ObjectDisposedException(nameof(DeepSeekProvider));
@@ -45,7 +46,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
             message.Headers.Accept.Add(new("application/json"));
             message.Headers.ExpectContinue = false; message.Headers.ConnectionClose = true;
             message.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
-            using var deadline = new CancellationTokenSource(options.Timeout);
+            deadline.CancelAfter(options.Timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             sendToken = linked.Token;
             using var ownedInvoker = injectedInvoker is null ? new HttpMessageInvoker(new SafeHandler(CreateProductionHandler())) : null;
@@ -59,7 +60,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
             try { bytes = await ReadBodyAsync(response.Content, options.MaximumResponseBodyBytes, linked.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { throw; }
             catch (Exception exception) when (response.StatusCode != HttpStatusCode.OK && exception is not (OutOfMemoryException or StackOverflowException))
-            { throw new HttpRequestException("The provider returned an error status."); }
+            { throw new ProviderFailureException(); }
             var candidate = DeepSeekResponseParser.Parse(bytes, response, request, observation);
             // Usage has already been captured if the complete body could be validated.
             linked.Token.ThrowIfCancellationRequested();
@@ -71,10 +72,16 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
             if (!sendStarted) observation.ObserveDispatch(DispatchExposure.NotDispatched);
             throw new OperationCanceledException("The provider call was cancelled.", null, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
             if (!sendStarted) observation.ObserveDispatch(DispatchExposure.NotDispatched);
-            throw new SafeTransportException();
+            throw new ProviderFailureException(sendStarted && deadline.IsCancellationRequested && exception.CancellationToken == sendToken
+                ? new(ProviderRetryKind.Transient) : null);
+        }
+        catch (HttpRequestException exception)
+        {
+            if (!sendStarted) observation.ObserveDispatch(DispatchExposure.NotDispatched);
+            throw sendStarted ? DeepSeekFailure.Transport(exception) : new ProviderFailureException();
         }
         catch
         {
@@ -118,10 +125,9 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
             catch (OperationCanceledException exception) when (token.IsCancellationRequested && exception.CancellationToken == token)
             { throw new OperationCanceledException("The provider transport was cancelled.", null, token); }
             catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
-            { throw new SafeTransportException(); }
+            { throw DeepSeekFailure.Transport(exception); }
         }
     }
-    private sealed class SafeTransportException() : Exception("The provider transport failed.");
     private sealed class SingleSendContent(byte[] body) : HttpContent
     {
         private int writes;
@@ -129,7 +135,7 @@ public sealed class DeepSeekProvider : ModelProvider, IDisposable
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken token) => WriteAsync(stream, token);
         private async Task WriteAsync(Stream stream, CancellationToken token)
         {
-            if (Interlocked.Increment(ref writes) != 1) throw new SafeTransportException();
+            if (Interlocked.Increment(ref writes) != 1) throw new ProviderFailureException();
             await stream.WriteAsync(body, token).ConfigureAwait(false);
         }
         protected override bool TryComputeLength(out long length) { length = body.Length; return true; }

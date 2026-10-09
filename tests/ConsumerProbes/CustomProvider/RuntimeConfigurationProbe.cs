@@ -189,7 +189,7 @@ public sealed class ConfigurationConsumer
                 {
                     provider = await Configuration.Provider.ExchangeAsync(request, token);
                     observation = provider.Observation; outcome = provider.Outcome; error = provider.Error;
-                    if (observation.ExecutionId != attempt.ExecutionId || observation.LogicalCallId != attempt.LogicalCallId
+                    if (!provider.Scope.Matches(request.Scope) || observation.ExecutionId != attempt.ExecutionId || observation.LogicalCallId != attempt.LogicalCallId
                         || observation.PhysicalAttemptId != attempt.PhysicalAttemptId || observation.AttemptNumber != attempt.AttemptNumber)
                     {
                         // A foreign result cannot describe this invoked extension's effects or authorize its output.
@@ -197,7 +197,16 @@ public sealed class ConfigurationConsumer
                         observation = new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId, attempt.AttemptNumber, DispatchExposure.Unknown, new());
                         outcome = ProviderOutcome.Rejected; error = ProviderError.InvalidAssociation;
                     }
-                    else if (provider.Outcome == ProviderOutcome.Cancelled) stop = RuntimeStop.Cancelled;
+                    else
+                    {
+                        try { provider.ValidateFor(request); }
+                        catch (ProviderContractException exception)
+                        {
+                            // Current-attempt usage survives payload rejection; its response and retry metadata do not.
+                            provider = null; outcome = ProviderOutcome.Rejected; error = exception.Error;
+                        }
+                        if (provider?.Outcome == ProviderOutcome.Cancelled) stop = RuntimeStop.Cancelled;
+                    }
                 }
                 catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
                 {

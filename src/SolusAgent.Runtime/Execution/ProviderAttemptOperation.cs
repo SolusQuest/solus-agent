@@ -73,7 +73,8 @@ internal static class ProviderAttemptOperation
             observation = captured;
             if (result is not null && stop == RuntimeStop.None)
             {
-                if (!RunState.Matches(request.Attempt, result.Observation))
+                // Association gates evidence import; payload validation stays after retention so valid usage survives rejection.
+                if (!result.Scope.Matches(request.Scope) || !RunState.Matches(request.Attempt, result.Observation))
                 { outcome = ProviderOutcome.Rejected; error = ProviderError.InvalidAssociation; result = null; }
                 else if (HasConflictingFacts(request.Observation, captured, result.Observation))
                 { outcome = ProviderOutcome.Rejected; error = ProviderError.ObservationConflict; result = null; }
