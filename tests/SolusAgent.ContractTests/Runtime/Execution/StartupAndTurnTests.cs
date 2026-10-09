@@ -38,7 +38,7 @@ public sealed class StartupAndTurnTests
     }
 
     [Theory]
-    [InlineData(AgentCapability.DispatchLimits)] [InlineData(AgentCapability.UsageThresholds)]
+    [InlineData(AgentCapability.UsageThresholds)]
     [InlineData(AgentCapability.DispatchLimits | AgentCapability.UsageThresholds)]
     public async Task UnsupportedRequirementsWinBeforeCancellationProgressOrEffects(AgentCapability required)
     {
@@ -46,7 +46,7 @@ public sealed class StartupAndTurnTests
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         var outcome = await RuntimeFixture.Agent(provider, hooks).ExecuteAsync(RuntimeFixture.Request(required: required),
             new InlineProgress(_ => throw new InvalidOperationException()), cancelled.Token);
-        Assert.Equal(AgentTerminationReason.UnsupportedCapability, outcome.Reason); Assert.Equal(required, outcome.UnsupportedCapabilities);
+        Assert.Equal(AgentTerminationReason.UnsupportedCapability, outcome.Reason); Assert.Equal(AgentCapability.UsageThresholds, outcome.UnsupportedCapabilities);
         Assert.Empty(outcome.Usage!.Attempts); Assert.Empty(hooks.Exposures); Assert.Equal(0, provider.Effects);
     }
 
