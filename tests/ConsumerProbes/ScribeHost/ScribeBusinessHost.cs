@@ -2,6 +2,7 @@ using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Context;
 using SolusAgent.Api.Execution;
+using SolusAgent.Api.Usage;
 
 namespace SolusAgent.ConsumerProbes.ScribeHost;
 
@@ -75,14 +76,15 @@ public sealed class ScribeHostControl
 {
     private const AgentCapability Supported =
         AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation
-        | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds;
+        | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds
+        | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting;
 
     /// <summary>Creates current control with trusted instructions, requested bounds and required capabilities.</summary>
     /// <exception cref="ArgumentNullException">A bounds argument is null.</exception>
     /// <exception cref="ArgumentException">The instructions are blank.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Required capabilities contain undefined flags.</exception>
     public ScribeHostControl(string instructions, AgentExecutionBounds executionBounds, CandidateExecutionBounds candidateBounds,
-        AgentCapability requiredCapabilities = AgentCapability.Cancellation)
+        AgentCapability requiredCapabilities = AgentCapability.Cancellation, AgentUsageLimits? usageLimits = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instructions);
         ArgumentNullException.ThrowIfNull(executionBounds);
@@ -96,6 +98,7 @@ public sealed class ScribeHostControl
         ExecutionBounds = executionBounds;
         CandidateBounds = candidateBounds;
         RequiredCapabilities = requiredCapabilities;
+        UsageLimits = usageLimits;
     }
 
     /// <summary>Gets instructions from the Host's trusted source, never inferred from business data.</summary>
@@ -109,6 +112,9 @@ public sealed class ScribeHostControl
 
     /// <summary>Gets the guarantees the composed producers must support or reject before work.</summary>
     public AgentCapability RequiredCapabilities { get; }
+
+    /// <summary>Gets current immutable per-run usage, accounting and retry controls; reconstructed business data cannot change them.</summary>
+    public AgentUsageLimits? UsageLimits { get; }
 }
 
 /// <summary>Api-only synthetic business Host supplying current control, explicit fresh reconstruction and domain candidate acceptance.</summary>
@@ -202,7 +208,7 @@ public sealed class ScribeBusinessHost : ICandidateHost
             data.Add(new AgentInput(AgentInputSource.Repository, $"unresolved member: {member}"));
         }
 
-        var request = new AgentRequest(executionId, Control.Instructions, data, Control.ExecutionBounds, Control.RequiredCapabilities);
+        var request = new AgentRequest(executionId, Control.Instructions, data, Control.ExecutionBounds, Control.RequiredCapabilities, Control.UsageLimits);
         return new ContextExecutionRequest(request, ContextExecutionIntent.Fresh);
     }
 
