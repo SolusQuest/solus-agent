@@ -21,7 +21,7 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
         var unsupported = request.RequiredCapabilities & ~SupportedCapabilities;
         if (unsupported != AgentCapability.None)
             return new(request.ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, unsupported,
-                usage: new AgentRunUsage(request.ExecutionId, UsageInventoryCoverage.Complete, []));
+                usage: new AgentRunUsage(request.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new()));
         using var cut = new RunCut(options.TimeProvider, request.Bounds.MaximumDuration, cancellationToken);
         var state = new RunState(request, configuration, options, cut);
         try

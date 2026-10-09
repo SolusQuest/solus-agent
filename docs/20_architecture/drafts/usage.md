@@ -10,6 +10,7 @@ A configured value alone does not prove enforcement. Hosts require the relevant 
 | --- | --- | --- |
 | `MaximumLogicalCalls` | `DispatchLimits` | Admit a new logical call before dispatch. |
 | `MaximumPhysicalDispatches` | `DispatchLimits` | Admit every physical attempt, including retries, before dispatch. |
+| `MaximumToolInvocations` | `ToolInvocationLimit` | Reserve an entire tool batch before effects, charge interface entries including failed/unknown effects, and release only unstarted reservations. |
 | `InputTokenThreshold`, `OutputTokenThreshold` | `UsageThresholds` | Check cumulative observed core counts after responses to stop subsequent work; actual consumption may overshoot. |
 
 Configured values must be positive; null means unconfigured. Unsupported optional guarantees remain advisory. Reporting, count admission and token thresholds are independent capabilities. Duration enforcement is unsupported by the synthetic usage agent. Actual deadlines, provider admission and product rate/campaign policy remain later or downstream work.
@@ -52,6 +53,8 @@ Token thresholds are post-response stops and can be exceeded by an already dispa
 Aggregation uses retained attempts, including measurements from rejected responses, observer failures, Host feedback failures and local cuts. Those failures retain their original categories; token policy cannot upgrade them to success. The [run observation tests](../../../tests/SolusAgent.ContractTests/Usage/RunTokenObservationTests.cs) and [production threshold tests](../../../tests/SolusAgent.ContractTests/Runtime/Execution/TokenThresholdTests.cs) cover both public runtime entrypoints, real synthetic tool effects, correlated Host feedback, configured/irrelevant missing dimensions, exact/over thresholds, overflow, immutable snapshots and controlled cancellation/deadline races. This is scripted execution proof, not provider billing, a remote-stop guarantee, restoration or live-service qualification.
 
 ## Publication and stopping order
+
+The production [runtime tool adapter](runtime-tools.md) projects independent `ToolInvocationUsage` through `AgentRunUsage.ToolInvocations`. Its nonnegative `Invoked`, `ReservedUnstarted` and `ReleasedUnstarted` counts describe invocation-interface entry and provisional/released admission, not proven business effects or per-tool token usage. Null means the producer lacks tool knowledge; known zeros do not depend on provider inventory coverage. The runtime reports immutable snapshots after batch cleanup in terminal outcomes and at its existing successful-turn progress points. The synthetic usage agent does not advertise or enforce this additional capability.
 
 The finite synthetic script captures a distinct `Dispatched/Unavailable` attempt at its actual dispatch point before awaiting measurement. It updates the retained immutable snapshot before every synchronous progress callback. Known measurements are published before response validation; rejection, validation exception, cancellation or a throwing observer cannot erase the captured snapshot from the final outcome. Ordinary progress remains optional, so retention does not depend on an observer being present.
 

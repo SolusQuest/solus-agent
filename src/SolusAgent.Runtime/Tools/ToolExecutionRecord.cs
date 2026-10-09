@@ -7,7 +7,7 @@ internal enum ToolMemberState { Unstarted, InvokedUnknown, Succeeded, Rejected, 
 
 // Restricted run-owned data, never an ordinary progress/outcome or durable effect receipt.
 internal sealed record ToolExecutionRecord(ProviderAttempt ModelAttempt, int Ordinal, ToolCall Call,
-    ToolMemberState State, ToolResult? Result = null, ToolError Error = ToolError.None)
+    ToolMemberState State, ToolResult? Result = null, ToolError Error = ToolError.None, bool ReservationHeld = false)
 {
     public bool? InvocationStarted => State == ToolMemberState.Unstarted ? false : Result?.InvocationStarted;
 }

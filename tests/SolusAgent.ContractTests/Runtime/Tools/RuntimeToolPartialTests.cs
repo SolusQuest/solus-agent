@@ -24,6 +24,7 @@ public sealed class RuntimeToolPartialTests
         Assert.Equal(AgentTerminationReason.Failed, outcome.Reason); Assert.Equal(AgentFailureCode.ExecutionFailed, outcome.FailureCode);
         Assert.Equal(1, outcome.CompletedWorkUnits); Assert.Equal(1, cap.Effects); Assert.Equal(1, transformCap.Effects); Assert.Equal(1, provider.Effects);
         Assert.Equal(3, outcome.Usage!.Attempts.Single().Usage.InputTokens);
+        ToolAllowanceTests.Counts(outcome.Usage, 2, 0, 1);
     }
     [Theory]
     [InlineData("throw", (int)ToolMemberState.Failed)] [InlineData("failure", (int)ToolMemberState.Failed)]
@@ -43,6 +44,7 @@ public sealed class RuntimeToolPartialTests
         Assert.Equal(1, cap.Effects); Assert.Equal(1, transformCap.Effects); Assert.Equal(1, accepted.State.Completed);
         await ToolBatchOperation.ExecuteAsync(accepted.State, accepted.Request, accepted.Response);
         Assert.Equal(1, cap.Effects); Assert.Equal(1, transformCap.Effects); Assert.Equal(records, accepted.State.ToolRecords);
+        ToolAllowanceTests.Counts(accepted.State.Usage(), 2, 0, 1);
     }
 
     [Theory]

@@ -50,6 +50,7 @@ public sealed class ConfigurationControlTests
 
     [Theory]
     [InlineData(AgentCapability.WorkUnitLimit)] [InlineData(AgentCapability.DurationLimit)] [InlineData(AgentCapability.UsageThresholds)]
+    [InlineData(AgentCapability.ToolInvocationLimit)]
     public async Task ConsumerDisclosesUnsupportedRunGuaranteesAndRejectsBeforeHostWork(AgentCapability required)
     {
         var f = new ConfigurationFixture(required: required);
