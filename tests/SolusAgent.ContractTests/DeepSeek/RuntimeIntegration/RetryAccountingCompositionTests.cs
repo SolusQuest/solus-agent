@@ -189,28 +189,55 @@ public sealed class RetryAccountingCompositionTests
 
     [Theory]
     [InlineData("stop")] [InlineData("missing")] [InlineData("accounting")] [InlineData("deny-retry")]
+    [InlineData("stale-accounting")] [InlineData("continue")]
     public async Task ActualFailedAttemptMustCloseAndRetryNeedsFreshPermission(string mode)
     {
-        using var handler = FakeHandler.Reply(MeasuredError, HttpStatusCode.ServiceUnavailable);
+        var sends = 0;
+        using var handler = new FakeHandler((_, _) => Task.FromResult(++sends == 1
+            ? AdapterFixture.Http(MeasuredError, HttpStatusCode.ServiceUnavailable) : AdapterFixture.Http(AdapterFixture.Response())));
         using var provider = AdapterFixture.Provider(handler);
+        var emitted = new List<SettlementAcknowledgement?>();
         var hooks = new RuntimeHooks
         {
-            After = (s, _) => ValueTask.FromResult<SettlementAcknowledgement?>(mode switch
+            After = (s, _) =>
             {
-                "missing" => null,
-                "accounting" => new(s.Exposure, RuntimeHookStatus.Acknowledged),
-                "stop" => new(s.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop, s.Accounting),
-                _ => RuntimeHooks.Continue(s),
-            }),
-            Before = (e, _) => ValueTask.FromResult<ExposureAcknowledgement?>(e.Attempt.AttemptNumber == 2
+                SettlementAcknowledgement? receipt = mode switch
+                {
+                    "missing" => null,
+                    "accounting" => new(s.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue, accounting: null),
+                    "stale-accounting" => new(s.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue, s.Exposure.Accounting),
+                    "stop" => new(s.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop, s.Accounting),
+                    _ => RuntimeHooks.Continue(s),
+                };
+                emitted.Add(receipt);
+                return ValueTask.FromResult(receipt);
+            },
+            Before = (e, _) => ValueTask.FromResult<ExposureAcknowledgement?>(mode == "deny-retry" && e.Attempt.AttemptNumber == 2
                 ? new(e, RuntimeHookStatus.Acknowledged, ExposureDecision.Deny) : RuntimeHooks.Permit(e)),
         };
         var result = await Execute(RuntimeAgentFactory.Create(new(provider, [], hooks)),
             Request(new(accountingPolicy: new(new(5, 4), 40, 40), retryPolicy: new(2))), true);
-        Assert.Equal(mode == "deny-retry" ? AgentTerminationReason.Partial : AgentTerminationReason.Failed, result.Reason);
-        Assert.Equal(1, handler.Sends); Assert.Equal(0, result.CompletedWorkUnits);
-        Assert.Equal(mode == "deny-retry" ? 2 : 1, result.Usage!.Attempts.Count);
-        Assert.Equal(3, result.Usage.Accounting!.Input.MeasuredTokens); Assert.Equal(0, result.Usage.Accounting.Input.ReservedTokens);
+        Assert.Equal(hooks.Settlements.Count, emitted.Count);
+        // Assert outside the hook: a constructor or assertion exception swallowed by closure is not mismatch evidence.
+        if (mode == "missing") Assert.Null(emitted[0]);
+        else
+        {
+            Assert.NotNull(emitted[0]);
+            Assert.Equal(mode is "accounting" or "stale-accounting" ? RuntimeStop.SettlementMismatch
+                : mode == "stop" ? RuntimeStop.HostStopped : RuntimeStop.None, emitted[0]!.Assess(hooks.Settlements[0]));
+            Assert.Equal(mode == "stop" ? RuntimeContinuation.Stop : RuntimeContinuation.Continue, emitted[0]!.Continuation);
+        }
+        if (mode == "stale-accounting")
+        {
+            Assert.NotNull(emitted[0]!.Accounting);
+            Assert.Equal(5, emitted[0]!.Accounting!.Input.ReservedTokens);
+            Assert.Equal(0, hooks.Settlements[0].Accounting!.Input.ReservedTokens);
+        }
+        var continues = mode == "continue";
+        Assert.Equal(continues ? AgentTerminationReason.Completed : mode == "deny-retry" ? AgentTerminationReason.Partial : AgentTerminationReason.Failed, result.Reason);
+        Assert.Equal(continues ? 2 : 1, handler.Sends); Assert.Equal(continues ? 1 : 0, result.CompletedWorkUnits);
+        Assert.Equal(mode == "deny-retry" || continues ? 2 : 1, result.Usage!.Attempts.Count);
+        Assert.Equal(continues ? 13 : 3, result.Usage.Accounting!.Input.MeasuredTokens); Assert.Equal(0, result.Usage.Accounting.Input.ReservedTokens);
         Assert.All(result.Usage.Accounting.Attempts, a => Assert.True(a.IsFinalized));
         if (mode == "deny-retry")
         {
