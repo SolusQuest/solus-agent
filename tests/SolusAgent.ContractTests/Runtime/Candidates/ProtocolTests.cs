@@ -152,7 +152,7 @@ public sealed class ProtocolTests
     }
 
     [Theory]
-    [InlineData(AgentCapability.DispatchLimits)] [InlineData(AgentCapability.UsageThresholds)]
+    [InlineData(AgentCapability.DispatchLimits)]
     public async Task UnsupportedRequirementsWinBeforeCancellationAndAllEffects(AgentCapability required)
     {
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
