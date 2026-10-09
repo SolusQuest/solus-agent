@@ -14,9 +14,10 @@ public sealed record RuntimeStartupDisclosure(RuntimeSupport Support, RuntimeCon
 /// <summary>Constructs the managed runtime while business orchestration receives only IAgent.</summary>
 public static class RuntimeAgentFactory
 {
-    /// <summary>Gets exactly the implemented run and runtime-specific guarantees, including post-response token thresholds.</summary>
+    /// <summary>Gets exactly the implemented run and runtime-specific guarantees, including dispatch admission and post-response token thresholds.</summary>
     public static RuntimeSupport Support { get; } = new(
-        AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting | AgentCapability.UsageThresholds,
+        AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting
+            | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds,
         RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>

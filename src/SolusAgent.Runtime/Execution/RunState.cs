@@ -14,6 +14,8 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
 {
     private readonly List<ProviderInput> records = [];
     private readonly List<UsageAttemptObservation> attempts = [];
+    private readonly HashSet<Guid> logicalCalls = [];
+    private readonly HashSet<Guid> physicalDispatches = [];
     private int retainedBytes;
     private ProviderContinuation? continuation;
     private ProviderResponse? latestResponse;
@@ -42,7 +44,9 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     {
         if (!CanContinue) return false;
         if (Completed >= Request.Bounds.MaximumWorkUnits || attempts.Count >= Options.MaximumAttempts
-            || records.Count >= Options.MaximumRecords)
+            || records.Count >= Options.MaximumRecords
+            || Request.UsageLimits?.MaximumLogicalCalls is { } logicalLimit && logicalCalls.Count >= logicalLimit
+            || Request.UsageLimits?.MaximumPhysicalDispatches is { } physicalLimit && physicalDispatches.Count >= physicalLimit)
         { Close(RuntimeStop.ResourceLimit); return false; }
         var limits = Request.UsageLimits;
         if (limits?.InputTokenThreshold is null && limits?.OutputTokenThreshold is null) return true;
@@ -71,7 +75,14 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded);
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
-        attempts.Add(new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId, 1, DispatchExposure.NotDispatched, new()));
+        if (!Cut.TryCommit(() =>
+        {
+            logicalCalls.Add(attempt.LogicalCallId);
+            physicalDispatches.Add(attempt.PhysicalAttemptId);
+            attempts.Add(new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId,
+                attempt.AttemptNumber, DispatchExposure.NotDispatched, new()));
+        }))
+        { Close(Cut.Check()); return null; }
         return admitted;
     }
     public void Retain(ProviderAttempt attempt, UsageAttemptObservation observation)
@@ -80,6 +91,9 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         var index = attempts.FindIndex(item => item.PhysicalAttemptId == attempt.PhysicalAttemptId);
         if (index < 0) throw new ProviderContractException(ProviderError.InvalidAssociation);
         attempts[index] = observation;
+        // Only the operation's final authoritative observation can refund this reservation.
+        // The initial inventory placeholder is not evidence of no send; logical admission and inventory never refund.
+        if (observation.Exposure == DispatchExposure.NotDispatched) physicalDispatches.Remove(attempt.PhysicalAttemptId);
     }
     // Host correction is data, charged once to retained state; reserve the next accepted response slot.
     public void AppendCandidateCorrection(string text)
