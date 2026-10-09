@@ -6,7 +6,7 @@ public sealed class AgentUsageLimits
     /// <summary>Creates positive optional limits. Null means no configured limit in that dimension.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A configured value is not positive.</exception>
     public AgentUsageLimits(int? maximumLogicalCalls = null, int? maximumPhysicalDispatches = null, long? inputTokenThreshold = null, long? outputTokenThreshold = null,
-        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null)
+        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null, AgentRetryPolicy? retryPolicy = null)
     {
         if (maximumLogicalCalls is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumLogicalCalls));
         if (maximumPhysicalDispatches is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumPhysicalDispatches));
@@ -21,6 +21,7 @@ public sealed class AgentUsageLimits
             throw new ArgumentException("Unknown continuation requires an explicit finite physical-dispatch limit.", nameof(maximumPhysicalDispatches));
         AccountingPolicy = accountingPolicy;
         MaximumToolInvocations = maximumToolInvocations;
+        RetryPolicy = retryPolicy;
     }
 
     /// <summary>Gets the requested maximum admitted distinct logical calls, including calls that fail or never dispatch.</summary>
@@ -36,4 +37,6 @@ public sealed class AgentUsageLimits
     public AgentAccountingPolicy? AccountingPolicy { get; }
     /// <summary>Gets the run-level invocation allowance, reserved for complete batches and charged on tool-interface entry, including failed or unknown effects.</summary>
     public int? MaximumToolInvocations { get; }
+    /// <summary>Gets explicit provider-only retry permission; null preserves one attempt per logical call.</summary>
+    public AgentRetryPolicy? RetryPolicy { get; }
 }

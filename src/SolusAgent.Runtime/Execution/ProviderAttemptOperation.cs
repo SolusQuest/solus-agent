@@ -5,7 +5,7 @@ using SolusAgent.Runtime.Api.Providers;
 namespace SolusAgent.Runtime.Execution;
 
 internal sealed record AttemptExecution(ProviderResponse? Response, RuntimeStop Stop, RuntimeStop SettlementStop,
-    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError);
+    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError, ProviderRetry? Retry);
 
 // The reusable turn boundary. Tool/candidate handlers consume accepted data only after this operation has closed.
 internal static class ProviderAttemptOperation
@@ -111,8 +111,9 @@ internal static class ProviderAttemptOperation
         if (cut.Check() != RuntimeStop.None) stop = cut.Check();
         if (stop != RuntimeStop.None) state.Close(stop);
         else if (settlementStop != RuntimeStop.None) state.Close(settlementStop);
-        else if (outcome != ProviderOutcome.Succeeded) state.Close(error == ProviderError.LimitExceeded ? RuntimeStop.ResourceLimit : RuntimeStop.InvalidAssociation);
-        return new(accepted, stop, settlementStop, outcome, error);
+        var retry = stop == RuntimeStop.None && settlementStop == RuntimeStop.None
+            && outcome == ProviderOutcome.Failed && error == ProviderError.ProviderFailed ? result?.Retry : null;
+        return new(accepted, stop, settlementStop, outcome, error, retry);
     }
 
     private const ProviderOutcome ProvidersOutcomeFailed = ProviderOutcome.Failed;

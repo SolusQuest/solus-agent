@@ -21,6 +21,7 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     private int retainedBytes;
     private ProviderContinuation? continuation;
     private ProviderResponse? latestResponse;
+    private ProviderRequest? latestRequest;
     private bool toolBatchClaimed;
     private readonly List<ToolExecutionRecord> toolRecords = [];
     private readonly object toolUsageGate = new();
@@ -46,13 +47,15 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         foreach (var input in Request.Data) records.Add(ProviderInput.Data(input.Text));
     }
     // Called only when another model production is needed, never while handling its accepted predecessor.
-    public bool PreflightTurn()
+    public bool PreflightTurn() => Preflight(newLogicalCall: true);
+    internal bool PreflightRetry() => Preflight(newLogicalCall: false);
+    private bool Preflight(bool newLogicalCall)
     {
         if (!CanContinue) return false;
         if (accounting is not null && Configuration.Hooks is null) { Close(RuntimeStop.MissingHooks); return false; }
         if (Completed >= Request.Bounds.MaximumWorkUnits || attempts.Count >= Options.MaximumAttempts
             || records.Count >= Options.MaximumRecords
-            || Request.UsageLimits?.MaximumLogicalCalls is { } logicalLimit && logicalCalls.Count >= logicalLimit
+            || newLogicalCall && Request.UsageLimits?.MaximumLogicalCalls is { } logicalLimit && logicalCalls.Count >= logicalLimit
             || Request.UsageLimits?.MaximumPhysicalDispatches is { } physicalLimit && physicalDispatches.Count >= physicalLimit)
         { Close(RuntimeStop.ResourceLimit); return false; }
         var limits = Request.UsageLimits;
@@ -85,6 +88,23 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded);
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
+        return Reserve(admitted);
+    }
+    internal ProviderRequest? AdmitRetry(ProviderRequest previous)
+    {
+        // Only the latest finalized, unaccepted physical attempt can be continued. The caller owns eligibility and Host closure.
+        if (!ReferenceEquals(previous, latestRequest) || !finalizedAttempts.Contains(previous.Attempt.PhysicalAttemptId)
+            || latestResponse?.Attempt.LogicalCallId == previous.Attempt.LogicalCallId
+            || previous.Attempt.AttemptNumber >= (Request.UsageLimits?.RetryPolicy?.MaximumAttemptsPerLogicalCall ?? 1))
+            throw new ProviderContractException(ProviderError.InvalidAssociation);
+        if (!PreflightRetry()) return null;
+        var attempt = new ProviderAttempt(Request.ExecutionId, previous.Attempt.LogicalCallId, Guid.NewGuid(), previous.Attempt.AttemptNumber + 1);
+        return Reserve(new(previous.Scope, attempt, previous.Inputs, previous.Tools, previous.Continuation,
+            previous.RequiredCapabilities, previous.Bounds));
+    }
+    private ProviderRequest? Reserve(ProviderRequest admitted)
+    {
+        var attempt = admitted.Attempt;
         var reservation = accounting?.PrepareReservation(attempt);
         if (!Cut.TryCommit(() =>
         {
@@ -93,6 +113,7 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
             physicalDispatches.Add(attempt.PhysicalAttemptId);
             attempts.Add(new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId,
                 attempt.AttemptNumber, DispatchExposure.NotDispatched, new()));
+            latestRequest = admitted;
         }))
         { Close(Cut.Check()); return null; }
         return admitted;

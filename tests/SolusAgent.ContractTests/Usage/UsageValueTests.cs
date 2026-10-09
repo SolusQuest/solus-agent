@@ -168,7 +168,9 @@ public sealed class UsageValueTests
             {
                 var valueType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
                 Assert.True(valueType.IsEnum || valueType == typeof(Guid) || valueType == typeof(int) || valueType == typeof(long) || valueType == typeof(decimal) || types.Contains(valueType) || allowedCollections.Contains(valueType) || type == typeof(UsageCostEstimate) && property.Name == nameof(UsageCostEstimate.Currency) && valueType == typeof(string)
-                    || type == typeof(AttemptAccounting) && property.Name == nameof(AttemptAccounting.IsFinalized) && valueType == typeof(bool), $"Unexpected ordinary property: {type.Name}.{property.Name}");
+                    || type == typeof(AttemptAccounting) && property.Name == nameof(AttemptAccounting.IsFinalized) && valueType == typeof(bool)
+                    || type == typeof(AgentRetryPolicy) && ((property.Name is nameof(AgentRetryPolicy.Backoff) or nameof(AgentRetryPolicy.MaximumDelay)) && valueType == typeof(TimeSpan)
+                        || property.Name == nameof(AgentRetryPolicy.HonorRetryAfter) && valueType == typeof(bool)), $"Unexpected ordinary property: {type.Name}.{property.Name}");
                 Assert.Null(property.SetMethod);
             });
         }
