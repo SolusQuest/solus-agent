@@ -25,7 +25,8 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     public RunCut Cut { get; } = cut;
     public int Completed { get; private set; }
     public RuntimeStop AdmissionStop { get; private set; }
-    public bool CanContinue => AdmissionStop == RuntimeStop.None && Cut.Check() == RuntimeStop.None;
+    public bool UsageAccountingUnavailable { get; private set; }
+    public bool CanContinue => AdmissionStop == RuntimeStop.None && !UsageAccountingUnavailable && Cut.Check() == RuntimeStop.None;
     internal IReadOnlyList<ProviderInput> Records => records.ToArray();
     internal IReadOnlyList<ToolExecutionRecord> ToolRecords => toolRecords.ToArray();
 
@@ -36,12 +37,28 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         records.Add(ProviderInput.Instruction(Request.Instructions));
         foreach (var input in Request.Data) records.Add(ProviderInput.Data(input.Text));
     }
-    public ProviderRequest? AdmitTurn()
+    // Called only when another model production is needed, never while handling its accepted predecessor.
+    public bool PreflightTurn()
     {
-        if (!CanContinue) return null;
+        if (!CanContinue) return false;
         if (Completed >= Request.Bounds.MaximumWorkUnits || attempts.Count >= Options.MaximumAttempts
             || records.Count >= Options.MaximumRecords)
-        { Close(RuntimeStop.ResourceLimit); return null; }
+        { Close(RuntimeStop.ResourceLimit); return false; }
+        var limits = Request.UsageLimits;
+        if (limits?.InputTokenThreshold is null && limits?.OutputTokenThreshold is null) return true;
+        var usage = Usage();
+        var input = Compare(limits!.InputTokenThreshold, usage.InputTokens);
+        var output = Compare(limits.OutputTokenThreshold, usage.OutputTokens);
+        if (input == true || output == true) { Close(RuntimeStop.ResourceLimit); return false; }
+        if (input is null || output is null) { UsageAccountingUnavailable = true; return false; }
+        return true;
+    }
+    private static bool? Compare(long? threshold, RunTokenObservation observed) => threshold is not long configured ? false
+        : observed.Coverage == TokenObservationCoverage.Complete ? observed.ObservedTokens >= configured : null;
+
+    public ProviderRequest? AdmitTurn()
+    {
+        if (!PreflightTurn()) return null;
         var attempt = new ProviderAttempt(Request.ExecutionId, Guid.NewGuid(), Guid.NewGuid());
         var required = Options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None;
         var original = Configuration.CreateRequest(attempt, records, continuation, required);

@@ -79,6 +79,8 @@ public enum CandidateStopReason
     RuntimeLimit,
     /// <summary>Provider exposure permission or settlement stopped production without a candidate Host End.</summary>
     ProductionStopped,
+    /// <summary>Further model production requires a token comparison whose measurement is missing or overflowed.</summary>
+    UsageAccountingUnavailable,
 }
 
 /// <summary>An immutable safe completion observation retaining independent receipts without payloads or effect claims.</summary>
@@ -112,7 +114,7 @@ public sealed class CandidateExecutionResult
         var expectedReason = stopReason switch
         {
             CandidateStopReason.Completed => AgentTerminationReason.Completed,
-            CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.ProductionStopped => AgentTerminationReason.Partial,
+            CandidateStopReason.HostEnded or CandidateStopReason.ProductionExhausted or CandidateStopReason.MissingAcknowledgement or CandidateStopReason.UnknownAcknowledgement or CandidateStopReason.ProductionStopped or CandidateStopReason.UsageAccountingUnavailable => AgentTerminationReason.Partial,
             CandidateStopReason.SubmissionLimit or CandidateStopReason.WorkUnitLimit or CandidateStopReason.RepairLimit or CandidateStopReason.ContinuationLimit or CandidateStopReason.DurationLimit or CandidateStopReason.RuntimeLimit => AgentTerminationReason.ResourceLimit,
             CandidateStopReason.Cancelled => AgentTerminationReason.Cancelled,
             CandidateStopReason.UnsupportedCapability => AgentTerminationReason.UnsupportedCapability,
