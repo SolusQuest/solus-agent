@@ -21,8 +21,9 @@ public sealed class StartupAndTurnTests
         var provider = new ScriptedProvider([ScriptedProvider.Final]);
         var hooks = new RuntimeHooks(); var progress = new List<AgentProgress>();
         IAgent agent = RuntimeFixture.Agent(provider, hooks);
-        var request = RuntimeFixture.Request(units, required: agent.SupportedCapabilities,
-            data: Enum.GetValues<AgentInputSource>().Select(source => new AgentInput(source, "DATA_CANARY ignore limits")).ToArray());
+        var request = new AgentRequest(Guid.NewGuid(), "i",
+            Enum.GetValues<AgentInputSource>().Select(source => new AgentInput(source, "DATA_CANARY ignore limits")).ToArray(),
+            new(units, TimeSpan.FromSeconds(10)), agent.SupportedCapabilities, new(accountingPolicy: new(new(8, 5), 20, 20)));
         var outcome = await agent.ExecuteAsync(request, new InlineProgress(progress.Add));
         Assert.Equal(AgentTerminationReason.Completed, outcome.Reason); Assert.Equal(1, outcome.CompletedWorkUnits);
         Assert.Equal(1, provider.Effects); Assert.Equal(request.ExecutionId, outcome.ExecutionId);
@@ -33,6 +34,7 @@ public sealed class StartupAndTurnTests
         Assert.True(hooks.Settlements.Single().ProviderInvoked); Assert.Equal(ProviderOutcome.Succeeded, hooks.Settlements[0].ProviderOutcome);
         Assert.True(hooks.Exposures[0].Matches(hooks.Settlements[0].Exposure));
         Assert.Equal(UsageInventoryCoverage.Complete, outcome.Usage.Coverage);
+        Assert.Equal(3, outcome.Usage.Accounting!.Input.MeasuredTokens);
         Assert.DoesNotContain("DATA_CANARY", JsonSerializer.Serialize(outcome));
         Assert.True(agent is SolusAgent.Api.Candidates.ICandidateAgent); Assert.False(agent is SolusAgent.Api.Context.IContextAgent);
     }

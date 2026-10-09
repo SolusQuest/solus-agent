@@ -14,7 +14,7 @@ internal static class ProviderAttemptOperation
     {
         var configuration = state.Configuration;
         var cut = state.Cut;
-        var exposure = new RuntimeExposure(configuration.Scope, request.Attempt, configuration.RequiredAcknowledgement);
+        var exposure = new RuntimeExposure(configuration.Scope, request.Attempt, configuration.RequiredAcknowledgement, state.Accounting());
         var stop = cut.Check();
         var enteredExposure = false;
         var invoked = false;
@@ -102,7 +102,7 @@ internal static class ProviderAttemptOperation
 
         // Outcome/error describe this request's normalized exchange, including invalid interface returns or actual faults.
         // A still-pending operation has neither, and is represented only with its explicit local cut.
-        var settlement = new RuntimeSettlement(exposure, observation, stop, invoked, outcome, error);
+        var settlement = new RuntimeSettlement(exposure, observation, stop, invoked, outcome, error, state.Accounting());
         var settlementStop = RuntimeStop.None;
         if (configuration.Hooks is { } closure && (enteredExposure || invoked))
             settlementStop = await DeliverSettlementAsync(state, closure, settlement).ConfigureAwait(false);
@@ -129,7 +129,7 @@ internal static class ProviderAttemptOperation
                 b.ProviderCounters.Select(value => (value.Kind, value.Value, value.Relationship)))
             || !SameAccounting(captured.Accounting, returned.Accounting);
     }
-    private static bool SameAccounting(UsageAccounting? a, UsageAccounting? b) => a == b || (a is not null && b is not null
+    internal static bool SameAccounting(UsageAccounting? a, UsageAccounting? b) => a == b || (a is not null && b is not null
         && a.Settlement == b.Settlement && Amounts(a.InFlightReservation, b.InFlightReservation)
         && Amounts(a.ConservativeUnobservedCharge, b.ConservativeUnobservedCharge)
         && a.EstimatedCost?.Amount == b.EstimatedCost?.Amount && a.EstimatedCost?.Currency == b.EstimatedCost?.Currency);
@@ -147,7 +147,7 @@ internal static class ProviderAttemptOperation
         {
             pending = hooks.AfterAttemptAsync(settlement, closureCut.Token).AsTask();
             var receipt = await closureCut.WaitAsync(pending).ConfigureAwait(false);
-            return receipt.Obtained ? receipt.Value?.Assess(settlement.Exposure) ?? RuntimeStop.SettlementMissing : RuntimeStop.SettlementUnknown;
+            return receipt.Obtained ? receipt.Value?.Assess(settlement) ?? RuntimeStop.SettlementMissing : RuntimeStop.SettlementUnknown;
         }
         catch (Exception exception) when (Recoverable(exception)) { return RuntimeStop.SettlementFailed; }
     }

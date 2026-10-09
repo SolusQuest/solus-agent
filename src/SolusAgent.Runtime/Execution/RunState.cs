@@ -16,6 +16,8 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     private readonly List<UsageAttemptObservation> attempts = [];
     private readonly HashSet<Guid> logicalCalls = [];
     private readonly HashSet<Guid> physicalDispatches = [];
+    private readonly HashSet<Guid> finalizedAttempts = [];
+    private readonly RunAccountingLedger? accounting = request.UsageLimits?.AccountingPolicy is { } policy ? new(request.ExecutionId, policy) : null;
     private int retainedBytes;
     private ProviderContinuation? continuation;
     private ProviderResponse? latestResponse;
@@ -43,18 +45,22 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     public bool PreflightTurn()
     {
         if (!CanContinue) return false;
+        if (accounting is not null && Configuration.Hooks is null) { Close(RuntimeStop.MissingHooks); return false; }
         if (Completed >= Request.Bounds.MaximumWorkUnits || attempts.Count >= Options.MaximumAttempts
             || records.Count >= Options.MaximumRecords
             || Request.UsageLimits?.MaximumLogicalCalls is { } logicalLimit && logicalCalls.Count >= logicalLimit
             || Request.UsageLimits?.MaximumPhysicalDispatches is { } physicalLimit && physicalDispatches.Count >= physicalLimit)
         { Close(RuntimeStop.ResourceLimit); return false; }
         var limits = Request.UsageLimits;
-        if (limits?.InputTokenThreshold is null && limits?.OutputTokenThreshold is null) return true;
         var usage = Usage();
-        var input = Compare(limits!.InputTokenThreshold, usage.InputTokens);
-        var output = Compare(limits.OutputTokenThreshold, usage.OutputTokens);
+        var input = Compare(limits?.InputTokenThreshold, usage.InputTokens);
+        var output = Compare(limits?.OutputTokenThreshold, usage.OutputTokens);
         if (input == true || output == true) { Close(RuntimeStop.ResourceLimit); return false; }
-        if (input is null || output is null) { UsageAccountingUnavailable = true; return false; }
+        var ledger = accounting?.Preflight() ?? (Limit: false, Unknown: false);
+        if (ledger.Limit) { Close(RuntimeStop.ResourceLimit); return false; }
+        if (ledger.Unknown || ((input is null || output is null)
+            && (limits?.AccountingPolicy is null || limits.AccountingPolicy.UnknownUsage == UnknownUsagePolicy.Stop)))
+        { UsageAccountingUnavailable = true; return false; }
         return true;
     }
     private static bool? Compare(long? threshold, RunTokenObservation observed) => threshold is not long configured ? false
@@ -75,8 +81,10 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded);
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
+        var reservation = accounting?.PrepareReservation(attempt);
         if (!Cut.TryCommit(() =>
         {
+            if (reservation is not null) accounting!.Reserve(reservation);
             logicalCalls.Add(attempt.LogicalCallId);
             physicalDispatches.Add(attempt.PhysicalAttemptId);
             attempts.Add(new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId,
@@ -89,8 +97,15 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     {
         if (!Matches(attempt, observation)) throw new ProviderContractException(ProviderError.InvalidAssociation);
         var index = attempts.FindIndex(item => item.PhysicalAttemptId == attempt.PhysicalAttemptId);
-        if (index < 0) throw new ProviderContractException(ProviderError.InvalidAssociation);
+        if (index < 0 || !Matches(attempt, attempts[index])) throw new ProviderContractException(ProviderError.InvalidAssociation);
+        if (finalizedAttempts.Contains(attempt.PhysicalAttemptId))
+        {
+            if (!SameObservation(attempts[index], observation)) throw new ProviderContractException(ProviderError.ObservationConflict);
+            return;
+        }
+        accounting?.Settle(attempt, observation);
         attempts[index] = observation;
+        finalizedAttempts.Add(attempt.PhysicalAttemptId);
         // Only the operation's final authoritative observation can refund this reservation.
         // The initial inventory placeholder is not evidence of no send; logical admission and inventory never refund.
         if (observation.Exposure == DispatchExposure.NotDispatched) physicalDispatches.Remove(attempt.PhysicalAttemptId);
@@ -160,9 +175,14 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     internal static int ToolCallBytes(ToolCall call) => Encoding.UTF8.GetByteCount(call.CallId)
         + Encoding.UTF8.GetByteCount(call.ToolName) + Encoding.UTF8.GetByteCount(call.ArgumentsJson);
     public void Close(RuntimeStop reason) { if (AdmissionStop == RuntimeStop.None) AdmissionStop = reason; }
-    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts);
+    public RunAccountingSnapshot? Accounting() => accounting?.Snapshot();
+    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts, accounting: Accounting());
     public AgentOutcome Outcome(AgentTerminationReason reason, AgentFailureCode failure = AgentFailureCode.None) =>
         new(Request.ExecutionId, reason, Completed, failureCode: failure, usage: Usage());
     public static bool Matches(ProviderAttempt attempt, UsageAttemptObservation value) => attempt.ExecutionId == value.ExecutionId
         && attempt.LogicalCallId == value.LogicalCallId && attempt.PhysicalAttemptId == value.PhysicalAttemptId && attempt.AttemptNumber == value.AttemptNumber;
+    private static bool SameObservation(UsageAttemptObservation a, UsageAttemptObservation b) => a.Exposure == b.Exposure
+        && a.Usage.InputTokens == b.Usage.InputTokens && a.Usage.OutputTokens == b.Usage.OutputTokens
+        && a.Usage.ProviderCounters.Select(c => (c.Kind, c.Value, c.Relationship)).SequenceEqual(b.Usage.ProviderCounters.Select(c => (c.Kind, c.Value, c.Relationship)))
+        && ProviderAttemptOperation.SameAccounting(a.Accounting, b.Accounting);
 }

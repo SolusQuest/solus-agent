@@ -72,7 +72,8 @@ public sealed class AgentRunUsage
     /// <exception cref="ArgumentException">The identity, inventory associations or coverage are inconsistent.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Coverage is undefined.</exception>
     /// <exception cref="ArgumentNullException">The attempt list is null.</exception>
-    public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts)
+    public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts,
+        RunAccountingSnapshot? accounting = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("An execution identity is required.", nameof(executionId));
         if (!Enum.IsDefined(coverage)) throw new ArgumentOutOfRangeException(nameof(coverage));
@@ -94,6 +95,11 @@ public sealed class AgentRunUsage
         Attempts = Array.AsReadOnly(snapshot);
         InputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.InputTokens);
         OutputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.OutputTokens);
+        if (accounting is not null && (accounting.ExecutionId != executionId || coverage != UsageInventoryCoverage.Complete
+            || accounting.Attempts.Count != snapshot.Length || !accounting.Attempts.Zip(snapshot).All(pair =>
+                pair.First.MatchesObservation(pair.Second, accounting.Policy.UnknownUsage))))
+            throw new ArgumentException("Runtime accounting must match the complete finalized observation inventory.", nameof(accounting));
+        Accounting = accounting;
     }
     /// <summary>Gets the Host execution correlation.</summary>
     public Guid ExecutionId { get; }
@@ -105,4 +111,6 @@ public sealed class AgentRunUsage
     public RunTokenObservation InputTokens { get; }
     /// <summary>Gets checked output observations, independently of input availability.</summary>
     public RunTokenObservation OutputTokens { get; }
+    /// <summary>Gets optional authoritative admission accounting, distinct from provider claims and measured token totals.</summary>
+    public RunAccountingSnapshot? Accounting { get; }
 }

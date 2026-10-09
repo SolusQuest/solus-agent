@@ -28,6 +28,12 @@ public sealed class AgentRequest
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(bounds);
         CapabilityValidation.Validate(requiredCapabilities, nameof(requiredCapabilities));
+        if (requiredCapabilities.HasFlag(AgentCapability.UsageAccounting) && usageLimits?.AccountingPolicy is null)
+            throw new ArgumentException("Required accounting needs an explicit Host reservation policy.", nameof(usageLimits));
+        if (requiredCapabilities.HasFlag(AgentCapability.UsageThresholds)
+            && usageLimits?.AccountingPolicy is { UnknownUsage: not UnknownUsagePolicy.Stop }
+            && (usageLimits.InputTokenThreshold.HasValue || usageLimits.OutputTokenThreshold.HasValue))
+            throw new ArgumentException("Required observed-threshold coverage is incompatible with unknown continuation.", nameof(usageLimits));
 
         var snapshot = data.ToArray();
         if (snapshot.Any(item => item is null))
