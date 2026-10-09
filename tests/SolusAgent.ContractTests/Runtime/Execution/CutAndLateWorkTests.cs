@@ -147,10 +147,13 @@ public sealed class CutAndLateWorkTests
         }]);
         var hooks = new RuntimeHooks { After = (_, _) => { closureEntered.SetResult(); return new(receipt.Task); } };
         var run = RuntimeFixture.Agent(provider, hooks, new(clock, settlementGrace: TimeSpan.FromSeconds(2))).ExecuteAsync(RuntimeFixture.Request(), cancellationToken: cancellation.Token).AsTask();
-        await RuntimeFixture.Await(entered.Task); cancellation.Cancel(); await RuntimeFixture.Await(closureEntered.Task);
-        clock.Advance(TimeSpan.FromSeconds(2));
         try
         {
+            await RuntimeFixture.Await(entered.Task);
+            cancellation.Cancel();
+            await RuntimeFixture.Await(closureEntered.Task);
+            await RuntimeFixture.Await(callbackEntered.Task);
+            clock.Advance(TimeSpan.FromSeconds(2));
             var outcome = await RuntimeFixture.Await(run); Assert.Equal(AgentTerminationReason.Cancelled, outcome.Reason);
             Assert.Equal(3, outcome.Usage!.Attempts[0].Usage.InputTokens); Assert.False(response.Task.IsCompleted);
         }

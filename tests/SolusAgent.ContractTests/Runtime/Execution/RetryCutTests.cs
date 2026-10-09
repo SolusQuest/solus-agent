@@ -79,8 +79,9 @@ public sealed class RetryCutTests
     }
 
     [Theory]
-    [InlineData(false)] [InlineData(true)]
-    public async Task BackoffCutDoesNotWaitForUncooperativeCancellationCallback(bool candidate)
+    [InlineData(false, true)] [InlineData(true, true)]
+    [InlineData(false, false)] [InlineData(true, false)]
+    public async Task BackoffCutDoesNotWaitForUncooperativeCancellationCallback(bool candidate, bool cancel)
     {
         var clock = new ControlledTimeProvider(); var waiting = RuntimeFixture.Barrier();
         var callbackEntered = RuntimeFixture.Barrier(); var release = RuntimeFixture.Barrier();
@@ -95,9 +96,12 @@ public sealed class RetryCutTests
         {
             var pending = AccountingTests.Execute(AccountingTests.Agent(provider, null, options: new(clock)),
                 RetryTests.Request(new(retryPolicy: new(2, TimeSpan.FromSeconds(2)))), candidate, caller.Token);
-            await RuntimeFixture.Await(waiting.Task); caller.Cancel(); await RuntimeFixture.Await(callbackEntered.Task);
+            await RuntimeFixture.Await(waiting.Task);
+            if (cancel) caller.Cancel(); else clock.Advance(TimeSpan.FromSeconds(10));
+            await RuntimeFixture.Await(callbackEntered.Task);
             var result = await RuntimeFixture.Await(pending);
-            Assert.Equal(AgentTerminationReason.Cancelled, result.Reason); Assert.False(release.Task.IsCompleted); Assert.Equal(1, provider.Effects);
+            Assert.Equal(cancel ? AgentTerminationReason.Cancelled : AgentTerminationReason.ResourceLimit, result.Reason);
+            Assert.False(release.Task.IsCompleted); Assert.Equal(1, provider.Effects);
         }
         finally { release.TrySetResult(); await registration.DisposeAsync(); }
     }
