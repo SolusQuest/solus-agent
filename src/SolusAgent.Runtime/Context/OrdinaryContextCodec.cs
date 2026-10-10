@@ -14,7 +14,7 @@ using SolusAgent.Runtime.Startup;
 
 namespace SolusAgent.Runtime.Context;
 
-internal static class OrdinaryContextCodec
+internal static partial class OrdinaryContextCodec
 {
     internal static readonly Guid Implementation = new("3f520f02-3b59-431e-8acf-a62544f28760");
     internal const int MaximumEncodedBytes = 2 * 1024 * 1024;
@@ -84,9 +84,10 @@ internal static class OrdinaryContextCodec
             || saved.Rounds.Any(r => r.RoundId == grant.RoundId || r.Usage.ExecutionId == grant.ExecutionId))
             throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         var continuing = request.Intent == ContextExecutionIntent.ContinueRun;
-        if (continuing ? !saved.RetryEligible : !saved.Final) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
+        if (continuing ? !saved.RetryEligible && saved.ToolCursor is null : !saved.Final) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         if (continuing && (request.Request.Data.Count != 0 || request.Request.Instructions != saved.Records[0].Text
-            || request.Request.UsageLimits?.RetryPolicy is null)) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
+            || saved.RetryEligible && request.Request.UsageLimits?.RetryPolicy is null)) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
+        if (saved.Records.Any(r => r.ToolModel is not null)) return DecodeTools(request, saved, config, options, bytes.Length);
         var records = Rehydrate(saved, config, options);
         var continuation = records.LastOrDefault(r => r.Model is not null)?.Model?.Continuation;
         var last = saved.Rounds.SelectMany(r => r.Facts).LastOrDefault();
@@ -120,7 +121,8 @@ internal static class OrdinaryContextCodec
         if (saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
             || retained >= options.MaximumRetainedBytes
             || continuing && nextRequest.Bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
-        return new(saved, records, continuation, pending, continuing ? saved.Info.LogicalWorkId : Guid.NewGuid(), grant.RoundId, retained);
+        return new(saved, records, continuation, pending, continuing ? saved.Info.LogicalWorkId : Guid.NewGuid(), grant.RoundId, retained,
+            nextRequest.PayloadByteCount);
     }
     internal static void AdmitProvider(RestoredOrdinary restored, RuntimeConfiguration config)
     {
@@ -136,10 +138,11 @@ internal static class OrdinaryContextCodec
         {
             if (entry.Kind is ProviderInputKind.HostInstruction or ProviderInputKind.InputData)
             {
-                if (entry.Text is null || entry.Final is not null) throw new JsonException();
+                if (entry.Text is null || entry.Final is not null || entry.ToolModel is not null || entry.ToolMember is not null) throw new JsonException();
                 records.Add(entry.Kind == ProviderInputKind.HostInstruction ? ProviderInput.Instruction(entry.Text) : ProviderInput.Data(entry.Text));
             }
-            else if (entry.Kind == ProviderInputKind.ModelData && entry.Final is { } final && entry.Text is null)
+            else if (entry.Kind == ProviderInputKind.ModelData && entry.Final is { } final && entry.Text is null
+                && entry.ToolModel is null && entry.ToolMember is null)
             {
                 var origins = records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray();
                 var original = new ProviderRequest(config.Scope, final.Attempt, records, config.Tools.Select(t => t.Descriptor).ToArray(), continuation,
@@ -156,9 +159,12 @@ internal static class OrdinaryContextCodec
         if (!saved.Scope.Matches(config.Scope) || saved.Binding != Binding(config, options)) throw new ContextRejected(ContextRejectionCode.IncompatibleContext);
         if (saved.Records.Length is < 1 || saved.Records.Length > options.MaximumRecords || saved.Records[0].Kind != ProviderInputKind.HostInstruction
             || saved.Records.Skip(1).Any(r => r.Kind == ProviderInputKind.HostInstruction) || saved.Rounds.Length is < 1 or > 64
-            || saved.Elapsed < TimeSpan.Zero || saved.Final && saved.RetryEligible) throw new JsonException();
+            || saved.Elapsed < TimeSpan.Zero || saved.Final && (saved.RetryEligible || saved.ToolCursor is not null)
+            || saved.RetryEligible && saved.ToolCursor is not null) throw new JsonException();
+        var batches = ValidateToolRecords(saved, config, options);
         var executions = new HashSet<Guid>(); var rounds = new HashSet<Guid>(); var works = new HashSet<Guid>();
         var physical = new Dictionary<Guid, UsageAttemptObservation>();
+        var operations = new HashSet<Guid>();
         var finals = new Dictionary<Guid, SavedAttempt>();
         SavedRound? previous = null;
         ProviderAttempt? cursor = null;
@@ -168,25 +174,31 @@ internal static class OrdinaryContextCodec
             if (round.LogicalWorkId == Guid.Empty || round.RoundId == Guid.Empty || !executions.Add(round.Usage.ExecutionId)
                 || !rounds.Add(round.RoundId) || round.Usage.Coverage != UsageInventoryCoverage.Complete
                 || !Enum.IsDefined(round.Reason) || !Enum.IsDefined(round.Stop) || round.Completed < 0
-                || round.Facts.Length != round.Usage.Attempts.Count || round.Completed != round.Facts.Count(f => f.AcceptedFinal)
-                || round.Completed > 1 || round.Facts.Take(Math.Max(0, round.Facts.Length - 1)).Any(f => f.AcceptedFinal)
-                || round.Completed == 1 && round.Reason == AgentTerminationReason.Partial
-                || round.Usage.Attempts.Select(a => a.LogicalCallId).Distinct().Count() > 1
+                || round.Facts.Length != round.Usage.Attempts.Count || round.Completed != round.Facts.Count(f => f.AcceptedFinal || f.AcceptedTools)
+                || round.Facts.Take(Math.Max(0, round.Facts.Length - 1)).Any(f => f.AcceptedFinal)
+                || round.Completed > 0 && round.Reason == AgentTerminationReason.Partial && !round.Facts.Any(f => f.AcceptedTools)
                 || round.Reason == AgentTerminationReason.UnsupportedCapability
-                || round.Reason == AgentTerminationReason.Completed && (round.Completed != 1 || round.Stop != RuntimeStop.HostStopped)
+                || round.Reason == AgentTerminationReason.Completed && (round.Completed < 1 || round.Stop != RuntimeStop.HostStopped)
                 || (round.Reason == AgentTerminationReason.Cancelled) != (round.Stop == RuntimeStop.Cancelled)
-                || round.Stop is RuntimeStop.DurationLimit or RuntimeStop.ResourceLimit && round.Reason != AgentTerminationReason.ResourceLimit
-                || round.Usage.ToolInvocations is not { Invoked: 0, ReservedUnstarted: 0, ReleasedUnstarted: 0 }) throw new JsonException();
+                || round.Stop is RuntimeStop.DurationLimit or RuntimeStop.ResourceLimit && round.Reason != AgentTerminationReason.ResourceLimit)
+                throw new JsonException();
+            var owned = saved.Members.Where(m => m.ModelAttempt.ExecutionId == round.Usage.ExecutionId).ToArray();
+            if (round.Usage.ToolInvocations is not { ReservedUnstarted: 0 } toolUsage
+                || toolUsage.Invoked != owned.Count(m => m.State != Tools.ToolMemberState.Unstarted)
+                || toolUsage.ReleasedUnstarted != owned.Count(m => m.State == Tools.ToolMemberState.Unstarted)) throw new JsonException();
+            var sameWorkToolContinuation = previous is not null && previous.ToolCursor is not null
+                && round.LogicalWorkId == previous.LogicalWorkId;
             if (round.Usage.ContinuedCalls.Count > 1 || previous is null && round.Usage.ContinuedCalls.Count != 0
                 || previous is not null && (round.Usage.ContinuedCalls.Count == 1
-                    ? round.LogicalWorkId != previous.LogicalWorkId : round.LogicalWorkId == previous.LogicalWorkId)) throw new JsonException();
-            if (round.Usage.ContinuedCalls.Count == 0 && !works.Add(round.LogicalWorkId)) throw new JsonException();
-            if (previous is not null && round.Usage.ContinuedCalls.Count == 0
+                    ? round.LogicalWorkId != previous.LogicalWorkId : round.LogicalWorkId == previous.LogicalWorkId && !sameWorkToolContinuation)) throw new JsonException();
+            if (round.Usage.ContinuedCalls.Count == 0 && !sameWorkToolContinuation && !works.Add(round.LogicalWorkId)) throw new JsonException();
+            if (previous is not null && round.Usage.ContinuedCalls.Count == 0 && !sameWorkToolContinuation
                 && previous.Facts.LastOrDefault() is not { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped }) throw new JsonException();
             foreach (var seed in round.Usage.ContinuedCalls)
                 if (!physical.TryGetValue(seed.PhysicalAttemptId, out var prior) || prior.ExecutionId != seed.ExecutionId
                     || prior.LogicalCallId != seed.LogicalCallId || prior.AttemptNumber != seed.AttemptNumber
                     || cursor is null || !cursor.Matches(new(seed.ExecutionId, seed.LogicalCallId, seed.PhysicalAttemptId, seed.AttemptNumber))) throw new JsonException();
+            SavedAttempt? priorInRound = null;
             foreach (var observation in round.Usage.Attempts)
             {
                 if (!physical.TryAdd(observation.PhysicalAttemptId, observation)) throw new JsonException();
@@ -194,34 +206,56 @@ internal static class OrdinaryContextCodec
                     && f.Attempt.PhysicalAttemptId == observation.PhysicalAttemptId && f.Attempt.AttemptNumber == observation.AttemptNumber).ToArray();
                 if (matches.Length != 1) throw new JsonException();
                 var fact = matches[0];
+                var predecessor = priorInRound?.Attempt ?? (round.Usage.ContinuedCalls.SingleOrDefault() is { } seed
+                    ? new ProviderAttempt(seed.ExecutionId, seed.LogicalCallId, seed.PhysicalAttemptId, seed.AttemptNumber) : null);
+                if (predecessor is not null && predecessor.LogicalCallId == fact.Attempt.LogicalCallId)
+                {
+                    if (fact.Attempt.AttemptNumber != (long)predecessor.AttemptNumber + 1
+                        || priorInRound is not null && priorInRound.Retry is null) throw new JsonException();
+                }
+                else if (round.Usage.ContinuedCalls.Count != 0 && priorInRound is null
+                    || priorInRound is not null && (!priorInRound.AcceptedTools || !batches.GetValueOrDefault(priorInRound.Attempt.PhysicalAttemptId))
+                    || fact.Attempt.AttemptNumber != 1 || !operations.Add(fact.Attempt.LogicalCallId)) throw new JsonException();
                 if (!WithinBoundProfile(fact.Bounds, config.Bounds) || !Enum.IsDefined(fact.Stop) || !Enum.IsDefined(fact.SettlementStop) || fact.Outcome.HasValue && !Enum.IsDefined(fact.Outcome.Value)
                     || fact.Error.HasValue && !Enum.IsDefined(fact.Error.Value)
                     || fact.ClosureAcknowledged && fact.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped)
                     || fact.Retry is not null && (fact.Outcome != ProviderOutcome.Failed || fact.Error != ProviderError.ProviderFailed
                         || fact.Stop != RuntimeStop.None || fact.SettlementStop != RuntimeStop.None)
-                    || fact.AcceptedFinal && (fact.Outcome != ProviderOutcome.Succeeded || fact.Error != ProviderError.None)) throw new JsonException();
-                if (fact.AcceptedFinal) finals.Add(observation.PhysicalAttemptId, fact);
+                    || fact.AcceptedFinal && fact.AcceptedTools
+                    || (fact.AcceptedFinal || fact.AcceptedTools) && (fact.Outcome != ProviderOutcome.Succeeded || fact.Error != ProviderError.None)) throw new JsonException();
+                if (fact.AcceptedFinal || fact.AcceptedTools) finals.Add(observation.PhysicalAttemptId, fact);
+                priorInRound = fact;
             }
             if (!round.Facts.Select(f => f.Attempt.PhysicalAttemptId).SequenceEqual(round.Usage.Attempts.Select(a => a.PhysicalAttemptId))) throw new JsonException();
             if (round.Facts.LastOrDefault() is { } tail)
                 cursor = tail is { Retry: not null, AcceptedFinal: false, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
                     && round.Usage.Attempts[^1].Exposure == DispatchExposure.Dispatched ? tail.Attempt : null;
             else if (round.Usage.ContinuedCalls.Count == 0) cursor = null;
+            var toolCursor = round.Facts.LastOrDefault() is { } latestFact
+                ? latestFact is { AcceptedTools: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
+                    && batches.GetValueOrDefault(latestFact.Attempt.PhysicalAttemptId) ? latestFact.Attempt : null
+                : sameWorkToolContinuation ? previous!.ToolCursor : null;
+            if (!SameAttempt(round.ToolCursor, toolCursor)) throw new JsonException();
             previous = round;
         }
         if (physical.Count > options.MaximumAttempts) throw new JsonException();
         var current = saved.Rounds[^1];
         if (saved.Info != new ContextCheckpointInfo(saved.Info.CheckpointId, current.LogicalWorkId, current.RoundId, current.Usage.ExecutionId)
             || saved.Info.CheckpointId == Guid.Empty) throw new JsonException();
-        var modelIds = saved.Records.Where(r => r.Final is not null).Select(r => r.Final!.Attempt.PhysicalAttemptId).ToArray();
+        var modelIds = saved.Records.Where(r => r.Final is not null || r.ToolModel is not null)
+            .Select(r => (r.Final?.Attempt ?? r.ToolModel!.Attempt).PhysicalAttemptId).ToArray();
         if (modelIds.Length != finals.Count || modelIds.Distinct().Count() != modelIds.Length || modelIds.Any(id => !finals.ContainsKey(id))) throw new JsonException();
-        var represented = saved.Records.Where(r => r.Final is not null).Select(r => r.Final!).ToArray();
+        var represented = saved.Records.Where(r => r.Final is not null || r.ToolModel is not null)
+            .Select(r => (Attempt: r.Final?.Attempt ?? r.ToolModel!.Attempt, Scope: r.Final?.Scope ?? r.ToolModel!.Scope,
+                Bounds: r.Final?.Bounds ?? r.ToolModel!.Bounds, Final: r.Final is not null)).ToArray();
         if (!represented.Select(f => f.Attempt.PhysicalAttemptId).SequenceEqual(finals.Keys)
             || represented.Any(f => !f.Attempt.Matches(finals[f.Attempt.PhysicalAttemptId].Attempt) || !f.Scope.Matches(saved.Scope)
+                || f.Final != finals[f.Attempt.PhysicalAttemptId].AcceptedFinal
                 || !SameBounds(f.Bounds, finals[f.Attempt.PhysicalAttemptId].Bounds))) throw new JsonException();
         var last = current.Facts.LastOrDefault();
         if (saved.Final != (last is { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped })
             || saved.RetryEligible != (cursor is not null) || (saved.Pending is null ? cursor is not null : cursor is null || !saved.Pending.Matches(cursor))
+            || !SameAttempt(saved.ToolCursor, current.ToolCursor)
             || (last is not null || cursor is not null) && saved.OriginalBounds is null) throw new JsonException();
         var latest = saved.Rounds.SelectMany(r => r.Facts).LastOrDefault();
         if (latest is not null && !SameBounds(saved.OriginalBounds!, latest.Bounds)) throw new JsonException();
@@ -241,7 +275,8 @@ internal static class OrdinaryContextCodec
         if (round.Stop == RuntimeStop.UnsupportedCapability || round.Stop == RuntimeStop.InvalidAssociation && round.Reason != AgentTerminationReason.Failed
             || round.Reason == AgentTerminationReason.ResourceLimit && round.Stop is not (RuntimeStop.None or RuntimeStop.ResourceLimit or RuntimeStop.DurationLimit)
             || round.Reason == AgentTerminationReason.Completed && tail is not { AcceptedFinal: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped }
-            || round.Completed == 1 && round.Reason == AgentTerminationReason.ResourceLimit && round.Stop != RuntimeStop.DurationLimit) throw new JsonException();
+            || round.Completed == 1 && !round.Facts.Any(f => f.AcceptedTools)
+                && round.Reason == AgentTerminationReason.ResourceLimit && round.Stop != RuntimeStop.DurationLimit) throw new JsonException();
         for (var i = 0; i < round.Facts.Length; i++)
         {
             var fact = round.Facts[i];
@@ -250,8 +285,9 @@ internal static class OrdinaryContextCodec
                 || fact.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped or RuntimeStop.SettlementMissing
                     or RuntimeStop.SettlementFailed or RuntimeStop.SettlementUnknown or RuntimeStop.SettlementMismatch)
                 || fact.Stop is RuntimeStop.Cancelled or RuntimeStop.DurationLimit && round.Stop != fact.Stop
-                || fact.AcceptedFinal && fact.Stop is not (RuntimeStop.None or RuntimeStop.Cancelled or RuntimeStop.DurationLimit)
-                || i < round.Facts.Length - 1 && (fact.Retry is null || fact.Stop != RuntimeStop.None || fact.SettlementStop != RuntimeStop.None)
+                || (fact.AcceptedFinal || fact.AcceptedTools) && fact.Stop is not (RuntimeStop.None or RuntimeStop.Cancelled or RuntimeStop.DurationLimit)
+                || i < round.Facts.Length - 1 && (fact.Retry is null && !fact.AcceptedTools || fact.Stop != RuntimeStop.None
+                    || fact.SettlementStop != RuntimeStop.None || fact.AcceptedTools && !fact.ClosureAcknowledged)
                 || fact.Outcome.HasValue != fact.Error.HasValue
                 || fact.Outcome == ProviderOutcome.Succeeded && fact.Error != ProviderError.None
                 || fact.Outcome == ProviderOutcome.Failed && fact.Error != ProviderError.ProviderFailed

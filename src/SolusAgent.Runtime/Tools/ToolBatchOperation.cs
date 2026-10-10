@@ -111,7 +111,7 @@ internal static class ToolBatchOperation
 
     private static ToolError ValidateResult(ToolResult? result, ToolCall call, ToolDescriptor descriptor)
     {
-        if (result is null) return ToolError.InvalidResult;
+        if (result is null || result.IsHistorical) return ToolError.InvalidResult;
         if (!result.Call.Matches(call)) return ToolError.ResultMismatch;
         if (!Enum.IsDefined(result.Outcome) || !Enum.IsDefined(result.Error)) return ToolError.InvalidResult;
         if (result.Outcome == ToolOutcome.Succeeded)

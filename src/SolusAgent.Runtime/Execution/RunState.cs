@@ -47,6 +47,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         if (restored is not null)
         {
             records.AddRange(restored.Records); continuation = restored.Continuation; retainedBytes = restored.RetainedBytes;
+            toolRecords.AddRange(restored.Members ?? []);
             return;
         }
         if (Request.Data.Count >= Configuration.Bounds.MaximumInputs || Request.Data.Count >= Options.MaximumRecords)

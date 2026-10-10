@@ -4,16 +4,16 @@ using SolusAgent.Tools.Api;
 namespace CustomTools;
 
 /// <summary>A separate narrow string-transform capability with test-memory-only effect observation.</summary>
-public sealed class TransformCapability : IToolCapability
+public sealed class TransformCapability(int initialEffects = 0, Action<int>? observe = null) : IToolCapability
 {
-    private int effects;
+    private int effects = initialEffects;
     /// <inheritdoc />
     public string CapabilityId => "text_transform";
     /// <summary>Gets actual transform effects.</summary>
     public int Effects => Volatile.Read(ref effects);
     /// <summary>Transforms text after observing the supplied cancellation.</summary>
     public string Upper(string text, CancellationToken token)
-    { token.ThrowIfCancellationRequested(); Interlocked.Increment(ref effects); return text.ToUpperInvariant(); }
+    { token.ThrowIfCancellationRequested(); var count = Interlocked.Increment(ref effects); observe?.Invoke(count); return text.ToUpperInvariant(); }
 }
 
 /// <summary>An interface-only producer; the private guarded implementation has no runtime or provider reference.</summary>
