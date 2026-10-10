@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <StartupObject>SolusAgent.ContractTests.Runtime.Context.OrdinaryContextChild</StartupObject>
+        <StartupObject>SolusAgent.ContractTests.DeepSeek.Adapter.PersistenceChild</StartupObject>
     </PropertyGroup>
 
     <ItemGroup>

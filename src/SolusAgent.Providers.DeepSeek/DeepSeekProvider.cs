@@ -6,7 +6,7 @@ using SolusAgent.Runtime.Api.Providers;
 namespace SolusAgent.Providers.DeepSeek;
 
 /// <summary>One guarded DeepSeek attempt with restricted per-turn replay, bounded wire processing and no automatic retry.</summary>
-public sealed class DeepSeekProvider : ModelProvider, IDisposable
+public sealed partial class DeepSeekProvider : ModelProvider, IProviderContextPersistence, IDisposable
 {
     private readonly DeepSeekOptions options;
     private readonly HttpMessageInvoker? injectedInvoker;
