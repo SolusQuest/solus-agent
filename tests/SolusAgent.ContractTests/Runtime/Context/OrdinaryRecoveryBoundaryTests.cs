@@ -161,7 +161,13 @@ public sealed class OrdinaryRecoveryBoundaryTests
         Assert.Equal(AgentTerminationReason.Completed, result.Outcome!.Reason); Assert.Equal(2, provider.Effects); Assert.Equal(1, capability.Effects);
         Assert.NotNull(requests[0].History!.OperationOrigin); Assert.Null(requests[1].History!.OperationOrigin);
         Assert.NotEqual(requests[0].Attempt.LogicalCallId, requests[1].Attempt.LogicalCallId);
-        Assert.Equal(ContextCaptureStatus.Unavailable, result.CaptureStatus); // Newly executed tools do not become supported saved tool state.
+        Assert.Equal(ContextCaptureStatus.Delivered, result.CaptureStatus);
+        var finalBytes = output.CopyRestrictedContext(); var finalProvider = new PersistentProvider(tools: true);
+        var nextRequest = OrdinaryFixture.Request();
+        var next = await Agent(finalProvider, new SelectedAuthority(finalBytes, result.Checkpoint!)).ExecuteWithContextAsync(
+            new(nextRequest, ContextExecutionIntent.NewRunFromContext, finalBytes, OrdinaryFixture.Grant(result, nextRequest.ExecutionId)));
+        Assert.Equal(ContextAdmission.Supplied, next.Admission); Assert.Equal(AgentTerminationReason.Completed, next.Outcome!.Reason);
+        Assert.Equal(1, capability.Effects); Assert.Equal(1, finalProvider.Effects);
     }
 
     [Theory]
