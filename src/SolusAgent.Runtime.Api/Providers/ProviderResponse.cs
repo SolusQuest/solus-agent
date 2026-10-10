@@ -56,6 +56,15 @@ public sealed class ProviderResponse
         + (Continuation is null ? 0 : Continuation.ByteCount + Continuation.Scope.Bytes);
     internal static int CallBytes(ToolCall call) => ProviderBoundary.Bytes(call.CallId) + ProviderBoundary.Bytes(call.ToolName) + ProviderBoundary.Bytes(call.ArgumentsJson);
     internal ProviderResponse Accept() => new(this);
+    /// <summary>Rehydrates an ordinary Final only after exact original-request validation; callers must independently establish trusted checkpoint provenance.</summary>
+    /// <remarks>Performs no provider dispatch and authenticates neither bytes nor caller. Tool/candidate recovery requires its owning implementation.</remarks>
+    public static ProviderResponse RestoreFinal(ProviderRequest originalRequest, ProviderResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        ProviderBoundary.Require(response.Finish == ProviderFinish.Final && response.Calls.Count == 0, ProviderError.InvalidResponse);
+        response.ValidateFor(originalRequest);
+        return response.Accept();
+    }
     /// <summary>Revalidates this response against the actual consumer request, including its bounds and continuation requirements.</summary>
     /// <remarks>Accepted alone does not prove validation against this request. This operation neither dispatches nor makes a candidate accepted.</remarks>
     public void ValidateFor(ProviderRequest request)

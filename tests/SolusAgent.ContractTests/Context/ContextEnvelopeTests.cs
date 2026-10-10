@@ -23,7 +23,8 @@ public sealed class ContextEnvelopeTests
         Assert.Equal(ContextCases.Canary, Encoding.UTF8.GetString(envelope.CopyRestrictedPayload()));
         Assert.DoesNotContain(ContextCases.Canary, envelope.ToString());
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(envelope));
-        Assert.Equal(["ImplementationId", "FormatVersion", "CompatibilityVersion"], json.RootElement.EnumerateObject().Select(value => value.Name));
+        Assert.Equal(["ImplementationId", "FormatVersion", "CompatibilityVersion", "PayloadByteCount"], json.RootElement.EnumerateObject().Select(value => value.Name));
+        Assert.Equal(Encoding.UTF8.GetByteCount(ContextCases.Canary), envelope.PayloadByteCount);
         Assert.All(typeof(AgentContextEnvelope).GetProperties(), value => Assert.Null(value.SetMethod));
         Assert.Equal([typeof(Guid), typeof(int), typeof(int), typeof(byte[])], typeof(AgentContextEnvelope).GetConstructors().Single().GetParameters().Select(value => value.ParameterType));
     }

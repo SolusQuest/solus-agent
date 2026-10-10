@@ -101,10 +101,15 @@ public sealed class ProviderRequest
     /// <summary>Copies bounded input/definitions and explicitly rejects conflicting association or incomplete rounds.</summary>
     public ProviderRequest(ProviderScope scope, ProviderAttempt attempt, IReadOnlyList<ProviderInput> inputs,
         IReadOnlyList<ToolDescriptor>? tools = null, ProviderContinuation? continuation = null,
-        ProviderCapabilities requiredCapabilities = ProviderCapabilities.None, ProviderExchangeBounds? bounds = null)
+        ProviderCapabilities requiredCapabilities = ProviderCapabilities.None, ProviderExchangeBounds? bounds = null,
+        ProviderHistory? history = null)
     {
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Attempt = attempt ?? throw new ArgumentNullException(nameof(attempt));
+        History = history;
+        if (history?.OperationOrigin is { } origin)
+            ProviderBoundary.Require(origin.ExecutionId != attempt.ExecutionId && origin.LogicalCallId == attempt.LogicalCallId
+                && origin.PhysicalAttemptId != attempt.PhysicalAttemptId && attempt.AttemptNumber > origin.AttemptNumber, ProviderError.InvalidAssociation);
         Bounds = bounds ?? new();
         ValidateCapabilities(requiredCapabilities);
         var entries = ProviderBoundary.Copy(inputs, Bounds.MaximumInputs);
@@ -132,7 +137,8 @@ public sealed class ProviderRequest
                 ProviderBoundary.Require(pending.Count == 0, ProviderError.InvalidAssociation);
             if (entry.Model is { } model)
             {
-                ProviderBoundary.Require(scope.Matches(model.Scope) && model.Attempt.ExecutionId == attempt.ExecutionId
+                ProviderBoundary.Require(scope.Matches(model.Scope) && (model.Attempt.ExecutionId == attempt.ExecutionId
+                    || history?.AcceptedOrigins.Any(model.Attempt.Matches) == true)
                     && physical.Add(model.Attempt.PhysicalAttemptId) && logical.Add(model.Attempt.LogicalCallId), ProviderError.InvalidAssociation);
                 ProviderBoundary.Require(model.Calls.Count <= Bounds.MaximumToolCalls, ProviderError.LimitExceeded);
                 CheckContinuation(model.Continuation);
@@ -150,6 +156,7 @@ public sealed class ProviderRequest
             }
         }
         ProviderBoundary.Require(pending.Count == 0, ProviderError.InvalidAssociation);
+        if (history is not null) ProviderBoundary.Require(history.AcceptedOrigins.All(origin => entries.Any(e => e.Model?.Attempt.Matches(origin) == true)), ProviderError.InvalidAssociation);
         if (continuation is null) ProviderBoundary.Require(latest?.Continuation is null, ProviderError.ContinuationMismatch);
         else
         {
@@ -183,6 +190,8 @@ public sealed class ProviderRequest
     /// <summary>Gets the invocation-owned numeric observation channel, visible independently of payload completion.</summary>
     /// <remarks>This request is single-use for guarded exchange. The runtime may seal this channel at its local cut; late reports then reject.</remarks>
     public ProviderObservation Observation { get; }
+    /// <summary>Gets exact admitted historical lineage; original IDs are preserved across rounds.</summary>
+    public ProviderHistory? History { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderRequest);
     internal IReadOnlySet<string> HistoricalCallIds { get; }
@@ -192,6 +201,7 @@ public sealed class ProviderRequest
     {
         if (continuation is null) return;
         ProviderBoundary.Require(continuation.ByteCount <= Bounds.MaximumContinuationBytes, ProviderError.LimitExceeded);
-        ProviderBoundary.Require(Scope.Matches(continuation.Scope) && continuation.Origin.ExecutionId == Attempt.ExecutionId, ProviderError.ContinuationMismatch);
+        ProviderBoundary.Require(Scope.Matches(continuation.Scope) && (continuation.Origin.ExecutionId == Attempt.ExecutionId
+            || History?.AcceptedOrigins.Any(continuation.Origin.Matches) == true), ProviderError.ContinuationMismatch);
     }
 }

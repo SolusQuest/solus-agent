@@ -7,17 +7,20 @@ using SolusAgent.Runtime.Startup;
 using SolusAgent.Runtime.Tools;
 using SolusAgent.Tools.Api;
 using System.Text;
+using SolusAgent.Runtime.Context;
 
 namespace SolusAgent.Runtime.Execution;
 
-internal sealed class RunState(AgentRequest request, RuntimeConfiguration configuration, RuntimeOptions options, RunCut cut)
+internal sealed partial class RunState(AgentRequest request, RuntimeConfiguration configuration, RuntimeOptions options, RunCut cut,
+    RestoredOrdinary? restored = null)
 {
     private readonly List<ProviderInput> records = [];
     private readonly List<UsageAttemptObservation> attempts = [];
     private readonly HashSet<Guid> logicalCalls = [];
     private readonly HashSet<Guid> physicalDispatches = [];
     private readonly HashSet<Guid> finalizedAttempts = [];
-    private readonly RunAccountingLedger? accounting = request.UsageLimits?.AccountingPolicy is { } policy ? new(request.ExecutionId, policy) : null;
+    private readonly RunAccountingLedger? accounting = request.UsageLimits?.AccountingPolicy is { } policy
+        ? new(request.ExecutionId, policy, restored?.Seeds) : null;
     private int retainedBytes;
     private ProviderContinuation? continuation;
     private ProviderResponse? latestResponse;
@@ -41,6 +44,11 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
 
     public void Initialize()
     {
+        if (restored is not null)
+        {
+            records.AddRange(restored.Records); continuation = restored.Continuation; retainedBytes = restored.RetainedBytes;
+            return;
+        }
         if (Request.Data.Count >= Configuration.Bounds.MaximumInputs || Request.Data.Count >= Options.MaximumRecords)
             throw new ProviderContractException(ProviderError.LimitExceeded);
         records.Add(ProviderInput.Instruction(Request.Instructions));
@@ -53,7 +61,7 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     {
         if (!CanContinue) return false;
         if (accounting is not null && Configuration.Hooks is null) { Close(RuntimeStop.MissingHooks); return false; }
-        if (Completed >= Request.Bounds.MaximumWorkUnits || attempts.Count >= Options.MaximumAttempts
+        if (Completed >= Request.Bounds.MaximumWorkUnits || HistoricalAttemptCount + attempts.Count >= Options.MaximumAttempts
             || records.Count >= Options.MaximumRecords
             || newLogicalCall && Request.UsageLimits?.MaximumLogicalCalls is { } logicalLimit && logicalCalls.Count >= logicalLimit
             || Request.UsageLimits?.MaximumPhysicalDispatches is { } physicalLimit && physicalDispatches.Count >= physicalLimit)
@@ -76,16 +84,19 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
     public ProviderRequest? AdmitTurn()
     {
         if (!PreflightTurn()) return null;
-        var attempt = new ProviderAttempt(Request.ExecutionId, Guid.NewGuid(), Guid.NewGuid());
+        var origin = attempts.Count == 0 ? restored?.Pending : null;
+        var attempt = new ProviderAttempt(Request.ExecutionId, origin?.LogicalCallId ?? Guid.NewGuid(), Guid.NewGuid(),
+            origin is null ? 1 : checked(origin.AttemptNumber + 1));
         var required = Options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None;
-        var original = Configuration.CreateRequest(attempt, records, continuation, required);
-        if (attempts.Count == 0) retainedBytes = original.PayloadByteCount;
+        var original = new ProviderRequest(Configuration.Scope, attempt, records, Configuration.Tools.Select(t => t.Descriptor).ToArray(),
+            continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory());
+        if (attempts.Count == 0 && restored is null) retainedBytes = original.PayloadByteCount;
         var available = Options.MaximumRetainedBytes - retainedBytes;
         if (available <= 0) { Close(RuntimeStop.ResourceLimit); return null; }
         var b = Configuration.Bounds;
         var bounded = new ProviderExchangeBounds(b.MaximumInputs, b.MaximumTools, b.MaximumToolCalls, b.MaximumRequestBytes,
-            Math.Min(b.MaximumResponseBytes, available), b.MaximumContinuationBytes);
-        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded);
+            Math.Min(original.Bounds.MaximumResponseBytes, available), b.MaximumContinuationBytes);
+        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory());
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
         return Reserve(admitted);
@@ -95,12 +106,12 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         // Only the latest finalized, unaccepted physical attempt can be continued. The caller owns eligibility and Host closure.
         if (!ReferenceEquals(previous, latestRequest) || !finalizedAttempts.Contains(previous.Attempt.PhysicalAttemptId)
             || latestResponse?.Attempt.LogicalCallId == previous.Attempt.LogicalCallId
-            || previous.Attempt.AttemptNumber >= (Request.UsageLimits?.RetryPolicy?.MaximumAttemptsPerLogicalCall ?? 1))
+            || RoundAttemptNumber(previous.Attempt) >= (Request.UsageLimits?.RetryPolicy?.MaximumAttemptsPerLogicalCall ?? 1))
             throw new ProviderContractException(ProviderError.InvalidAssociation);
         if (!PreflightRetry()) return null;
         var attempt = new ProviderAttempt(Request.ExecutionId, previous.Attempt.LogicalCallId, Guid.NewGuid(), previous.Attempt.AttemptNumber + 1);
         return Reserve(new(previous.Scope, attempt, previous.Inputs, previous.Tools, previous.Continuation,
-            previous.RequiredCapabilities, previous.Bounds));
+            previous.RequiredCapabilities, previous.Bounds, previous.History));
     }
     private ProviderRequest? Reserve(ProviderRequest admitted)
     {
@@ -236,7 +247,8 @@ internal sealed class RunState(AgentRequest request, RuntimeConfiguration config
         + Encoding.UTF8.GetByteCount(call.ToolName) + Encoding.UTF8.GetByteCount(call.ArgumentsJson);
     public void Close(RuntimeStop reason) { if (AdmissionStop == RuntimeStop.None) AdmissionStop = reason; }
     public RunAccountingSnapshot? Accounting() => accounting?.Snapshot();
-    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts, toolInvocations: ToolUsage(), accounting: Accounting());
+    public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts, toolInvocations: ToolUsage(),
+        accounting: Accounting(), continuedCalls: restored?.Seeds);
     public AgentOutcome Outcome(AgentTerminationReason reason, AgentFailureCode failure = AgentFailureCode.None) =>
         new(Request.ExecutionId, reason, Completed, failureCode: failure, usage: Usage());
     public static bool Matches(ProviderAttempt attempt, UsageAttemptObservation value) => attempt.ExecutionId == value.ExecutionId

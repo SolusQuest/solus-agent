@@ -21,7 +21,8 @@ public sealed class ContextExecutionRequest
     /// <exception cref="ArgumentNullException">The current Host request is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Intent is undefined.</exception>
     /// <exception cref="ArgumentException">Fresh has context, or a supplied intent has none.</exception>
-    public ContextExecutionRequest(AgentRequest request, ContextExecutionIntent intent, AgentContextEnvelope? context = null)
+    public ContextExecutionRequest(AgentRequest request, ContextExecutionIntent intent, AgentContextEnvelope? context = null,
+        ContextRoundGrant? roundGrant = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!Enum.IsDefined(intent)) throw new ArgumentOutOfRangeException(nameof(intent));
@@ -30,6 +31,8 @@ public sealed class ContextExecutionRequest
         Request = request;
         Intent = intent;
         Context = context;
+        if (intent == ContextExecutionIntent.Fresh && roundGrant is not null) throw new ArgumentException("Fresh has no source grant.");
+        RoundGrant = roundGrant;
     }
 
     /// <summary>Gets the current trusted Host control inputs and separately classified data.</summary>
@@ -38,6 +41,8 @@ public sealed class ContextExecutionRequest
     public ContextExecutionIntent Intent { get; }
     /// <summary>Gets restricted supplied state only for a supplied intent; never an ordinary outcome member.</summary>
     public AgentContextEnvelope? Context { get; }
+    /// <summary>Gets explicit new-round authorization; implementations still require trusted provenance and exclusive Host claim.</summary>
+    public ContextRoundGrant? RoundGrant { get; }
     /// <summary>Returns the intent without input text or restricted payload.</summary>
     public override string ToString() => $"ContextExecutionRequest {{ Intent = {Intent} }}";
 }

@@ -30,6 +30,9 @@ public sealed class AgentContextEnvelope
     /// <summary>Gets the implementation-owned compatibility discriminator; runtime-specific checks remain required.</summary>
     public int CompatibilityVersion { get; }
 
+    /// <summary>Gets encoded length without copying restricted bytes.</summary>
+    public int PayloadByteCount => payload.Length;
+
     /// <summary>Explicitly copies restricted bytes for authorized storage or admission; never use as ordinary diagnostics.</summary>
     public byte[] CopyRestrictedPayload() => payload.ToArray();
 

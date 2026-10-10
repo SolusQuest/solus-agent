@@ -113,6 +113,7 @@ internal static class ProviderAttemptOperation
         else if (settlementStop != RuntimeStop.None) state.Close(settlementStop);
         var retry = stop == RuntimeStop.None && settlementStop == RuntimeStop.None
             && outcome == ProviderOutcome.Failed && error == ProviderError.ProviderFailed ? result?.Retry : null;
+        state.RecordAttempt(request, new(accepted, stop, settlementStop, outcome, error, retry));
         return new(accepted, stop, settlementStop, outcome, error, retry);
     }
 

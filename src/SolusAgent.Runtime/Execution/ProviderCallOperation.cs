@@ -15,7 +15,7 @@ internal static class ProviderCallOperation
         {
             var attempt = await ProviderAttemptOperation.ExecuteAsync(state, request).ConfigureAwait(false);
             if (attempt.Retry is not { } retry || policy is null || !state.CanContinue
-                || request.Attempt.AttemptNumber >= policy.MaximumAttemptsPerLogicalCall)
+                || state.RoundAttemptNumber(request.Attempt) >= policy.MaximumAttemptsPerLogicalCall)
                 return Finish();
 
             var delay = policy.Backoff;
