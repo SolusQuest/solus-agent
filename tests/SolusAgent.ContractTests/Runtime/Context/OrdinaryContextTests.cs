@@ -40,10 +40,13 @@ public sealed class OrdinaryContextTests
         var bytes = sink.CopyRestrictedContext().CopyRestrictedPayload();
         release.SetResult(); await RuntimeFixture.Await(finished.Task);
         Assert.Equal(bytes, sink.CopyRestrictedContext().CopyRestrictedPayload()); Assert.Equal(0, result.Outcome.CompletedWorkUnits);
-        var request = RuntimeFixture.Request(); var resumedProvider = new PersistentProvider();
-        var retry = await OrdinaryFixture.Agent(resumedProvider).ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun,
+        var request = RuntimeFixture.Request(); var resumedProvider = new ScriptedProvider([ScriptedProvider.Final]);
+        var retryAgent = (IContextAgent)RuntimeAgentFactory.Create(new(resumedProvider, [], new RuntimeHooks(),
+            contextAuthority: new SelectedAuthority(sink.CopyRestrictedContext(), result.Checkpoint!)));
+        var retry = await retryAgent.ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun,
             sink.CopyRestrictedContext(), OrdinaryFixture.Grant(result, request.ExecutionId)));
-        Assert.Equal(ContextAdmission.Rejected, retry.Admission); Assert.Equal(0, resumedProvider.Effects);
+        Assert.Equal(ContextAdmission.Rejected, retry.Admission); Assert.Equal(ContextRejectionCode.InvalidRunTransition, retry.RejectionCode);
+        Assert.Equal(0, resumedProvider.Effects);
     }
     [Fact]
     public async Task ThreeRoundsPreserveGlobalOperationAndSeparateUnknownHistoricalUsage()
@@ -189,7 +192,8 @@ public sealed class OrdinaryContextTests
         var grant = OrdinaryFixture.Grant(source, request.ExecutionId);
         if (change == "checkpoint") grant = new(Guid.NewGuid(), source.Checkpoint! with { CheckpointId = Guid.NewGuid() }, request.ExecutionId, Guid.NewGuid());
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun, envelope, grant));
-        Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Null(result.Outcome); Assert.Equal(0, provider.Effects); Assert.Equal(0, authority.Claims);
+        Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Null(result.Outcome); Assert.Equal(0, provider.Effects);
+        Assert.Equal(change == "provider" ? 1 : 0, authority.Claims);
     }
     [Theory]
     [InlineData(RuntimeHookStatus.Unknown)]
@@ -218,6 +222,7 @@ public sealed class OrdinaryContextTests
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun,
             modified, OrdinaryFixture.Grant(source, request.ExecutionId)));
         Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Equal(1, authority.Claims); Assert.Equal(0, provider.Effects);
+        Assert.Equal(0, provider.Imports);
     }
     [Theory]
     [InlineData("missing")]
@@ -247,7 +252,8 @@ public sealed class OrdinaryContextTests
         var bad = new AgentContextEnvelope(envelope.ImplementationId, 1, 1, bytes);
         var provider = new PersistentProvider(); var authority = new SelectedAuthority(bad, source.Checkpoint!); var request = OrdinaryFixture.Request();
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun, bad, OrdinaryFixture.Grant(source, request.ExecutionId)));
-        Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Null(result.Outcome); Assert.Equal(0, authority.Claims); Assert.Equal(0, provider.Effects);
+        Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Null(result.Outcome);
+        Assert.Equal(mutation == "provider" ? 1 : 0, authority.Claims); Assert.Equal(0, provider.Effects);
     }
     [Fact]
     public async Task CaptureThrowDoesNotRewriteCompletedOutcomeOrLeakContent()

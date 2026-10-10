@@ -14,9 +14,12 @@ internal sealed partial class RunState
     internal int HistoricalAttemptCount => restored?.Checkpoint.Rounds.Sum(r => r.Usage.Attempts.Count) ?? 0;
     internal int RoundAttemptNumber(ProviderAttempt attempt) => attempt.AttemptNumber
         - (restored?.Seeds.SingleOrDefault(s => s.LogicalCallId == attempt.LogicalCallId)?.AttemptNumber ?? 0);
-    private ProviderHistory? RequestHistory() => restored is null ? null : new(records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray(), restored.Pending);
+    private ProviderHistory? RequestHistory(ProviderAttempt attempt) => restored is null ? null : new(
+        records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray(),
+        restored.Pending?.LogicalCallId == attempt.LogicalCallId ? restored.Pending : null);
     internal void RecordAttempt(ProviderRequest providerRequest, AttemptExecution result) => contextFacts.Add(new(providerRequest.Attempt,
-        result.Stop, result.SettlementStop, result.ProviderOutcome, result.ProviderError, result.Retry, result.Response?.Finish == ProviderFinish.Final));
+        result.Stop, result.SettlementStop, result.ProviderOutcome, result.ProviderError, result.Retry, result.Response?.Finish == ProviderFinish.Final,
+        Configuration.Hooks is not null && result.SettlementStop is RuntimeStop.None or RuntimeStop.HostStopped));
     internal IReadOnlyList<ContextRoundObservation> ContextHistory => restored?.Checkpoint.Rounds.Select(r => r.Observe()).ToArray() ?? [];
     internal AgentContextEnvelope? CaptureOrdinary(AgentOutcome outcome, out ContextCheckpointInfo? info)
     {
@@ -26,7 +29,7 @@ internal sealed partial class RunState
         var last = contextFacts.LastOrDefault();
         var inputs = records.Select(r => new SavedInput(r.Kind, r.Text, r.Model is { } model
             ? new(model.Scope, model.Attempt, model.Text!, SavedContinuation.From(model.Continuation)) : null)).ToArray();
-        SavedProvider? provider = null;
+        SavedProvider? provider = latestRequest is null ? restored?.Checkpoint.Provider : null;
         if (latestRequest is not null && Configuration.Provider is IProviderContextPersistence persistence)
         {
             var exported = persistence.ExportContext(new(Configuration.Scope, latestRequest.Attempt, continuation));
@@ -42,11 +45,13 @@ internal sealed partial class RunState
         if (history.Length >= 64) return null;
         var checkpoint = new ContextCheckpointInfo(Guid.NewGuid(), logicalWork, contextRound, Request.ExecutionId);
         var elapsed = Request.Bounds.MaximumDuration - Cut.Remaining;
+        var pending = last is null ? restored?.Pending
+            : last is { Retry: not null, AcceptedFinal: false, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
+                && attempts[^1].Exposure == SolusAgent.Api.Usage.DispatchExposure.Dispatched ? last.Attempt : null;
         var value = new OrdinaryCheckpoint(checkpoint, Configuration.Scope, OrdinaryContextCodec.Binding(Configuration, Options), inputs,
-            [.. history, round], latestRequest?.Bounds, provider,
+            [.. history, round], latestRequest?.Bounds ?? restored?.OriginalBounds, provider,
             last is { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped },
-            last is { Retry: not null, AcceptedFinal: false, SettlementStop: RuntimeStop.None }
-                && attempts[^1].Exposure == SolusAgent.Api.Usage.DispatchExposure.Dispatched,
+            pending is not null, pending,
             elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed);
         var envelope = OrdinaryContextCodec.Encode(value, Options);
         info = checkpoint;
@@ -56,7 +61,7 @@ internal sealed partial class RunState
     {
         if (restored?.Pending is null) return true;
         var policy = Request.UsageLimits!.RetryPolicy!;
-        var retry = restored.Checkpoint.Rounds[^1].Facts[^1].Retry!;
+        var retry = restored.Retry!;
         var delay = policy.Backoff;
         if (policy.HonorRetryAfter && retry.RetryAfter is { } hint)
         {

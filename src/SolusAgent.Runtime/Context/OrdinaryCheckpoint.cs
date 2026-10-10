@@ -15,7 +15,7 @@ internal sealed record SavedFinal(ProviderScope Scope, ProviderAttempt Attempt, 
 internal sealed record SavedInput(ProviderInputKind Kind, string? Text, SavedFinal? Final);
 internal sealed record SavedProvider(ProviderScope Scope, ProviderAttempt Origin, int FormatVersion, byte[] Bytes);
 internal sealed record SavedAttempt(ProviderAttempt Attempt, RuntimeStop Stop, RuntimeStop SettlementStop,
-    ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal);
+    ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged);
 internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsage Usage, AgentTerminationReason Reason,
     int Completed, RuntimeStop Stop, SavedAttempt[] Facts)
 {
@@ -23,10 +23,11 @@ internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsag
 }
 internal sealed record OrdinaryCheckpoint(ContextCheckpointInfo Info, ProviderScope Scope, string Binding,
     SavedInput[] Records, SavedRound[] Rounds, ProviderExchangeBounds? OriginalBounds, SavedProvider? Provider,
-    bool Final, bool RetryEligible, TimeSpan Elapsed);
+    bool Final, bool RetryEligible, ProviderAttempt? Pending, TimeSpan Elapsed);
 internal sealed record RestoredOrdinary(OrdinaryCheckpoint Checkpoint, IReadOnlyList<ProviderInput> Records,
     ProviderContinuation? Continuation, ProviderAttempt? Pending, Guid WorkId, Guid RoundId, int RetainedBytes)
 {
     public IReadOnlyList<UsageCallLineage> Seeds { get; } = Pending is null ? [] : [new(Pending.LogicalCallId, Pending.ExecutionId, Pending.PhysicalAttemptId, Pending.AttemptNumber)];
     public ProviderExchangeBounds? OriginalBounds => Checkpoint.OriginalBounds;
+    public ProviderRetry? Retry => Pending is null ? null : Checkpoint.Rounds.SelectMany(r => r.Facts).Single(f => f.Attempt.Matches(Pending)).Retry;
 }

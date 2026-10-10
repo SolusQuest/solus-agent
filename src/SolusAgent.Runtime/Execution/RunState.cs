@@ -89,14 +89,14 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             origin is null ? 1 : checked(origin.AttemptNumber + 1));
         var required = Options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None;
         var original = new ProviderRequest(Configuration.Scope, attempt, records, Configuration.Tools.Select(t => t.Descriptor).ToArray(),
-            continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory());
+            continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory(attempt));
         if (attempts.Count == 0 && restored is null) retainedBytes = original.PayloadByteCount;
         var available = Options.MaximumRetainedBytes - retainedBytes;
         if (available <= 0) { Close(RuntimeStop.ResourceLimit); return null; }
         var b = Configuration.Bounds;
         var bounded = new ProviderExchangeBounds(b.MaximumInputs, b.MaximumTools, b.MaximumToolCalls, b.MaximumRequestBytes,
             Math.Min(original.Bounds.MaximumResponseBytes, available), b.MaximumContinuationBytes);
-        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory());
+        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory(attempt));
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
         return Reserve(admitted);

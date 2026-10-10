@@ -6,7 +6,8 @@ using SolusAgent.Runtime.Api.Providers;
 namespace SolusAgent.ConsumerProbes.CustomProvider;
 
 /// <summary>Independent controlled persistence producer. Its opaque grammar is owned here, not by Runtime or the outer API.</summary>
-public sealed class PersistentProvider(bool fail = false) : ModelProvider(new("persistent", "ordinary"), ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting), IProviderContextPersistence
+public sealed class PersistentProvider(bool fail = false, bool tools = false) : ModelProvider(new("persistent", "ordinary"),
+    ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting | (tools ? ProviderCapabilities.ToolCalls : ProviderCapabilities.None)), IProviderContextPersistence
 {
     private readonly string credential = "PERSISTENCE_CREDENTIAL_CANARY";
     public int Effects { get; private set; }
@@ -15,6 +16,7 @@ public sealed class PersistentProvider(bool fail = false) : ModelProvider(new("p
     public bool RejectExport { get; set; }
     public bool UnknownUsage { get; set; }
     public Action<ProviderRequest>? Inspect { get; set; }
+    public Func<ProviderRequest, ProviderResponse>? Respond { get; set; }
     public ProviderRequest? LastRequest { get; private set; }
     protected override ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken token)
     {
@@ -24,6 +26,7 @@ public sealed class PersistentProvider(bool fail = false) : ModelProvider(new("p
         observation.ObserveDispatch(DispatchExposure.Dispatched);
         observation.CaptureUsage(UnknownUsage ? new(null, 2) : new(3, 2), new(UsageSettlement.Settled));
         if (fail) throw new ProviderFailureException(new(ProviderRetryKind.Transient));
+        if (Respond is not null) return ValueTask.FromResult(Respond(request));
         var continuation = new ProviderContinuation(Scope, request.Attempt, Encoding.UTF8.GetBytes("RESTRICTED_REPLAY_CANARY"));
         return ValueTask.FromResult(new ProviderResponse(Scope, request.Attempt, ProviderFinish.Final, "RESTRICTED_FINAL_CANARY", [], continuation));
     }

@@ -22,11 +22,11 @@ public sealed class RuntimeOptions
     }
     /// <summary>Gets the clock used for elapsed execution time and bounded asynchronous waiting.</summary>
     public TimeProvider TimeProvider { get; }
-    /// <summary>Gets the finite per-run attempt inventory capacity, independent of completed work.</summary>
+    /// <summary>Gets the finite retained attempt inventory capacity across context rounds, independent of renewed execution allowances.</summary>
     public int MaximumAttempts { get; }
     /// <summary>Gets the total classified-input, accepted-model and tool-result record capacity.</summary>
     public int MaximumRecords { get; }
-    /// <summary>Gets the total variable retained input/definition/model/tool-result bytes.</summary>
+    /// <summary>Gets total variable retained bytes, including encoded checkpoint state and new instructions/data on restoration.</summary>
     public int MaximumRetainedBytes { get; }
     /// <summary>Gets the maximum single settlement wait, also allowed after an execution cut. It grants no new execution authority.</summary>
     public TimeSpan SettlementGrace { get; }

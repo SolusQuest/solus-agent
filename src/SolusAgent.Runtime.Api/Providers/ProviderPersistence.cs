@@ -30,12 +30,12 @@ public sealed class ProviderSavedState
     public override string ToString() => nameof(ProviderSavedState);
 }
 
-/// <summary>Optional provider-owned effect-free export/import; continuation exchange support alone does not imply persistence support.</summary>
+/// <summary>Optional provider-owned export/import without dispatch or external storage; continuation support alone does not imply persistence support.</summary>
 public interface IProviderContextPersistence
 {
     /// <summary>Exports valid replay state or null when unsupported/uncertain. Must exclude credentials and live objects.</summary>
     ProviderSavedState? ExportContext(ProviderContextBinding binding);
-    /// <summary>Validates scoped retained replay against current configuration without dispatch, storage or other external effects.</summary>
+    /// <summary>Validates/materializes scoped retained replay against current configuration after trusted Host admission, without dispatch, storage or other external effects.</summary>
     bool AdmitContext(ProviderContextBinding binding, ProviderSavedState state);
 }
 

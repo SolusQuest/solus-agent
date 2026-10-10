@@ -26,6 +26,8 @@ internal sealed partial class RuntimeAgent
                 restored = OrdinaryContextCodec.Decode(request, configuration, options);
                 if (configuration.ContextAuthority is null || !configuration.ContextAuthority.TryClaim(request.Context, request.RoundGrant!))
                     return Reject(ContextRejectionCode.InvalidRunTransition);
+                // Provider recovery may mutate local state. Only a trusted, exclusively claimed source can reach it.
+                OrdinaryContextCodec.AdmitProvider(restored, configuration);
             }
             catch (ContextRejected rejection) { return Reject(rejection.Code); }
             catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
