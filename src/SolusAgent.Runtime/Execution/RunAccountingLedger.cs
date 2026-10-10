@@ -4,10 +4,10 @@ using SolusAgent.Runtime.Api.Providers;
 namespace SolusAgent.Runtime.Execution;
 
 // Per invocation, owned only by RunState. Provider accounting claims are never ledger inputs.
-internal sealed class RunAccountingLedger(Guid executionId, AgentAccountingPolicy policy)
+internal sealed class RunAccountingLedger(Guid executionId, AgentAccountingPolicy policy, IReadOnlyList<UsageCallLineage>? continuedCalls = null)
 {
     private readonly List<AttemptAccounting> entries = [];
-    public RunAccountingSnapshot Snapshot() => new(executionId, policy, entries);
+    public RunAccountingSnapshot Snapshot() => new(executionId, policy, entries, continuedCalls);
 
     public (bool Limit, bool Unknown) Preflight()
     {

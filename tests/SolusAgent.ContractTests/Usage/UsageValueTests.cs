@@ -161,7 +161,7 @@ public sealed class UsageValueTests
     public void OrdinaryUsageSurfacesHaveOnlyClosedMetadataAndNumericValues()
     {
         var types = typeof(UsageObservation).Assembly.GetExportedTypes().Where(type => type.Namespace == typeof(UsageObservation).Namespace && !type.IsEnum).ToHashSet();
-        var allowedCollections = new[] { typeof(IReadOnlyList<ProviderTokenCounter>), typeof(IReadOnlyList<UsageAttemptObservation>), typeof(IReadOnlyList<AttemptAccounting>) };
+        var allowedCollections = new[] { typeof(IReadOnlyList<ProviderTokenCounter>), typeof(IReadOnlyList<UsageAttemptObservation>), typeof(IReadOnlyList<AttemptAccounting>), typeof(IReadOnlyList<UsageCallLineage>) };
         foreach (var type in types)
         {
             Assert.All(type.GetProperties(BindingFlags.Public | BindingFlags.Instance), property =>

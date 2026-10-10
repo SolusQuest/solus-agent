@@ -151,11 +151,13 @@ public sealed class RunAccountingDimension
 public sealed class RunAccountingSnapshot
 {
     /// <summary>Copies and validates identity, uniqueness, policy basis and complete ordinal inventory.</summary>
-    public RunAccountingSnapshot(Guid executionId, AgentAccountingPolicy policy, IReadOnlyList<AttemptAccounting> attempts)
+    public RunAccountingSnapshot(Guid executionId, AgentAccountingPolicy policy, IReadOnlyList<AttemptAccounting> attempts,
+        IReadOnlyList<UsageCallLineage>? continuedCalls = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("Run identity is required.", nameof(executionId));
         ArgumentNullException.ThrowIfNull(policy); ArgumentNullException.ThrowIfNull(attempts);
         var copy = attempts.ToArray(); var ids = new HashSet<Guid>(); var ordinals = new HashSet<(Guid, int)>();
+        ContinuedCalls = UsageCallLineage.Copy(executionId, continuedCalls);
         foreach (var entry in copy)
         {
             if (entry is null || entry.ExecutionId != executionId || !ids.Add(entry.PhysicalAttemptId)
@@ -167,7 +169,7 @@ public sealed class RunAccountingSnapshot
                     || axis.Disposition == AccountingDisposition.Unresolved && policy.UnknownUsage == UnknownUsagePolicy.ConservativeCharge)
                     throw new ArgumentException("Accounting disposition conflicts with Host policy.", nameof(attempts));
         }
-        if (copy.GroupBy(e => e.LogicalCallId).Any(g => g.Min(e => e.AttemptNumber) != 1 || g.Max(e => e.AttemptNumber) != g.Count()))
+        if (!UsageCallLineage.Contiguous(copy.Select(e => (e.LogicalCallId, e.PhysicalAttemptId, e.AttemptNumber)), ContinuedCalls))
             throw new ArgumentException("Accounting inventory requires contiguous attempt ordinals.", nameof(attempts));
         ExecutionId = executionId; Policy = policy; Attempts = Array.AsReadOnly(copy);
         Input = new(copy.Select(e => e.Input).ToArray(), policy.InputAllowance);
@@ -179,6 +181,8 @@ public sealed class RunAccountingSnapshot
     public AgentAccountingPolicy Policy { get; }
     /// <summary>Gets complete copied accounting entries, independent of provider claims.</summary>
     public IReadOnlyList<AttemptAccounting> Attempts { get; }
+    /// <summary>Gets original-operation predecessors outside this round's debits.</summary>
+    public IReadOnlyList<UsageCallLineage> ContinuedCalls { get; }
     /// <summary>Gets derived input balances.</summary>
     public RunAccountingDimension Input { get; }
     /// <summary>Gets derived output balances.</summary>
@@ -186,7 +190,8 @@ public sealed class RunAccountingSnapshot
     /// <summary>Compares the policy and every fully correlated numeric entry independently of inventory order; derived totals necessarily agree.</summary>
     public bool Matches(RunAccountingSnapshot other)
     {
-        if (other is null || ExecutionId != other.ExecutionId || !Policy.Matches(other.Policy) || Attempts.Count != other.Attempts.Count) return false;
+        if (other is null || ExecutionId != other.ExecutionId || !Policy.Matches(other.Policy) || Attempts.Count != other.Attempts.Count
+            || ContinuedCalls.Count != other.ContinuedCalls.Count || !ContinuedCalls.All(s => other.ContinuedCalls.Any(s.Matches))) return false;
         var otherById = other.Attempts.ToDictionary(entry => entry.PhysicalAttemptId);
         return Attempts.All(entry => otherById.TryGetValue(entry.PhysicalAttemptId, out var counterpart) && entry.Matches(counterpart));
     }

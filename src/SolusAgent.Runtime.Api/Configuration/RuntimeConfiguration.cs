@@ -78,7 +78,8 @@ public sealed class RuntimeConfiguration
     public RuntimeConfiguration(IModelProvider provider, IReadOnlyList<RuntimeToolRegistration> tools,
         IRuntimeExposureHooks? hooks, ProviderExchangeBounds? bounds = null,
         ExposureStrength requiredAcknowledgement = ExposureStrength.Volatile,
-        RuntimeGuarantee requiredGuarantees = RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds)
+        RuntimeGuarantee requiredGuarantees = RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds,
+        IRuntimeContextAuthority? contextAuthority = null)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Scope = provider.Scope ?? throw new ArgumentException("The Host provider scope is missing.");
@@ -91,6 +92,7 @@ public sealed class RuntimeConfiguration
             ProviderError.InvalidAssociation);
         Tools = Array.AsReadOnly(snapshot); Hooks = hooks;
         RequiredAcknowledgement = requiredAcknowledgement; RequiredGuarantees = requiredGuarantees;
+        ContextAuthority = contextAuthority;
     }
     /// <summary>Gets the live Host provider; data never selects its transport.</summary>
     public IModelProvider Provider { get; }
@@ -106,6 +108,8 @@ public sealed class RuntimeConfiguration
     public ExposureStrength RequiredAcknowledgement { get; }
     /// <summary>Gets requirements for new runtime-specific semantics.</summary>
     public RuntimeGuarantee RequiredGuarantees { get; }
+    /// <summary>Gets freshly injected trusted provenance/exclusive recovery authority, never serialized or model-selected.</summary>
+    public IRuntimeContextAuthority? ContextAuthority { get; }
     /// <summary>Checks an implementation's declared support without executing work or certifying its claims.</summary>
     public RuntimeStop CheckSupport(RuntimeSupport support)
     {

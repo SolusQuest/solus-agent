@@ -49,7 +49,7 @@ public enum ContextCaptureStatus
 }
 
 /// <summary>Closed ordinary metadata separating context rejection, work outcome and restricted transfer.</summary>
-/// <remarks>A rejected context has no work outcome. Constructors check structure, not authentic provenance. No context, request, exception or raw diagnostic text is retained.</remarks>
+/// <remarks>A rejected context has no work outcome. Construction validates checkpoint identities and historical identity, reason, count and usage fields, not authentic provenance or global Host correlation uniqueness. No context, request, exception or raw diagnostic text is retained.</remarks>
 public sealed class ContextExecutionResult
 {
     /// <summary>Creates coherent same-call observations without fabricating a work failure for rejected context.</summary>
@@ -57,7 +57,8 @@ public sealed class ContextExecutionResult
     /// <exception cref="ArgumentOutOfRangeException">An enumeration is undefined.</exception>
     public ContextExecutionResult(Guid executionId, ContextExecutionIntent intent, ContextAdmission admission,
         AgentOutcome? outcome = null, ContextRejectionCode rejectionCode = ContextRejectionCode.None,
-        ContextCaptureStatus captureStatus = ContextCaptureStatus.NotRequested)
+        ContextCaptureStatus captureStatus = ContextCaptureStatus.NotRequested,
+        ContextCheckpointInfo? checkpoint = null, IReadOnlyList<ContextRoundObservation>? history = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("An execution identity is required.", nameof(executionId));
         if (!Enum.IsDefined(intent)) throw new ArgumentOutOfRangeException(nameof(intent));
@@ -84,6 +85,13 @@ public sealed class ContextExecutionResult
         Outcome = outcome;
         RejectionCode = rejectionCode;
         CaptureStatus = captureStatus;
+        var retained = history?.ToArray() ?? [];
+        if (retained.Any(r => r is null || r.LogicalWorkId == Guid.Empty || r.RoundId == Guid.Empty
+                || r.Usage is null || !Enum.IsDefined(r.Reason) || r.CompletedWorkUnits < 0)
+            || (checkpoint is not null && (outcome is null || checkpoint.ExecutionId != executionId
+                || checkpoint.CheckpointId == Guid.Empty || checkpoint.LogicalWorkId == Guid.Empty || checkpoint.RoundId == Guid.Empty)))
+            throw new ArgumentException("Invalid context observations.");
+        Checkpoint = checkpoint; History = Array.AsReadOnly(retained);
 
         bool AdmittedOutcome() => rejectionCode == ContextRejectionCode.None && outcome is not null
             && outcome.ExecutionId == executionId && outcome.Reason != AgentTerminationReason.UnsupportedCapability;
@@ -101,6 +109,10 @@ public sealed class ContextExecutionResult
     public ContextRejectionCode RejectionCode { get; }
     /// <summary>Gets the separate restricted transfer observation, never a Host storage/effect claim.</summary>
     public ContextCaptureStatus CaptureStatus { get; }
+    /// <summary>Gets safe checkpoint correlation when a complete capture was prepared; delivery does not imply durable commit.</summary>
+    public ContextCheckpointInfo? Checkpoint { get; }
+    /// <summary>Gets separately retained historical usage; the current outcome contains only current-round consumption.</summary>
+    public IReadOnlyList<ContextRoundObservation> History { get; }
     /// <summary>Returns only safe closed metadata.</summary>
     public override string ToString() => $"ContextExecutionResult {{ Intent = {Intent}, Admission = {Admission}, RejectionCode = {RejectionCode}, CaptureStatus = {CaptureStatus} }}";
 }

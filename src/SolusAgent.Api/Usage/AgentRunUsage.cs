@@ -95,12 +95,13 @@ public sealed class AgentRunUsage
     /// <exception cref="ArgumentOutOfRangeException">Coverage is undefined.</exception>
     /// <exception cref="ArgumentNullException">The attempt list is null.</exception>
     public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts,
-        ToolInvocationUsage? toolInvocations = null, RunAccountingSnapshot? accounting = null)
+        ToolInvocationUsage? toolInvocations = null, RunAccountingSnapshot? accounting = null, IReadOnlyList<UsageCallLineage>? continuedCalls = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("An execution identity is required.", nameof(executionId));
         if (!Enum.IsDefined(coverage)) throw new ArgumentOutOfRangeException(nameof(coverage));
         ArgumentNullException.ThrowIfNull(attempts);
         var snapshot = attempts.ToArray();
+        ContinuedCalls = UsageCallLineage.Copy(executionId, continuedCalls);
         var physicalIds = new HashSet<Guid>();
         var ordinals = new HashSet<(Guid, int)>();
         foreach (var attempt in snapshot)
@@ -110,7 +111,7 @@ public sealed class AgentRunUsage
         }
         if (coverage == UsageInventoryCoverage.Unavailable && snapshot.Length != 0)
             throw new ArgumentException("Unavailable inventory cannot assert attempt entries.", nameof(attempts));
-        if (coverage == UsageInventoryCoverage.Complete && snapshot.GroupBy(attempt => attempt.LogicalCallId).Any(call => call.Min(attempt => attempt.AttemptNumber) != 1 || call.Max(attempt => attempt.AttemptNumber) != call.Count()))
+        if (coverage == UsageInventoryCoverage.Complete && !UsageCallLineage.Contiguous(snapshot.Select(a => (a.LogicalCallId, a.PhysicalAttemptId, a.AttemptNumber)), ContinuedCalls))
             throw new ArgumentException("Complete inventory requires every ordinal from one through the last attempt.", nameof(attempts));
         ExecutionId = executionId;
         Coverage = coverage;
@@ -122,7 +123,8 @@ public sealed class AgentRunUsage
         {
             var observationsById = snapshot.ToDictionary(attempt => attempt.PhysicalAttemptId);
             if (accounting.ExecutionId != executionId || coverage != UsageInventoryCoverage.Complete
-                || accounting.Attempts.Count != snapshot.Length || !accounting.Attempts.All(entry =>
+                || accounting.Attempts.Count != snapshot.Length || accounting.ContinuedCalls.Count != ContinuedCalls.Count
+                || !accounting.ContinuedCalls.All(s => ContinuedCalls.Any(s.Matches)) || !accounting.Attempts.All(entry =>
                     observationsById.TryGetValue(entry.PhysicalAttemptId, out var observation)
                     && entry.MatchesObservation(observation, accounting.Policy.UnknownUsage)))
                 throw new ArgumentException("Runtime accounting must match the complete finalized observation inventory.", nameof(accounting));
@@ -143,4 +145,6 @@ public sealed class AgentRunUsage
     public RunTokenObservation OutputTokens { get; }
     /// <summary>Gets optional authoritative admission accounting, distinct from provider claims and measured token totals.</summary>
     public RunAccountingSnapshot? Accounting { get; }
+    /// <summary>Gets explicit predecessor seeds; original history is separately retained and validated by the restoring implementation.</summary>
+    public IReadOnlyList<UsageCallLineage> ContinuedCalls { get; }
 }
