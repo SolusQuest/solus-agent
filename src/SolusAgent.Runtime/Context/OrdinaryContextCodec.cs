@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -111,8 +112,11 @@ internal static class OrdinaryContextCodec
         var nextRequest = new ProviderRequest(config.Scope, next, records, config.Tools.Select(t => t.Descriptor).ToArray(), continuation,
             options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None,
             continuing ? saved.OriginalBounds : config.Bounds, new(origins, pending));
-        var retained = checked(bytes.Length + (continuing ? 0 : System.Text.Encoding.UTF8.GetByteCount(request.Request.Instructions)
-            + request.Request.Data.Sum(d => System.Text.Encoding.UTF8.GetByteCount(d.Text))));
+        // Checkpoint bytes already retain historical inputs/replay, while live definitions exist only behind its binding digest.
+        var definitionBytes = nextRequest.Tools.Sum(t => Encoding.UTF8.GetByteCount(t.Name) + Encoding.UTF8.GetByteCount(t.Description)
+            + Encoding.UTF8.GetByteCount(t.CapabilityId) + Encoding.UTF8.GetByteCount(t.InputSchema.NormalizedJson) + Encoding.UTF8.GetByteCount(t.ResultSchema.NormalizedJson));
+        var retained = Math.Max(nextRequest.PayloadByteCount, checked(bytes.Length + definitionBytes + (continuing ? 0 : Encoding.UTF8.GetByteCount(request.Request.Instructions)
+            + request.Request.Data.Sum(d => Encoding.UTF8.GetByteCount(d.Text)))));
         if (saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
             || retained >= options.MaximumRetainedBytes
             || continuing && nextRequest.Bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
@@ -139,7 +143,7 @@ internal static class OrdinaryContextCodec
             {
                 var origins = records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray();
                 var original = new ProviderRequest(config.Scope, final.Attempt, records, config.Tools.Select(t => t.Descriptor).ToArray(), continuation,
-                    options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None, config.Bounds, new(origins));
+                    options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None, final.Bounds, new(origins));
                 var model = ProviderResponse.RestoreFinal(original, new(final.Scope, final.Attempt, ProviderFinish.Final, final.Text, [], final.Continuation?.Restore()));
                 records.Add(ProviderInput.FromModel(model)); continuation = model.Continuation;
             }
@@ -160,6 +164,7 @@ internal static class OrdinaryContextCodec
         ProviderAttempt? cursor = null;
         foreach (var round in saved.Rounds)
         {
+            ValidateTerminal(round);
             if (round.LogicalWorkId == Guid.Empty || round.RoundId == Guid.Empty || !executions.Add(round.Usage.ExecutionId)
                 || !rounds.Add(round.RoundId) || round.Usage.Coverage != UsageInventoryCoverage.Complete
                 || !Enum.IsDefined(round.Reason) || !Enum.IsDefined(round.Stop) || round.Completed < 0
@@ -189,7 +194,7 @@ internal static class OrdinaryContextCodec
                     && f.Attempt.PhysicalAttemptId == observation.PhysicalAttemptId && f.Attempt.AttemptNumber == observation.AttemptNumber).ToArray();
                 if (matches.Length != 1) throw new JsonException();
                 var fact = matches[0];
-                if (!Enum.IsDefined(fact.Stop) || !Enum.IsDefined(fact.SettlementStop) || fact.Outcome.HasValue && !Enum.IsDefined(fact.Outcome.Value)
+                if (!WithinBoundProfile(fact.Bounds, config.Bounds) || !Enum.IsDefined(fact.Stop) || !Enum.IsDefined(fact.SettlementStop) || fact.Outcome.HasValue && !Enum.IsDefined(fact.Outcome.Value)
                     || fact.Error.HasValue && !Enum.IsDefined(fact.Error.Value)
                     || fact.ClosureAcknowledged && fact.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped)
                     || fact.Retry is not null && (fact.Outcome != ProviderOutcome.Failed || fact.Error != ProviderError.ProviderFailed
@@ -212,11 +217,48 @@ internal static class OrdinaryContextCodec
         if (modelIds.Length != finals.Count || modelIds.Distinct().Count() != modelIds.Length || modelIds.Any(id => !finals.ContainsKey(id))) throw new JsonException();
         var represented = saved.Records.Where(r => r.Final is not null).Select(r => r.Final!).ToArray();
         if (!represented.Select(f => f.Attempt.PhysicalAttemptId).SequenceEqual(finals.Keys)
-            || represented.Any(f => !f.Attempt.Matches(finals[f.Attempt.PhysicalAttemptId].Attempt) || !f.Scope.Matches(saved.Scope))) throw new JsonException();
+            || represented.Any(f => !f.Attempt.Matches(finals[f.Attempt.PhysicalAttemptId].Attempt) || !f.Scope.Matches(saved.Scope)
+                || !SameBounds(f.Bounds, finals[f.Attempt.PhysicalAttemptId].Bounds))) throw new JsonException();
         var last = current.Facts.LastOrDefault();
         if (saved.Final != (last is { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped })
             || saved.RetryEligible != (cursor is not null) || (saved.Pending is null ? cursor is not null : cursor is null || !saved.Pending.Matches(cursor))
             || (last is not null || cursor is not null) && saved.OriginalBounds is null) throw new JsonException();
+        var latest = saved.Rounds.SelectMany(r => r.Facts).LastOrDefault();
+        if (latest is not null && !SameBounds(saved.OriginalBounds!, latest.Bounds)) throw new JsonException();
+    }
+    private static bool SameBounds(ProviderExchangeBounds a, ProviderExchangeBounds b) => a.MaximumInputs == b.MaximumInputs
+        && a.MaximumTools == b.MaximumTools && a.MaximumToolCalls == b.MaximumToolCalls && a.MaximumRequestBytes == b.MaximumRequestBytes
+        && a.MaximumResponseBytes == b.MaximumResponseBytes && a.MaximumContinuationBytes == b.MaximumContinuationBytes;
+    private static bool WithinBoundProfile(ProviderExchangeBounds effective, ProviderExchangeBounds configured) =>
+        effective.MaximumInputs == configured.MaximumInputs && effective.MaximumTools == configured.MaximumTools
+        && effective.MaximumToolCalls == configured.MaximumToolCalls && effective.MaximumRequestBytes == configured.MaximumRequestBytes
+        && effective.MaximumContinuationBytes == configured.MaximumContinuationBytes && effective.MaximumResponseBytes <= configured.MaximumResponseBytes;
+
+    private static void ValidateTerminal(SavedRound round)
+    {
+        var tail = round.Facts.LastOrDefault();
+        // Only categories produced by the ordinary driver are admissible; local cuts retain their cause permanently.
+        if (round.Stop == RuntimeStop.UnsupportedCapability || round.Stop == RuntimeStop.InvalidAssociation && round.Reason != AgentTerminationReason.Failed
+            || round.Reason == AgentTerminationReason.ResourceLimit && round.Stop is not (RuntimeStop.None or RuntimeStop.ResourceLimit or RuntimeStop.DurationLimit)
+            || round.Reason == AgentTerminationReason.Completed && tail is not { AcceptedFinal: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped }
+            || round.Completed == 1 && round.Reason == AgentTerminationReason.ResourceLimit && round.Stop != RuntimeStop.DurationLimit) throw new JsonException();
+        for (var i = 0; i < round.Facts.Length; i++)
+        {
+            var fact = round.Facts[i];
+            if (fact.Stop is not (RuntimeStop.None or RuntimeStop.Cancelled or RuntimeStop.DurationLimit or RuntimeStop.ExposureDenied
+                    or RuntimeStop.ExposureMissing or RuntimeStop.ExposureFailed or RuntimeStop.ExposureUnknown or RuntimeStop.ExposureMismatch or RuntimeStop.DurableAcknowledgementRequired)
+                || fact.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped or RuntimeStop.SettlementMissing
+                    or RuntimeStop.SettlementFailed or RuntimeStop.SettlementUnknown or RuntimeStop.SettlementMismatch)
+                || fact.Stop is RuntimeStop.Cancelled or RuntimeStop.DurationLimit && round.Stop != fact.Stop
+                || fact.AcceptedFinal && fact.Stop is not (RuntimeStop.None or RuntimeStop.Cancelled or RuntimeStop.DurationLimit)
+                || i < round.Facts.Length - 1 && (fact.Retry is null || fact.Stop != RuntimeStop.None || fact.SettlementStop != RuntimeStop.None)
+                || fact.Outcome.HasValue != fact.Error.HasValue
+                || fact.Outcome == ProviderOutcome.Succeeded && fact.Error != ProviderError.None
+                || fact.Outcome == ProviderOutcome.Failed && fact.Error != ProviderError.ProviderFailed
+                || fact.Outcome == ProviderOutcome.Cancelled && fact.Error != ProviderError.Cancelled
+                || fact.Outcome == ProviderOutcome.Rejected && fact.Error == ProviderError.None
+                || !fact.Outcome.HasValue && fact.Stop == RuntimeStop.None) throw new JsonException();
+        }
     }
 }
 internal sealed class ContextRejected(ContextRejectionCode code) : Exception

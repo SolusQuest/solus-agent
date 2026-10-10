@@ -11,11 +11,11 @@ internal sealed record SavedContinuation(ProviderScope Scope, ProviderAttempt Or
     public static SavedContinuation? From(ProviderContinuation? value) => value is null ? null : new(value.Scope, value.Origin, value.CopyReplayBytes());
     public ProviderContinuation Restore() => new(Scope, Origin, Bytes);
 }
-internal sealed record SavedFinal(ProviderScope Scope, ProviderAttempt Attempt, string Text, SavedContinuation? Continuation);
+internal sealed record SavedFinal(ProviderScope Scope, ProviderAttempt Attempt, string Text, SavedContinuation? Continuation, ProviderExchangeBounds Bounds);
 internal sealed record SavedInput(ProviderInputKind Kind, string? Text, SavedFinal? Final);
 internal sealed record SavedProvider(ProviderScope Scope, ProviderAttempt Origin, int FormatVersion, byte[] Bytes);
 internal sealed record SavedAttempt(ProviderAttempt Attempt, RuntimeStop Stop, RuntimeStop SettlementStop,
-    ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged);
+    ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged, ProviderExchangeBounds Bounds);
 internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsage Usage, AgentTerminationReason Reason,
     int Completed, RuntimeStop Stop, SavedAttempt[] Facts)
 {

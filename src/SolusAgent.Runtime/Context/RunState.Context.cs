@@ -11,6 +11,8 @@ internal sealed partial class RunState
     private readonly List<SavedAttempt> contextFacts = [];
     private readonly Guid contextRound = restored?.RoundId ?? Guid.NewGuid();
     private readonly Guid logicalWork = restored?.WorkId ?? Guid.NewGuid();
+    private RuntimeStop? contextStop;
+    private TimeSpan contextElapsed;
     internal int HistoricalAttemptCount => restored?.Checkpoint.Rounds.Sum(r => r.Usage.Attempts.Count) ?? 0;
     internal int RoundAttemptNumber(ProviderAttempt attempt) => attempt.AttemptNumber
         - (restored?.Seeds.SingleOrDefault(s => s.LogicalCallId == attempt.LogicalCallId)?.AttemptNumber ?? 0);
@@ -19,16 +21,27 @@ internal sealed partial class RunState
         restored.Pending?.LogicalCallId == attempt.LogicalCallId ? restored.Pending : null);
     internal void RecordAttempt(ProviderRequest providerRequest, AttemptExecution result) => contextFacts.Add(new(providerRequest.Attempt,
         result.Stop, result.SettlementStop, result.ProviderOutcome, result.ProviderError, result.Retry, result.Response?.Finish == ProviderFinish.Final,
-        Configuration.Hooks is not null && result.SettlementStop is RuntimeStop.None or RuntimeStop.HostStopped));
+        result.ClosureAcknowledged, providerRequest.Bounds));
+    internal void FreezeContext(AgentOutcome outcome)
+    {
+        if (contextStop.HasValue) return;
+        contextStop = outcome.Reason == AgentTerminationReason.Cancelled ? RuntimeStop.Cancelled
+            : outcome.Reason == AgentTerminationReason.ResourceLimit && Cut.Check() == RuntimeStop.DurationLimit ? RuntimeStop.DurationLimit
+            : AdmissionStop;
+        var elapsed = Request.Bounds.MaximumDuration - Cut.Remaining;
+        contextElapsed = elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+    }
     internal IReadOnlyList<ContextRoundObservation> ContextHistory => restored?.Checkpoint.Rounds.Select(r => r.Observe()).ToArray() ?? [];
     internal AgentContextEnvelope? CaptureOrdinary(AgentOutcome outcome, out ContextCheckpointInfo? info)
     {
         info = null;
+        FreezeContext(outcome);
         if (toolRecords.Count != 0 || records.Any(r => r.Kind == ProviderInputKind.ToolResultData || r.Model?.Finish == ProviderFinish.ToolCalls)
             || contextFacts.Count != attempts.Count || records.Count == 0) return null;
         var last = contextFacts.LastOrDefault();
         var inputs = records.Select(r => new SavedInput(r.Kind, r.Text, r.Model is { } model
-            ? new(model.Scope, model.Attempt, model.Text!, SavedContinuation.From(model.Continuation)) : null)).ToArray();
+            ? new(model.Scope, model.Attempt, model.Text!, SavedContinuation.From(model.Continuation),
+                contextFacts.Concat(restored?.Checkpoint.Rounds.SelectMany(r => r.Facts) ?? []).Single(f => f.Attempt.Matches(model.Attempt)).Bounds) : null)).ToArray();
         SavedProvider? provider = latestRequest is null ? restored?.Checkpoint.Provider : null;
         if (latestRequest is not null && Configuration.Provider is IProviderContextPersistence persistence)
         {
@@ -40,11 +53,10 @@ internal sealed partial class RunState
             }
         }
         var round = new SavedRound(logicalWork, contextRound, Usage(), outcome.Reason, Completed,
-            Cut.Check() != RuntimeStop.None ? Cut.Check() : AdmissionStop, contextFacts.ToArray());
+            contextStop!.Value, contextFacts.ToArray());
         var history = restored?.Checkpoint.Rounds ?? [];
         if (history.Length >= 64) return null;
         var checkpoint = new ContextCheckpointInfo(Guid.NewGuid(), logicalWork, contextRound, Request.ExecutionId);
-        var elapsed = Request.Bounds.MaximumDuration - Cut.Remaining;
         var pending = last is null ? restored?.Pending
             : last is { Retry: not null, AcceptedFinal: false, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
                 && attempts[^1].Exposure == SolusAgent.Api.Usage.DispatchExposure.Dispatched ? last.Attempt : null;
@@ -52,7 +64,7 @@ internal sealed partial class RunState
             [.. history, round], latestRequest?.Bounds ?? restored?.OriginalBounds, provider,
             last is { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped },
             pending is not null, pending,
-            elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed);
+            contextElapsed);
         var envelope = OrdinaryContextCodec.Encode(value, Options);
         info = checkpoint;
         return envelope;

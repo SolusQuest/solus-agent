@@ -34,7 +34,8 @@ internal sealed partial class RuntimeAgent
             { return Reject(ContextRejectionCode.InvalidContext); }
         }
         RunState? completed = null;
-        var outcome = await ExecuteOrdinaryAsync(current, progress, cancellationToken, restored, (state, _) => completed = state).ConfigureAwait(false);
+        var outcome = await ExecuteOrdinaryAsync(current, progress, cancellationToken, restored,
+            (state, selected) => { state.FreezeContext(selected); completed = state; }).ConfigureAwait(false);
         var capture = contextSink is null ? ContextCaptureStatus.NotRequested : ContextCaptureStatus.Unavailable;
         ContextCheckpointInfo? checkpoint = null;
         if (contextSink is not null && completed is not null)

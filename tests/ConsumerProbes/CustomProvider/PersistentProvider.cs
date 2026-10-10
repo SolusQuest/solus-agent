@@ -17,6 +17,7 @@ public sealed class PersistentProvider(bool fail = false, bool tools = false) : 
     public bool UnknownUsage { get; set; }
     public Action<ProviderRequest>? Inspect { get; set; }
     public Func<ProviderRequest, ProviderResponse>? Respond { get; set; }
+    public Action? BeforeExport { get; set; }
     public ProviderRequest? LastRequest { get; private set; }
     protected override ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken token)
     {
@@ -30,7 +31,11 @@ public sealed class PersistentProvider(bool fail = false, bool tools = false) : 
         var continuation = new ProviderContinuation(Scope, request.Attempt, Encoding.UTF8.GetBytes("RESTRICTED_REPLAY_CANARY"));
         return ValueTask.FromResult(new ProviderResponse(Scope, request.Attempt, ProviderFinish.Final, "RESTRICTED_FINAL_CANARY", [], continuation));
     }
-    public ProviderSavedState? ExportContext(ProviderContextBinding binding) => RejectExport ? null : new(binding.Scope, binding.Origin, 1, Bytes(binding));
+    public ProviderSavedState? ExportContext(ProviderContextBinding binding)
+    {
+        BeforeExport?.Invoke();
+        return RejectExport ? null : new(binding.Scope, binding.Origin, 1, Bytes(binding));
+    }
     public bool AdmitContext(ProviderContextBinding binding, ProviderSavedState state)
     {
         Imports++;
