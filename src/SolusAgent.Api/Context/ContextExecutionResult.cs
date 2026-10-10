@@ -49,7 +49,7 @@ public enum ContextCaptureStatus
 }
 
 /// <summary>Closed ordinary metadata separating context rejection, work outcome and restricted transfer.</summary>
-/// <remarks>A rejected context has no work outcome. Constructors check structure, not authentic provenance. No context, request, exception or raw diagnostic text is retained.</remarks>
+/// <remarks>A rejected context has no work outcome. Construction validates checkpoint identities and historical identity, reason, count and usage fields, not authentic provenance or global Host correlation uniqueness. No context, request, exception or raw diagnostic text is retained.</remarks>
 public sealed class ContextExecutionResult
 {
     /// <summary>Creates coherent same-call observations without fabricating a work failure for rejected context.</summary>
@@ -86,7 +86,10 @@ public sealed class ContextExecutionResult
         RejectionCode = rejectionCode;
         CaptureStatus = captureStatus;
         var retained = history?.ToArray() ?? [];
-        if (retained.Any(r => r is null) || (checkpoint is not null && (outcome is null || checkpoint.ExecutionId != executionId)))
+        if (retained.Any(r => r is null || r.LogicalWorkId == Guid.Empty || r.RoundId == Guid.Empty
+                || r.Usage is null || !Enum.IsDefined(r.Reason) || r.CompletedWorkUnits < 0)
+            || (checkpoint is not null && (outcome is null || checkpoint.ExecutionId != executionId
+                || checkpoint.CheckpointId == Guid.Empty || checkpoint.LogicalWorkId == Guid.Empty || checkpoint.RoundId == Guid.Empty)))
             throw new ArgumentException("Invalid context observations.");
         Checkpoint = checkpoint; History = Array.AsReadOnly(retained);
 
