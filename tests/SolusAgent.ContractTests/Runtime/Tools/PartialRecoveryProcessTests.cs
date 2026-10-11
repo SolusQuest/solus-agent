@@ -22,6 +22,7 @@ internal static class PartialRecoveryChild
     private sealed record CounterState(long Total, int Effects);
     internal static async Task<int> Run(string[] args)
     {
+        if (args[2].StartsWith("cursor-", StringComparison.Ordinal)) return await RecoveryCursorChild.Run(args);
         var root = args[1]; var command = args[2]; Directory.CreateDirectory(root);
         var producing = command.StartsWith("produce-", StringComparison.Ordinal);
         var read = command.Contains("read", StringComparison.Ordinal);

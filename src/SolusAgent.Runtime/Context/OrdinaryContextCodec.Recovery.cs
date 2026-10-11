@@ -118,8 +118,9 @@ internal static partial class OrdinaryContextCodec
             var tail = round.Facts.LastOrDefault();
             var cursor = tail is null ? previous?.ToolCursor is not null && previous.LogicalWorkId == round.LogicalWorkId ? previous.ToolCursor : null
                 : tail is { AcceptedTools: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
-                    && Resumable(saved, effective, tail.Attempt) ? tail.Attempt : null;
-            if (cursor is not null && terminalNegativeQueries.Any(i => effective[i].ModelAttempt.Matches(cursor))) cursor = null;
+                    ? tail.Attempt : null;
+            if (cursor is not null && (!Resumable(saved, effective, cursor)
+                || terminalNegativeQueries.Any(i => effective[i].ModelAttempt.Matches(cursor)))) cursor = null;
             cursors.Add(round.RoundId, cursor); previous = round;
         }
         return effective;

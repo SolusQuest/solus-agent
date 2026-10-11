@@ -67,8 +67,9 @@ internal sealed partial class RunState
         }
         var toolCursor = last is null ? restored?.Checkpoint.ToolCursor
             : last is { AcceptedTools: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
-                && ResumableBatch(last.Attempt) ? last.Attempt : null;
-        if (toolCursor is not null && (recoveryActions.Any(a => a.Kind == RecoveryActionKind.Query && a.State == RecoveryActionState.Returned
+                ? last.Attempt : null;
+        if (toolCursor is not null && (!ResumableBatch(toolCursor)
+            || recoveryActions.Any(a => a.Kind == RecoveryActionKind.Query && a.State == RecoveryActionState.Returned
                 && a.Result?.Outcome != SolusAgent.Tools.Api.ToolOutcome.Succeeded)
             || restored?.Checkpoint.Rounds.SelectMany(r => r.RecoveryActions ?? []).Any(a => a.Kind == RecoveryActionKind.Query
                 && a.State == RecoveryActionState.Returned && a.Result?.Outcome != SolusAgent.Tools.Api.ToolOutcome.Succeeded
