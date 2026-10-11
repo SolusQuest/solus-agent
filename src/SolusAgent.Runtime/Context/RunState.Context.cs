@@ -40,14 +40,14 @@ internal sealed partial class RunState
         if (contextFacts.Count != attempts.Count || records.Count == 0) return null;
         var last = contextFacts.LastOrDefault();
         var facts = contextFacts.Concat(restored?.Checkpoint.Rounds.SelectMany(r => r.Facts) ?? []).ToArray();
-        var members = toolRecords.Select(m => new SavedMember(m.ModelAttempt, m.Ordinal, m.Call,
+        var members = originalToolRecords.Select(m => new SavedMember(m.ModelAttempt, m.Ordinal, m.Call,
             SavedDescriptor.From(Configuration.Tools.Single(t => t.Descriptor.Name == m.Call.ToolName).Descriptor),
-            m.State, SavedResult.From(m.Result), m.Error, m.ReservationHeld)).ToArray();
+            m.State, SavedResult.From(m.Result), m.Error, m.ReservationHeld, m.Operation!)).ToArray();
         var inputs = records.Select(r =>
         {
             var model = r.Model;
             var bounds = model is null ? null : facts.Single(f => f.Attempt.Matches(model.Attempt)).Bounds;
-            var member = r.ToolResult is null ? -1 : toolRecords.FindIndex(m => ReferenceEquals(m.Result, r.ToolResult));
+            var member = r.ToolResult is null ? -1 : toolRecords.FindIndex(m => m.Call.Matches(r.ToolResult.Call));
             if (r.ToolResult is not null && member < 0) throw new InvalidOperationException();
             return new SavedInput(r.Kind, r.Text, model?.Finish == ProviderFinish.Final
                 ? new(model.Scope, model.Attempt, model.Text!, SavedContinuation.From(model.Continuation), bounds!) : null,
@@ -67,9 +67,16 @@ internal sealed partial class RunState
         }
         var toolCursor = last is null ? restored?.Checkpoint.ToolCursor
             : last is { AcceptedTools: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
-                && CompleteBatch(last.Attempt) ? last.Attempt : null;
+                && ResumableBatch(last.Attempt) ? last.Attempt : null;
+        if (toolCursor is not null && (recoveryActions.Any(a => a.Kind == RecoveryActionKind.Query && a.State == RecoveryActionState.Returned
+                && a.Result?.Outcome != SolusAgent.Tools.Api.ToolOutcome.Succeeded)
+            || restored?.Checkpoint.Rounds.SelectMany(r => r.RecoveryActions ?? []).Any(a => a.Kind == RecoveryActionKind.Query
+                && a.State == RecoveryActionState.Returned && a.Result?.Outcome != SolusAgent.Tools.Api.ToolOutcome.Succeeded
+                && toolRecords[a.MemberIndex].ModelAttempt.Matches(toolCursor)) == true)) toolCursor = null;
         var round = new SavedRound(logicalWork, contextRound, Usage(), outcome.Reason, Completed,
-            contextStop!.Value, contextFacts.ToArray(), toolCursor);
+            contextStop!.Value, contextFacts.ToArray(), toolCursor,
+            recoveryActions.Select(a => new SavedRecoveryAction(a.ActionId, a.MemberIndex, a.Kind, a.State, SavedResult.From(a.Result), a.Error)).ToArray(),
+            recoveryReleased.ToArray());
         var history = restored?.Checkpoint.Rounds ?? [];
         if (history.Length >= 64) return null;
         var checkpoint = new ContextCheckpointInfo(Guid.NewGuid(), logicalWork, contextRound, Request.ExecutionId);
@@ -85,11 +92,12 @@ internal sealed partial class RunState
         info = checkpoint;
         return envelope;
 
-        bool CompleteBatch(ProviderAttempt model)
+        bool ResumableBatch(ProviderAttempt model)
         {
             var calls = records.Single(r => r.Model?.Attempt.Matches(model) == true).Model!.Calls;
             var batch = toolRecords.Where(m => m.ModelAttempt.Matches(model)).ToArray();
-            return calls.Count == batch.Length && batch.All(m => m.State == ToolMemberState.Succeeded && m.Result is not null);
+            return calls.Count == batch.Length && batch.All(m => m.State == ToolMemberState.Succeeded && m.Result is not null
+                || m.State == ToolMemberState.Unstarted || m.Operation?.Recovery is not null);
         }
     }
     internal async ValueTask<bool> WaitForRestoredRetryAsync()
