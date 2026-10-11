@@ -13,9 +13,13 @@ internal static partial class OrdinaryContextCodec
     // The reservation includes worst-case JSON escaping in retained audit facts, not just provider payload bytes.
     internal static int RecoveryReservationBytes(int index, ToolCall call, ToolDescriptor descriptor)
     {
-        var action = new SavedRecoveryAction(Guid.NewGuid(), index, RecoveryActionKind.Query, RecoveryActionState.Returned,
-            new(call, ToolOutcome.Succeeded, ToolError.None, true, new string('"', descriptor.MaximumResultBytes)), ToolError.None);
-        return checked(JsonSerializer.SerializeToUtf8Bytes(action, Json).Length + CallBytes(call) + descriptor.MaximumResultBytes + 64);
+        var widestError = Enum.GetValues<ToolError>().Max();
+        var action = new SavedRecoveryAction(Guid.NewGuid(), index, Enum.GetValues<RecoveryActionKind>().Max(), Enum.GetValues<RecoveryActionState>().Max(),
+            new(call, Enum.GetValues<ToolOutcome>().Max(), widestError, false, string.Empty), widestError);
+        // A valid UTF-8 byte needs at most six JSON string bytes (\uXXXX). A surrogate pair needs twelve for four UTF-8 bytes.
+        // Empty JSON contributes the enclosing quotes; widest fixed fields cover every observation without an arbitrary cushion.
+        return checked(JsonSerializer.SerializeToUtf8Bytes(action, Json).Length + 6 * descriptor.MaximumResultBytes
+            + CallBytes(call) + descriptor.MaximumResultBytes);
     }
     private static ToolMemberState ResultState(SavedResult result) => result.Outcome switch
     {

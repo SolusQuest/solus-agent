@@ -23,7 +23,7 @@ public sealed class PartialRecoveryTests
     internal static ProviderResponse Calls(ProviderRequest r) => new(r.Scope, r.Attempt, ProviderFinish.ToolCalls, "PARTIAL_MODEL_CANARY",
         [new("first", "counter", "{\"amount\":7}"), new("uncertain", "recover", "{\"amount\":5}"), new("last", "counter", "{\"amount\":1}")], new(r.Scope, r.Attempt, [1]));
     internal static async Task<Source> Capture(ToolRecoveryGuarantee guarantee = ToolRecoveryGuarantee.QueryOutcome,
-        Action<RecoveryCounterCapability>? configure = null, bool cancel = false, bool suffix = true)
+        Action<RecoveryCounterCapability>? configure = null, bool cancel = false, bool suffix = true, ProviderExchangeBounds? bounds = null)
     {
         var counter = new CounterCapability(); var recovery = new RecoveryCounterCapability("TARGET_CANARY", guarantee) { ThrowAfterEffect = !cancel };
         configure?.Invoke(recovery);
@@ -31,7 +31,7 @@ public sealed class PartialRecoveryTests
         { var response = Calls(r); return suffix ? response : new(r.Scope, r.Attempt, ProviderFinish.ToolCalls, response.Text, response.Calls.Take(2).ToArray(), response.Continuation); } };
         var request = ToolContextFixture.Request(3, new(maximumToolInvocations: 3)); var sink = new RestrictedContextHost();
         using var cancellation = new CancellationTokenSource();
-        var pending = ToolContextFixture.Agent(provider, tools).ExecuteWithContextAsync(new(request, ContextExecutionIntent.Fresh), sink,
+        var pending = ToolContextFixture.Agent(provider, tools, bounds: bounds).ExecuteWithContextAsync(new(request, ContextExecutionIntent.Fresh), sink,
             cancellationToken: cancellation.Token).AsTask();
         if (cancel) { await recovery.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5)); cancellation.Cancel(); }
         var result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
@@ -40,12 +40,12 @@ public sealed class PartialRecoveryTests
     }
     internal static async Task<(ContextExecutionResult Result, RestrictedContextHost Sink, PersistentProvider Provider)> Resume(Source source,
         int allowance = 2, Action<PersistentProvider>? configure = null, RuntimeToolRegistration[]? tools = null,
-        SolusAgent.Runtime.Startup.RuntimeOptions? options = null)
+        SolusAgent.Runtime.Startup.RuntimeOptions? options = null, ProviderExchangeBounds? bounds = null)
     {
         var provider = new PersistentProvider(tools: true) { Respond = ToolContextFixture.Final }; configure?.Invoke(provider);
         var request = ToolContextFixture.Request(2, new(maximumToolInvocations: allowance)); var sink = new RestrictedContextHost();
         var result = await ToolContextFixture.Agent(provider, tools ?? Bindings(source.Counter, source.Recovery),
-            new SelectedAuthority(source.Envelope, source.Result.Checkpoint!), options).ExecuteWithContextAsync(
+            new SelectedAuthority(source.Envelope, source.Result.Checkpoint!), options, bounds: bounds).ExecuteWithContextAsync(
             new(request, ContextExecutionIntent.ContinueRun, source.Envelope, OrdinaryFixture.Grant(source.Result, request.ExecutionId)), sink);
         return (result, sink, provider);
     }

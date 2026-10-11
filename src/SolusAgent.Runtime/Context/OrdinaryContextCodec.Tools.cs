@@ -165,7 +165,9 @@ internal static partial class OrdinaryContextCodec
             if (member.Result is { } old) futurePayload -= CallBytes(old.Call) + Bytes(old.Json);
         }
         var actions = saved.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0);
+        var projectedInputs = checked(count + remaining.Count(p => p.Member.Result is null));
         if (count + remaining.Length + actions > options.MaximumRecords
+            || projectedInputs > bounds.MaximumInputs
             || saved.Members.Length + actions + remaining.Length > options.MaximumRecords
             || futurePayload > bounds.MaximumRequestBytes || recoveryBytes > options.MaximumRetainedBytes - retained
             || continuing && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained - recoveryBytes) throw new JsonException();

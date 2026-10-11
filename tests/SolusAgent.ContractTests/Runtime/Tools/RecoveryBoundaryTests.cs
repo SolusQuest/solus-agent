@@ -22,6 +22,43 @@ public sealed class RecoveryBoundaryTests
         internal int Claims;
         public bool TryClaim(AgentContextEnvelope envelope, ContextRoundGrant grant) { Claims++; return false; }
     }
+    [Theory]
+    [InlineData(ToolRecoveryGuarantee.QueryOutcome, 4, false)]
+    [InlineData(ToolRecoveryGuarantee.QueryOutcome, 5, false)]
+    [InlineData(ToolRecoveryGuarantee.ConcurrentSafeRepeat, 4, false)]
+    [InlineData(ToolRecoveryGuarantee.ConcurrentSafeRepeat, 5, false)]
+    [InlineData(ToolRecoveryGuarantee.QueryOutcome, 4, true)]
+    [InlineData(ToolRecoveryGuarantee.QueryOutcome, 5, true)]
+    [InlineData(ToolRecoveryGuarantee.ConcurrentSafeRepeat, 4, true)]
+    [InlineData(ToolRecoveryGuarantee.ConcurrentSafeRepeat, 5, true)]
+    public async Task ProjectedProviderInputsAreAdmittedBeforeClaimAndRecovery(ToolRecoveryGuarantee guarantee, int maximumInputs, bool recordedFailure)
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bounds = new ProviderExchangeBounds(maximumInputs: maximumInputs);
+        var source = await PartialRecoveryTests.Capture(guarantee, cap =>
+        { if (!recordedFailure) cap.BeforeReturn = (_, _) => cap.Invocations == 1 ? new(release.Task) : ValueTask.CompletedTask; },
+            cancel: !recordedFailure, bounds: bounds);
+        source.Recovery.ThrowAfterEffect = false;
+        try
+        {
+            var authority = new SelectedAuthority(source.Envelope, source.Result.Checkpoint!);
+            var provider = new PersistentProvider(tools: true) { Respond = ToolContextFixture.Final };
+            var request = ToolContextFixture.Request(2, new(maximumToolInvocations: 2));
+            var result = await ToolContextFixture.Agent(provider, PartialRecoveryTests.Bindings(source.Counter, source.Recovery), authority, bounds: bounds)
+                .ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun, source.Envelope, OrdinaryFixture.Grant(source.Result, request.ExecutionId)));
+            if (maximumInputs == 4)
+            {
+                Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Equal(0, authority.Claims); Assert.Equal(0, provider.Imports);
+                Assert.Equal(0, source.Recovery.Queries); Assert.Equal(1, source.Recovery.Invocations); Assert.Equal(1, source.Counter.Effects);
+            }
+            else
+            {
+                Assert.Equal(ContextAdmission.Supplied, result.Admission); Assert.Equal(AgentTerminationReason.Completed, result.Outcome!.Reason);
+                Assert.Equal(2, result.Outcome.Usage!.ToolInvocations!.Invoked); Assert.Equal(1, authority.Claims); Assert.Equal(2, source.Counter.Effects);
+            }
+        }
+        finally { release.TrySetResult(); }
+    }
     [Fact]
     public async Task ExactConservativeRetentionCapacityAndOneByteBelowAreCheckedBeforeClaim()
     {

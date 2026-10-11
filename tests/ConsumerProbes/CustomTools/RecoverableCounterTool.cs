@@ -9,7 +9,7 @@ public enum RecoveryQueryBehavior { Normal, Unresolved, WrongOperation, WrongCal
 
 /// <summary>A test-owned keyed target with optional cross-process file retention, never a runtime-owned store.</summary>
 public sealed class RecoveryCounterCapability(string targetSnapshot, ToolRecoveryGuarantee guarantee,
-    bool mutates = true, string? storePath = null) : IToolCapability
+    bool mutates = true, string? storePath = null, string? fixedResultJson = null) : IToolCapability
 {
     private sealed record Entry(string CallId, string ToolName, string Arguments, string Json);
     private sealed record Store(string Target, long Total, int Effects, Dictionary<Guid, Entry> Entries);
@@ -62,7 +62,7 @@ public sealed class RecoveryCounterCapability(string targetSnapshot, ToolRecover
             }
             using var arguments = JsonDocument.Parse(operation.Call.ArgumentsJson);
             var total = mutates ? checked(store.Total + arguments.RootElement.GetProperty("amount").GetInt64()) : store.Total;
-            var result = JsonSerializer.Serialize(new { total });
+            var result = fixedResultJson ?? JsonSerializer.Serialize(new { total });
             var entries = new Dictionary<Guid, Entry>(store.Entries) { [operation.OperationId] = new(operation.Call.CallId,
                 operation.Call.ToolName, operation.Call.ArgumentsJson, result) };
             return (store with { Total = total, Effects = store.Effects + (mutates ? 1 : 0), Entries = entries }, result);
@@ -116,7 +116,8 @@ public sealed class RecoveryCounterCapability(string targetSnapshot, ToolRecover
 }
 
 /// <summary>Interface-authored recovery producer using the real FunctionTool guard for every fresh prepared handle.</summary>
-public sealed class RecoverableCounterTool(int maximumResultBytes = 100, ToolEffect effect = ToolEffect.Mutating) : IRecoverableFunctionTool
+public sealed class RecoverableCounterTool(int maximumResultBytes = 100, ToolEffect effect = ToolEffect.Mutating,
+    ToolSchema? resultSchema = null) : IRecoverableFunctionTool
 {
     private sealed class Invocation(ToolDescriptor descriptor) : FunctionTool<RecoveryCounterCapability>(descriptor)
     {
@@ -127,7 +128,7 @@ public sealed class RecoverableCounterTool(int maximumResultBytes = 100, ToolEff
     private readonly ConcurrentDictionary<PreparedToolInvocation, Invocation> handles = new();
     /// <inheritdoc />
     public ToolDescriptor Descriptor { get; } = new("recover", "Synthetic keyed recovery", ToolSchema.Parse(CounterTool.InputSchema),
-        ToolSchema.Parse(CounterTool.ResultSchema), "recovery_operation", effect, maximumResultBytes: maximumResultBytes);
+        resultSchema ?? ToolSchema.Parse(CounterTool.ResultSchema), "recovery_operation", effect, maximumResultBytes: maximumResultBytes);
     /// <inheritdoc />
     public ToolPreparation Prepare(ToolCall call)
     {
