@@ -38,13 +38,13 @@ internal sealed record SavedAttempt(ProviderAttempt Attempt, RuntimeStop Stop, R
     ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged,
     ProviderExchangeBounds Bounds, bool AcceptedTools = false);
 internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsage Usage, AgentTerminationReason Reason,
-    int Completed, RuntimeStop Stop, SavedAttempt[] Facts, ProviderAttempt? ToolCursor = null)
+    int Completed, RuntimeStop Stop, SavedAttempt[] Facts, ProviderAttempt? ToolCursor = null, SavedCandidateRound? Candidates = null)
 {
     public ContextRoundObservation Observe() => new(LogicalWorkId, RoundId, Usage, Reason, Completed);
 }
 internal sealed record OrdinaryCheckpoint(ContextCheckpointInfo Info, ProviderScope Scope, string Binding,
     SavedInput[] Records, SavedRound[] Rounds, ProviderExchangeBounds? OriginalBounds, SavedProvider? Provider,
-    bool Final, bool RetryEligible, ProviderAttempt? Pending, TimeSpan Elapsed, SavedMember[] Members, ProviderAttempt? ToolCursor);
+    bool Final, bool RetryEligible, ProviderAttempt? Pending, TimeSpan Elapsed, SavedMember[] Members, ProviderAttempt? ToolCursor, SavedCandidates? Candidates = null);
 internal sealed record RestoredOrdinary(OrdinaryCheckpoint Checkpoint, IReadOnlyList<ProviderInput> Records,
     ProviderContinuation? Continuation, ProviderAttempt? Pending, Guid WorkId, Guid RoundId, int RetainedBytes,
     int ProspectiveBytes, bool Deferred = false, IReadOnlyList<ToolExecutionRecord>? Members = null)

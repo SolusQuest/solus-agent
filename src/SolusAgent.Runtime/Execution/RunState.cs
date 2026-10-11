@@ -91,7 +91,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         var required = Options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None;
         var original = new ProviderRequest(Configuration.Scope, attempt, records, Configuration.Tools.Select(t => t.Descriptor).ToArray(),
             continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory(attempt));
-        if (attempts.Count == 0 && restored is null) retainedBytes = original.PayloadByteCount;
+        if (attempts.Count == 0 && restored is null) retainedBytes = checked(original.PayloadByteCount + candidateMetadataBytes);
         var available = Options.MaximumRetainedBytes - retainedBytes;
         if (available <= 0) { Close(RuntimeStop.ResourceLimit); return null; }
         var b = Configuration.Bounds;

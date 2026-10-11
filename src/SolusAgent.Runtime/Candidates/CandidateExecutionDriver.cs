@@ -5,6 +5,7 @@ using SolusAgent.Api.Usage;
 using SolusAgent.Runtime.Api.Configuration;
 using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
+using SolusAgent.Runtime.Context;
 using SolusAgent.Runtime.Execution;
 using SolusAgent.Runtime.Startup;
 using SolusAgent.Runtime.Tools;
@@ -14,7 +15,9 @@ namespace SolusAgent.Runtime.Candidates;
 internal static class CandidateExecutionDriver
 {
     public static async ValueTask<CandidateExecutionResult> ExecuteAsync(RuntimeConfiguration configuration, RuntimeOptions options,
-        CandidateExecutionRequest request, ICandidateHost host, IProgress<AgentProgress>? progress, CancellationToken cancellationToken)
+        CandidateExecutionRequest request, ICandidateHost host, IProgress<AgentProgress>? progress, CancellationToken cancellationToken,
+        RestoredOrdinary? restored = null, bool newRun = false,
+        Action<RunState, CandidateExecutionResult, SavedCandidates, SavedCandidateRound>? terminal = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(host);
@@ -26,162 +29,193 @@ internal static class CandidateExecutionDriver
                 CandidateStopReason.UnsupportedCapability, []);
 
         using var cut = new RunCut(options.TimeProvider, execution.Bounds.MaximumDuration, cancellationToken);
-        var state = new RunState(execution, configuration, options, cut);
-        var receipts = new List<CandidateReceipt>();
-        CandidateFeedback? previous = null;
-        var repairs = 0;
-        var continuations = 0;
+        var state = new RunState(execution, configuration, options, cut, restored);
+        var saved = restored?.Checkpoint.Candidates;
+        var episodes = saved?.Episodes.ToList() ?? [];
+        var submissions = saved?.Submissions.ToList() ?? [];
+        var cursor = newRun || saved is null ? CandidateCursor.Initial : saved.Cursor;
+        if (newRun || saved is null) episodes.Add(new(Guid.NewGuid(), state.CandidateWorkId, null, null, null, null));
+        var repairs = 0; var continuations = 0; var invokedSubmissions = 0;
         try
         {
             if (cut.Check() != RuntimeStop.None) return CutStop();
             state.Initialize();
+            state.InitializeCandidateRetention(saved ?? new(cursor, [], []));
+            if (!Reserve()) return StateStop();
+            if (restored?.Pending is not null && !await state.WaitForRestoredRetryAsync().ConfigureAwait(false)) return StateStop();
             while (true)
             {
                 if (cut.Check() != RuntimeStop.None) return CutStop();
-                if (receipts.Count >= request.Bounds.MaximumSubmissions) return Stop(CandidateStopReason.SubmissionLimit);
-                if (state.Completed >= execution.Bounds.MaximumWorkUnits) return Stop(CandidateStopReason.WorkUnitLimit);
-                if (previous is not null)
+                if (cursor == CandidateCursor.End)
                 {
-                    if (previous.Decision == CandidateDecision.Reject)
-                    {
-                        if (repairs >= request.Bounds.MaximumRepairs) return Stop(CandidateStopReason.RepairLimit);
-                    }
-                    else if (continuations >= request.Bounds.MaximumContinuations) return Stop(CandidateStopReason.ContinuationLimit);
+                    var ended = submissions[^1].Receipt!;
+                    return Stop(ended.IsAccepted ? CandidateStopReason.Completed : CandidateStopReason.HostEnded);
                 }
-                if (!state.PreflightTurn()) return StateStop();
-                if (previous?.Decision == CandidateDecision.Reject && previous.CorrectionText is { } correction
-                    && !cut.TryCommit(() => state.AppendCandidateCorrection(correction))) return CutStop();
-
-                // One candidate-production episode admits its first provider turn, then reuses the same RunState,
-                // provider attempt and tool batch operations on the same run cut across intermediate tool turns
-                // until an accepted Final is produced. The follow-on correction and its repair/continuation counter
-                // are charged once for the whole episode, never per intermediate turn.
-                var episodeStart = true;
-                while (true)
+                if (cursor == CandidateCursor.UnresolvedFeedback) return Stop(FeedbackStop(submissions[^1].Receipt!.Acknowledgement));
+                if (invokedSubmissions >= request.Bounds.MaximumSubmissions) return Stop(CandidateStopReason.SubmissionLimit);
+                if (cursor != CandidateCursor.FinalReadyUnsubmitted)
                 {
-                    // The literal work ceiling is checked before every model admission, intermediate turns included.
-                    if (cut.Check() != RuntimeStop.None) return CutStop();
                     if (state.Completed >= execution.Bounds.MaximumWorkUnits) return Stop(CandidateStopReason.WorkUnitLimit);
-                    var providerRequest = state.AdmitTurn();
-                    if (providerRequest is null) return StateStop();
-                    if (episodeStart)
+                    var episode = episodes[^1];
+                    var previous = episode.Predecessor is { } id ? submissions.Single(s => s.SubmissionId == id) : null;
+                    if (episode.FirstAttempt is null && previous is not null)
                     {
-                        episodeStart = false;
+                        if (previous.Receipt!.Decision == CandidateDecision.Reject)
+                        {
+                            if (repairs >= request.Bounds.MaximumRepairs) return Stop(CandidateStopReason.RepairLimit);
+                        }
+                        else if (continuations >= request.Bounds.MaximumContinuations) return Stop(CandidateStopReason.ContinuationLimit);
+                    }
+                    if (!state.PreflightTurn()) return StateStop();
+                    if (episode.CorrectionIndex is null && previous?.Receipt?.Decision == CandidateDecision.Reject && previous.Correction is { } correction)
+                    {
+                        // Commit the correction and its marker under the same cut gate.
+                        var corrected = episode with { CorrectionIndex = state.CandidateRecordCount };
+                        if (!Reserve(corrected, additionalRecords: 1)) return StateStop();
+                        if (!cut.TryCommit(() => { state.AppendCandidateCorrection(correction); episodes[^1] = corrected; })) return CutStop();
+                        episode = corrected;
+                    }
+                    var admission = episode.FirstAttempt is null ? episode with
+                    { FirstAttempt = new(execution.ExecutionId, Guid.NewGuid(), Guid.NewGuid(), 1), AdmissionRound = state.CandidateRoundId } : episode;
+                    if (!Reserve(admission, additionalRecords: 1)) return StateStop();
+                    ProviderRequest? providerRequest = null;
+                    // An episode's admission and the first provider reservation share the cut gate. No async boundary intervenes.
+                    if (!cut.TryCommit(() =>
+                    {
+                        providerRequest = state.AdmitTurn();
+                        if (providerRequest is null || episode.FirstAttempt is not null) return;
+                        episodes[^1] = episode with { FirstAttempt = providerRequest.Attempt, AdmissionRound = state.CandidateRoundId };
+                        cursor = CandidateCursor.ProducingAdmittedEpisode;
                         if (previous is not null)
                         {
-                            if (previous.Decision == CandidateDecision.Reject) repairs++;
+                            if (previous.Receipt!.Decision == CandidateDecision.Reject) repairs++;
                             else continuations++;
                         }
-                    }
+                    })) return CutStop();
+                    if (providerRequest is null) return StateStop();
                     var call = await ProviderCallOperation.ExecuteAsync(state, providerRequest).ConfigureAwait(false);
                     if (call is null) return StateStop();
                     providerRequest = call.Request;
                     var attempt = call.Attempt;
+                    if (attempt.Response is { Finish: ProviderFinish.Final, Accepted: true })
+                    {
+                        var ready = new SavedCandidateSubmission(episode.Id, execution.ExecutionId, Guid.NewGuid(),
+                            state.CandidateRecordCount - 1, false, null, null, null);
+                        if (!Reserve(additionalSubmission: ready)) return StateStop();
+                        submissions.Add(ready);
+                        cursor = CandidateCursor.FinalReadyUnsubmitted;
+                    }
                     if (cut.Check() != RuntimeStop.None) return CutStop();
                     if (attempt.Stop != RuntimeStop.None) return StateStop();
-                    if (attempt.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped))
-                        return Stop(CandidateStopReason.ProductionFailed);
-                    // A deliberate settlement Stop cannot replace an observed failed or rejected production.
+                    if (attempt.SettlementStop is not (RuntimeStop.None or RuntimeStop.HostStopped)) return Stop(CandidateStopReason.ProductionFailed);
                     if (attempt.ProviderOutcome != ProviderOutcome.Succeeded || attempt.Response is null)
-                        return Stop(attempt.ProviderError == ProviderError.LimitExceeded
-                            ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed);
-                    // Accepted alone grants neither tool execution, candidate delivery nor another turn.
+                        return Stop(attempt.ProviderError == ProviderError.LimitExceeded ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed);
                     if (!state.CanContinue) return StateStop();
                     if (attempt.Response.Finish == ProviderFinish.ToolCalls)
                     {
-                        // The accepted tool turn executes the existing generic all-member batch operation.
-                        // Tool turns consume work/attempt/record/retention limits but no submission or follow-on allowance.
+                        if (!Reserve(additionalRecords: attempt.Response.Calls.Count)) return StateStop();
                         var batch = await ToolBatchOperation.ExecuteAsync(state, providerRequest, attempt.Response).ConfigureAwait(false);
                         if (cut.Check() != RuntimeStop.None) return CutStop();
                         if (batch.Stop != RuntimeStop.None || batch.Error != SolusAgent.Tools.Api.ToolError.None) return StateStop();
-                        try
-                        {
-                            if (!cut.TryCommit(() => progress?.Report(new(execution.ExecutionId, state.Completed, state.Usage()))))
-                                return CutStop();
-                        }
-                        catch (Exception exception) when (Recoverable(exception))
-                        { return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed); }
+                        if (!Report()) return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed);
                         continue;
                     }
                     if (attempt.Response.Finish != ProviderFinish.Final) return Stop(CandidateStopReason.ProductionFailed);
-
-                    try
-                    {
-                        if (!cut.TryCommit(() => progress?.Report(new(execution.ExecutionId, state.Completed, state.Usage())))) return CutStop();
-                    }
-                    catch (Exception exception) when (Recoverable(exception))
-                    { return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed); }
-
-                    var submission = new CandidateSubmission(execution.ExecutionId, Guid.NewGuid(), attempt.Response.Text!,
-                        previous?.Decision == CandidateDecision.Reject ? previous.SubmissionId : null);
-                    var invoked = false;
-                    CandidateFeedback? feedback;
-                    try
-                    {
-                        if (!cut.TryStart(() => { invoked = true; return host.SubmitAsync(submission, cut.Token).AsTask(); }, out var pending))
-                            return CutStop();
-                        var observed = await cut.WaitAsync(pending!, observeCompletedAtCut: true).ConfigureAwait(false);
-                        if (!observed.Obtained)
-                        {
-                            Observe(CandidateAcknowledgement.Unknown);
-                            return CutStop();
-                        }
-                        feedback = observed.Value;
-                    }
-                    catch (OperationCanceledException) when (cut.Check() != RuntimeStop.None)
-                    {
-                        if (invoked) Observe(CandidateAcknowledgement.Unknown);
-                        return CutStop();
-                    }
-                    catch (Exception exception) when (Recoverable(exception))
-                    {
-                        if (invoked) Observe(CandidateAcknowledgement.Failed);
-                        return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.FailedAcknowledgement);
-                    }
-
-                    CandidateStopReason? feedbackStop = null;
-                    if (feedback is null)
-                    { Observe(CandidateAcknowledgement.Missing); feedbackStop = CandidateStopReason.MissingAcknowledgement; }
-                    else if (feedback.ExecutionId != execution.ExecutionId)
-                    { Observe(CandidateAcknowledgement.Mismatched); feedbackStop = CandidateStopReason.MismatchedFeedback; }
-                    else if (feedback.SubmissionId != submission.SubmissionId)
-                    {
-                        var duplicate = receipts.Any(receipt => receipt.SubmissionId == feedback.SubmissionId);
-                        Observe(duplicate ? CandidateAcknowledgement.Duplicate : CandidateAcknowledgement.Mismatched);
-                        feedbackStop = duplicate ? CandidateStopReason.DuplicateFeedback : CandidateStopReason.MismatchedFeedback;
-                    }
-                    else if (feedback.Acknowledgement != CandidateAcknowledgement.Acknowledged)
-                    {
-                        Observe(feedback.Acknowledgement);
-                        feedbackStop = feedback.Acknowledgement == CandidateAcknowledgement.Failed
-                            ? CandidateStopReason.FailedAcknowledgement : CandidateStopReason.UnknownAcknowledgement;
-                    }
-                    else Observe(CandidateAcknowledgement.Acknowledged, feedback);
-
-                    if (cut.Check() != RuntimeStop.None) return CutStop();
-                    if (feedbackStop is { } stopped) return Stop(stopped);
-                    if (feedback!.Continuation == CandidateContinuation.End)
-                        return Stop(feedback.Decision == CandidateDecision.Accept ? CandidateStopReason.Completed : CandidateStopReason.HostEnded);
-                    previous = feedback;
-                    break;
-
-                    void Observe(CandidateAcknowledgement acknowledgement, CandidateFeedback? acknowledged = null) =>
-                        receipts.Add(new(execution.ExecutionId, submission.SubmissionId, acknowledgement, acknowledged?.Decision, acknowledged?.Continuation));
+                    if (!Report()) return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed);
                 }
+
+                var pendingSubmission = submissions[^1];
+                var payload = state.Records[pendingSubmission.FinalIndex].Model!.Text!;
+                var predecessor = episodes.Single(e => e.Id == pendingSubmission.EpisodeId).Predecessor;
+                var rejected = predecessor is { } predecessorId && submissions.Single(s => s.SubmissionId == predecessorId).Receipt!.Decision == CandidateDecision.Reject;
+                var submission = new CandidateSubmission(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, payload,
+                    rejected ? predecessor : null);
+                // Reserve worst-case safe receipt/cursor bookkeeping before invoking a potentially effecting Host.
+                var prospective = Snapshot();
+                prospective.Submissions[^1] = pendingSubmission with { Invoked = true, InvocationRound = state.CandidateRoundId,
+                    Receipt = new(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue) };
+                prospective = prospective with { Episodes = [.. prospective.Episodes, new(Guid.NewGuid(), state.CandidateWorkId, pendingSubmission.SubmissionId, null, null, null)] };
+                if (terminal is not null && !state.ReserveCandidateLedger(prospective)) return StateStop();
+                CandidateFeedback? feedback;
+                try
+                {
+                    if (!cut.TryStart(() =>
+                    {
+                        submissions[^1] = pendingSubmission with { Invoked = true, InvocationRound = state.CandidateRoundId };
+                        invokedSubmissions++;
+                        cursor = CandidateCursor.UnresolvedFeedback;
+                        return host.SubmitAsync(submission, cut.Token).AsTask();
+                    }, out var pending)) return CutStop();
+                    var observed = await cut.WaitAsync(pending!, observeCompletedAtCut: true).ConfigureAwait(false);
+                    if (!observed.Obtained) { Observe(CandidateAcknowledgement.Unknown); return CutStop(); }
+                    feedback = observed.Value;
+                }
+                catch (OperationCanceledException) when (cut.Check() != RuntimeStop.None)
+                { if (submissions[^1].Invoked) Observe(CandidateAcknowledgement.Unknown); return CutStop(); }
+                catch (Exception exception) when (Recoverable(exception))
+                {
+                    if (submissions[^1].Invoked) Observe(CandidateAcknowledgement.Failed);
+                    return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.FailedAcknowledgement);
+                }
+                CandidateStopReason? feedbackStop = null;
+                if (feedback is null) { Observe(CandidateAcknowledgement.Missing); feedbackStop = CandidateStopReason.MissingAcknowledgement; }
+                else if (feedback.ExecutionId != submission.ExecutionId)
+                { Observe(CandidateAcknowledgement.Mismatched); feedbackStop = CandidateStopReason.MismatchedFeedback; }
+                else if (feedback.SubmissionId != submission.SubmissionId)
+                {
+                    var duplicate = submissions.Any(s => s.SubmissionId == feedback.SubmissionId && s.Receipt is not null);
+                    Observe(duplicate ? CandidateAcknowledgement.Duplicate : CandidateAcknowledgement.Mismatched);
+                    feedbackStop = duplicate ? CandidateStopReason.DuplicateFeedback : CandidateStopReason.MismatchedFeedback;
+                }
+                else if (feedback.Acknowledgement != CandidateAcknowledgement.Acknowledged)
+                { Observe(feedback.Acknowledgement); feedbackStop = FeedbackStop(feedback.Acknowledgement); }
+                else
+                {
+                    Observe(CandidateAcknowledgement.Acknowledged, feedback);
+                    if (feedback.Continuation == CandidateContinuation.End) cursor = CandidateCursor.End;
+                    else
+                    {
+                        episodes.Add(new(Guid.NewGuid(), state.CandidateWorkId, submission.SubmissionId, null, null, null));
+                        cursor = CandidateCursor.FollowOnNotAdmitted;
+                    }
+                }
+                if (cut.Check() != RuntimeStop.None) return CutStop();
+                if (feedbackStop is { } stopped) return Stop(stopped);
+                // The next iteration observes End before considering any new allowance.
+
+                void Observe(CandidateAcknowledgement acknowledgement, CandidateFeedback? acknowledged = null) =>
+                    submissions[^1] = submissions[^1] with
+                    {
+                        Receipt = new(submission.ExecutionId, submission.SubmissionId, acknowledgement, acknowledged?.Decision, acknowledged?.Continuation),
+                        Correction = acknowledged?.CorrectionText,
+                    };
             }
         }
         catch (ProviderContractException exception)
-        { return cut.Check() != RuntimeStop.None ? CutStop() : Stop(exception.Error == ProviderError.LimitExceeded
-            ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed); }
+        { return cut.Check() != RuntimeStop.None ? CutStop() : Stop(exception.Error == ProviderError.LimitExceeded ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed); }
         catch (Exception exception) when (Recoverable(exception))
         { return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProductionFailed); }
 
+        bool Reserve(SavedCandidateEpisode? replacement = null, int additionalRecords = 0,
+            SavedCandidateSubmission? additionalSubmission = null, int additionalBytes = 0)
+        {
+            if (terminal is null) return true;
+            var snapshot = Snapshot();
+            if (replacement is not null) snapshot.Episodes[^1] = replacement;
+            if (additionalSubmission is not null) snapshot = snapshot with { Submissions = [.. snapshot.Submissions, additionalSubmission] };
+            return state.ReserveCandidateLedger(snapshot, additionalRecords, additionalBytes);
+        }
+        bool Report()
+        {
+            try { return cut.TryCommit(() => progress?.Report(new(execution.ExecutionId, state.Completed, state.Usage()))); }
+            catch (Exception exception) when (Recoverable(exception)) { return false; }
+        }
+        SavedCandidates Snapshot() => new(cursor, episodes.ToArray(), submissions.ToArray());
         CandidateExecutionResult CutStop() => Stop(cut.Check() == RuntimeStop.Cancelled ? CandidateStopReason.Cancelled : CandidateStopReason.DurationLimit);
         CandidateExecutionResult StateStop() => cut.Check() != RuntimeStop.None ? CutStop()
             : Stop(state.AdmissionStop == RuntimeStop.ResourceLimit ? CandidateStopReason.RuntimeLimit
                 : state.UsageAccountingUnavailable ? CandidateStopReason.UsageAccountingUnavailable
-                : state.AdmissionStop is RuntimeStop.ExposureDenied or RuntimeStop.HostStopped ? CandidateStopReason.ProductionStopped
-                : CandidateStopReason.ProductionFailed);
+                : state.AdmissionStop is RuntimeStop.ExposureDenied or RuntimeStop.HostStopped ? CandidateStopReason.ProductionStopped : CandidateStopReason.ProductionFailed);
         CandidateExecutionResult Stop(CandidateStopReason stop)
         {
             var reason = stop switch
@@ -194,10 +228,22 @@ internal static class CandidateExecutionDriver
                 CandidateStopReason.Cancelled => AgentTerminationReason.Cancelled,
                 _ => AgentTerminationReason.Failed,
             };
-            return new(state.Outcome(reason, reason == AgentTerminationReason.Failed
-                ? stop == CandidateStopReason.ProgressObserverFailed ? AgentFailureCode.ProgressObserverFailed : AgentFailureCode.ExecutionFailed
-                : AgentFailureCode.None), stop, receipts, repairs, continuations);
+            var receipts = submissions.Where(s => s.Receipt is not null).Select(s => s.Receipt!).ToArray();
+            var result = new CandidateExecutionResult(state.Outcome(reason, reason == AgentTerminationReason.Failed
+                ? stop == CandidateStopReason.ProgressObserverFailed ? AgentFailureCode.ProgressObserverFailed : AgentFailureCode.ExecutionFailed : AgentFailureCode.None),
+                stop, receipts.Where(r => r.ExecutionId == execution.ExecutionId).ToArray(), repairs, continuations,
+                receipts.Where(r => r.ExecutionId != execution.ExecutionId).ToArray());
+            terminal?.Invoke(state, result, Snapshot(), new(stop, invokedSubmissions, repairs, continuations));
+            return result;
         }
     }
+    private static CandidateStopReason FeedbackStop(CandidateAcknowledgement value) => value switch
+    {
+        CandidateAcknowledgement.Missing => CandidateStopReason.MissingAcknowledgement,
+        CandidateAcknowledgement.Failed => CandidateStopReason.FailedAcknowledgement,
+        CandidateAcknowledgement.Mismatched => CandidateStopReason.MismatchedFeedback,
+        CandidateAcknowledgement.Duplicate => CandidateStopReason.DuplicateFeedback,
+        _ => CandidateStopReason.UnknownAcknowledgement,
+    };
     private static bool Recoverable(Exception exception) => exception is not (OutOfMemoryException or StackOverflowException);
 }

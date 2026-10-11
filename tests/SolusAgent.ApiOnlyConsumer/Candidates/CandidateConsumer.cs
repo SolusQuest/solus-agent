@@ -1,5 +1,6 @@
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
+using SolusAgent.Api.Context;
 
 namespace SolusAgent.ApiOnlyConsumer.Candidates;
 
@@ -16,6 +17,11 @@ public static class CandidateConsumer
         var result = await agent.ExecuteCandidatesAsync(request, host, new InlineProgress(progress.Add), cancellationToken);
         return new ObservedCandidateExecution(progress.AsReadOnly(), result);
     }
+
+    public static ValueTask<ContextCandidateExecutionResult> RunWithContextAsync(IContextCandidateAgent agent,
+        ContextExecutionRequest request, CandidateExecutionBounds bounds, ICandidateHost host, IRestrictedContextSink? sink = null,
+        IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default) =>
+        agent.ExecuteCandidatesWithContextAsync(request, bounds, host, sink, progress, cancellationToken);
 
     private sealed class InlineProgress(Action<AgentProgress> report) : IProgress<AgentProgress>
     {

@@ -91,7 +91,7 @@ public sealed class CandidateExecutionResult
     /// <exception cref="ArgumentNullException">The outcome or receipt list is null.</exception>
     /// <exception cref="ArgumentException">Outcome, receipt association, counts or stop metadata is incoherent.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A stop reason or count is invalid.</exception>
-    public CandidateExecutionResult(AgentOutcome outcome, CandidateStopReason stopReason, IReadOnlyList<CandidateReceipt> receipts, int repairsAdmitted = 0, int continuationsAdmitted = 0)
+    public CandidateExecutionResult(AgentOutcome outcome, CandidateStopReason stopReason, IReadOnlyList<CandidateReceipt> receipts, int repairsAdmitted = 0, int continuationsAdmitted = 0, IReadOnlyList<CandidateReceipt>? historicalReceipts = null)
     {
         ArgumentNullException.ThrowIfNull(outcome);
         ArgumentNullException.ThrowIfNull(receipts);
@@ -102,11 +102,14 @@ public sealed class CandidateExecutionResult
         ArgumentOutOfRangeException.ThrowIfNegative(repairsAdmitted);
         ArgumentOutOfRangeException.ThrowIfNegative(continuationsAdmitted);
         var snapshot = receipts.ToArray();
+        var historical = historicalReceipts?.ToArray() ?? [];
+        var all = historical.Concat(snapshot).ToArray();
         if (snapshot.Any(receipt => receipt is null || receipt.ExecutionId != outcome.ExecutionId)
-            || snapshot.Select(receipt => receipt.SubmissionId).Distinct().Count() != snapshot.Length
+            || historical.Any(receipt => receipt is null || receipt.ExecutionId == outcome.ExecutionId)
+            || all.Select(receipt => receipt.SubmissionId).Distinct().Count() != all.Length
             || (outcome.Reason == AgentTerminationReason.UnsupportedCapability && snapshot.Length != 0)
-            || repairsAdmitted > snapshot.Count(receipt => receipt.Decision == CandidateDecision.Reject && receipt.Continuation == CandidateContinuation.Continue)
-            || continuationsAdmitted > snapshot.Count(receipt => receipt.IsAccepted && receipt.Continuation == CandidateContinuation.Continue))
+            || repairsAdmitted > all.Count(receipt => receipt.Decision == CandidateDecision.Reject && receipt.Continuation == CandidateContinuation.Continue)
+            || continuationsAdmitted > all.Count(receipt => receipt.IsAccepted && receipt.Continuation == CandidateContinuation.Continue))
         {
             throw new ArgumentException("Receipt association and counts must be coherent.", nameof(receipts));
         }
@@ -126,7 +129,7 @@ public sealed class CandidateExecutionResult
             throw new ArgumentException("The stop reason must agree with the ordinary outcome.", nameof(stopReason));
         }
 
-        var terminal = snapshot.LastOrDefault();
+        var terminal = all.LastOrDefault();
         var coherentTerminal = stopReason switch
         {
             CandidateStopReason.MissingAcknowledgement => terminal?.Acknowledgement == CandidateAcknowledgement.Missing,
@@ -145,8 +148,8 @@ public sealed class CandidateExecutionResult
         }
 
         // The terminal Continue for this named limit was denied, rather than admitted.
-        if ((stopReason == CandidateStopReason.RepairLimit && repairsAdmitted >= snapshot.Count(receipt => receipt.Decision == CandidateDecision.Reject && receipt.Continuation == CandidateContinuation.Continue))
-            || (stopReason == CandidateStopReason.ContinuationLimit && continuationsAdmitted >= snapshot.Count(receipt => receipt.IsAccepted && receipt.Continuation == CandidateContinuation.Continue)))
+        if ((stopReason == CandidateStopReason.RepairLimit && repairsAdmitted >= all.Count(receipt => receipt.Decision == CandidateDecision.Reject && receipt.Continuation == CandidateContinuation.Continue))
+            || (stopReason == CandidateStopReason.ContinuationLimit && continuationsAdmitted >= all.Count(receipt => receipt.IsAccepted && receipt.Continuation == CandidateContinuation.Continue)))
         {
             throw new ArgumentException("A limit-denied terminal follow-on cannot be counted as admitted.", nameof(stopReason));
         }
@@ -154,6 +157,7 @@ public sealed class CandidateExecutionResult
         Outcome = outcome;
         StopReason = stopReason;
         Receipts = Array.AsReadOnly(snapshot);
+        HistoricalReceipts = Array.AsReadOnly(historical);
         RepairsAdmitted = repairsAdmitted;
         ContinuationsAdmitted = continuationsAdmitted;
     }
@@ -164,10 +168,12 @@ public sealed class CandidateExecutionResult
     public CandidateStopReason StopReason { get; }
     /// <summary>Gets the defensive ordered snapshot of independently observed submissions.</summary>
     public IReadOnlyList<CandidateReceipt> Receipts { get; }
+    /// <summary>Gets receipts retaining their original prior execution identities, in submission order.</summary>
+    public IReadOnlyList<CandidateReceipt> HistoricalReceipts { get; }
     /// <summary>Gets follow-on production admissions after rejected candidates, not completed repairs.</summary>
     public int RepairsAdmitted { get; }
     /// <summary>Gets follow-on production admissions after accepted candidates, not completed work or effects.</summary>
     public int ContinuationsAdmitted { get; }
     /// <summary>Gets the count of independently acknowledged accepted submissions.</summary>
-    public int AcceptedCount => Receipts.Count(receipt => receipt.IsAccepted);
+    public int AcceptedCount => HistoricalReceipts.Concat(Receipts).Count(receipt => receipt.IsAccepted);
 }

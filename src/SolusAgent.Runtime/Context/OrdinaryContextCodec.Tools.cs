@@ -152,10 +152,13 @@ internal static partial class OrdinaryContextCodec
         var retained = Math.Max(payload, checked(encodedBytes + DefinitionBytes(config)
             + (continuing ? 0 : Bytes(request.Request.Instructions) + request.Request.Data.Sum(d => Bytes(d.Text)))));
         if (count >= options.MaximumRecords || count > bounds.MaximumInputs || config.Tools.Count > bounds.MaximumTools
-            || payload > bounds.MaximumRequestBytes || saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
+            || payload > bounds.MaximumRequestBytes || saved.Candidates is null && saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
             || retained >= options.MaximumRetainedBytes
-            || continuing && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
+            || continuing && (saved.Candidates is null || saved.Pending is not null) && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
         var last = saved.Rounds.SelectMany(r => r.Facts).LastOrDefault();
+        if (last is null && saved.Candidates is not null)
+            return new(saved, [], null, pending, continuing ? saved.Info.LogicalWorkId : Guid.NewGuid(), request.RoundGrant!.RoundId,
+                retained, payload, Deferred: true);
         if (saved.Provider is not { } provider || config.Provider is not IProviderContextPersistence || last is null)
             throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
         if (!provider.Scope.Matches(config.Scope) || !provider.Origin.Matches(last.Attempt)) throw new ContextRejected(ContextRejectionCode.IncompatibleContext);
