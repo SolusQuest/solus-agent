@@ -78,7 +78,7 @@ public sealed class ProviderInput
         ProviderBoundary.Require(response.Accepted, ProviderError.InvalidResponse);
         return new(ProviderInputKind.ModelData, model: response);
     }
-    /// <summary>Classifies an actual guarded tool result as data.</summary>
+    /// <summary>Classifies a guarded result or admitted historical result as data, never as current invocation authority.</summary>
     public static ProviderInput FromTool(ToolResult result) => new(ProviderInputKind.ToolResultData,
         toolResult: result ?? throw new ArgumentNullException(nameof(result)));
     /// <summary>Gets immutable classification.</summary>

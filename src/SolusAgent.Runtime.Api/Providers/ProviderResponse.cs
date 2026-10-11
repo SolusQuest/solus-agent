@@ -57,11 +57,20 @@ public sealed class ProviderResponse
     internal static int CallBytes(ToolCall call) => ProviderBoundary.Bytes(call.CallId) + ProviderBoundary.Bytes(call.ToolName) + ProviderBoundary.Bytes(call.ArgumentsJson);
     internal ProviderResponse Accept() => new(this);
     /// <summary>Rehydrates an ordinary Final only after exact original-request validation; callers must independently establish trusted checkpoint provenance.</summary>
-    /// <remarks>Performs no provider dispatch and authenticates neither bytes nor caller. Tool/candidate recovery requires its owning implementation.</remarks>
+    /// <remarks>Performs no provider dispatch and authenticates neither bytes nor caller. Tool-call history uses RestoreToolCalls; candidate recovery requires its owning implementation.</remarks>
     public static ProviderResponse RestoreFinal(ProviderRequest originalRequest, ProviderResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
         ProviderBoundary.Require(response.Finish == ProviderFinish.Final && response.Calls.Count == 0, ProviderError.InvalidResponse);
+        response.ValidateFor(originalRequest);
+        return response.Accept();
+    }
+    /// <summary>Rehydrates a historical ToolCalls turn after exact original-request validation, without dispatch.</summary>
+    /// <remarks>Callers must independently establish trusted provenance. Accepted model data neither invokes tools nor authorizes effects.</remarks>
+    public static ProviderResponse RestoreToolCalls(ProviderRequest originalRequest, ProviderResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        ProviderBoundary.Require(response.Finish == ProviderFinish.ToolCalls, ProviderError.InvalidResponse);
         response.ValidateFor(originalRequest);
         return response.Accept();
     }

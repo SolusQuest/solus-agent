@@ -168,8 +168,43 @@ public enum ToolOutcome
 /// <summary>A bounded result associated with the requested call. No failure implies rollback or retry permission.</summary>
 public sealed class ToolResult
 {
-    internal ToolResult(ToolCall call, ToolOutcome outcome, ToolError error, bool started, string? json = null)
-    { Call = call; Outcome = outcome; Error = error; InvocationStarted = started; Json = json; }
+    internal ToolResult(ToolCall call, ToolOutcome outcome, ToolError error, bool started, string? json = null, bool historical = false)
+    { Call = call; Outcome = outcome; Error = error; InvocationStarted = started; Json = json; IsHistorical = historical; }
+    /// <summary>Reconstructs bounded historical facts after the caller establishes trusted provenance; never prepares or invokes a tool.</summary>
+    /// <remarks>Validates the exact original association and declared schemas, not implementation-local domain rules or authenticity.
+    /// Historical results are data and must not be accepted as evidence of a current invocation.</remarks>
+    public static ToolResult RestoreHistorical(ToolDescriptor descriptor, ToolCall originalCall, ToolCall recordedCall,
+        ToolOutcome outcome, ToolError error, bool invocationStarted, string? json = null)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(originalCall);
+        ArgumentNullException.ThrowIfNull(recordedCall);
+        if (!originalCall.Matches(recordedCall) || originalCall.ToolName != descriptor.Name)
+            throw new ToolContractException(ToolError.ResultMismatch);
+        if (descriptor.InputSchema.Profile != "closed_scalar_object" || descriptor.ResultSchema.Profile != "closed_scalar_object")
+            throw new ToolContractException(ToolError.UnsupportedSchema);
+        var arguments = descriptor.InputSchema.Validate(originalCall.ArgumentsJson, descriptor.MaximumArgumentBytes);
+        if (arguments != ToolError.None) throw new ToolContractException(arguments);
+        if (!Enum.IsDefined(outcome) || !Enum.IsDefined(error)) throw new ToolContractException(ToolError.InvalidResult);
+        if (outcome == ToolOutcome.Succeeded)
+        {
+            if (error != ToolError.None || !invocationStarted || json is null) throw new ToolContractException(ToolError.InvalidResult);
+            var result = descriptor.ResultSchema.Validate(json, descriptor.MaximumResultBytes);
+            if (result != ToolError.None) throw new ToolContractException(result);
+        }
+        else
+        {
+            if (json is not null || error == ToolError.None
+                || outcome == ToolOutcome.Cancelled && error != ToolError.Cancelled
+                || outcome != ToolOutcome.Cancelled && error == ToolError.Cancelled
+                || outcome == ToolOutcome.Failed && (!invocationStarted && error != ToolError.InvocationFailed)
+                || outcome == ToolOutcome.Rejected && (invocationStarted
+                    ? error is not (ToolError.InvalidResult or ToolError.ResultMismatch)
+                    : error is not (ToolError.CallMismatch or ToolError.PreparedMismatch or ToolError.UnsupportedCapability or ToolError.AlreadyInvoked)))
+                throw new ToolContractException(ToolError.InvalidResult);
+        }
+        return new(originalCall, outcome, error, invocationStarted, json, historical: true);
+    }
     /// <summary>The requested call, including its exact validated argument association.</summary>
     public ToolCall Call { get; }
     /// <summary>The guarded outcome.</summary>
@@ -180,6 +215,8 @@ public sealed class ToolResult
     public bool InvocationStarted { get; }
     /// <summary>Accepted success JSON; absent on every non-success outcome.</summary>
     public string? Json { get; }
+    /// <summary>Whether these are reconstructed historical facts rather than a current guarded invocation result.</summary>
+    public bool IsHistorical { get; }
     /// <summary>Returns only the type name, without output or exception details.</summary>
     public override string ToString() => nameof(ToolResult);
 }

@@ -34,7 +34,7 @@ public sealed class RuntimeToolInterfaceTests
     }
 
     [Theory]
-    [InlineData("null")] [InlineData("invoke_fault")] [InlineData("foreign")] [InlineData("loose_bytes")] [InlineData("loose_schema")] [InlineData("cancelled")]
+    [InlineData("null")] [InlineData("invoke_fault")] [InlineData("foreign")] [InlineData("loose_bytes")] [InlineData("loose_schema")] [InlineData("cancelled")] [InlineData("historical")]
     public async Task PublicInterfaceResultIsRevalidatedAndNeverRetriesAfterEarlierEffect(string mode)
     {
         var cap = new CounterCapability(); var tool = new ForwardingTool(mode);
@@ -48,7 +48,7 @@ public sealed class RuntimeToolInterfaceTests
     }
 
     [Theory]
-    [InlineData("null")] [InlineData("invoke_fault")] [InlineData("foreign")] [InlineData("loose_schema")]
+    [InlineData("null")] [InlineData("invoke_fault")] [InlineData("foreign")] [InlineData("loose_schema")] [InlineData("historical")]
     public async Task InvalidInterfaceReturnsNeverBecomeInventedAssociatedResults(string mode)
     {
         var cap = new CounterCapability(); var options = new RuntimeOptions();
@@ -91,6 +91,8 @@ public sealed class RuntimeToolInterfaceTests
         {
             if (call.CallId != "last") return guarded.InvokeAsync(prepared, call, capability, token);
             if (mode == "null") return ValueTask.FromResult<ToolResult>(null!);
+            if (mode == "historical") return ValueTask.FromResult(ToolResult.RestoreHistorical(guarded.Descriptor, call, call,
+                ToolOutcome.Succeeded, ToolError.None, true, "{\"total\":1}"));
             if (mode == "invoke_fault") throw new InvalidOperationException("PRIVATE_INVOKE_CANARY");
             if (mode == "cancelled") return guarded.InvokeAsync(prepared, call, capability, new CancellationToken(true));
             if (mode == "foreign")

@@ -4,10 +4,11 @@ using SolusAgent.Tools.Api;
 namespace CustomTools;
 
 /// <summary>A synthetic narrow capability, containing no generic host services.</summary>
-public sealed class CounterCapability(string capabilityId = "counter_increment") : IToolCapability
+public sealed class CounterCapability(string capabilityId = "counter_increment", long initialTotal = 0, int initialEffects = 0,
+    Action<long, int>? observe = null) : IToolCapability
 {
-    private long total;
-    private int effects;
+    private long total = initialTotal;
+    private int effects = initialEffects;
     /// <summary>The explicitly supplied capability semantics.</summary>
     public string CapabilityId { get; } = capabilityId;
     /// <summary>Actual synthetic invocation effects, including effects preceding failure.</summary>
@@ -19,7 +20,9 @@ public sealed class CounterCapability(string capabilityId = "counter_increment")
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref effects);
-        return Interlocked.Add(ref total, amount);
+        var value = Interlocked.Add(ref total, amount);
+        observe?.Invoke(value, Effects);
+        return value;
     }
 }
 

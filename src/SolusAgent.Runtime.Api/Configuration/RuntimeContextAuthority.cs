@@ -6,6 +6,6 @@ namespace SolusAgent.Runtime.Api.Configuration;
 public interface IRuntimeContextAuthority
 {
     /// <summary>Verifies exact envelope metadata/payload against independent trusted evidence and atomically claims the current logical-work source/round and grant.</summary>
-    /// <remarks>Must reject stale selections, duplicate/concurrent grants and competing checkpoints. A supplied hash alone is not provenance. Returning true consumes authority even if subsequent local execution fails. Must not dispatch work. Runtime separately validates structural bindings.</remarks>
+    /// <remarks>Must reject stale selections, duplicate/concurrent grants and competing checkpoints, and independently establish compatibility of the actual reinjected effect targets. Descriptor or capability semantic-ID equality does not identify a target. A supplied hash alone is not provenance. Returning true consumes authority even if subsequent local execution fails. Must not dispatch work. Runtime separately validates structural bindings and deterministic capacity before claim.</remarks>
     bool TryClaim(AgentContextEnvelope context, ContextRoundGrant grant);
 }

@@ -20,6 +20,7 @@ internal static class OrdinaryContextChild
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "tool-context-child") return await CompletedToolContextChild.Run(args);
         if (args.Length != 3 || args[0] != "ordinary-context-child") return 2;
         var directory = args[1]; var command = args[2];
         Directory.CreateDirectory(directory);

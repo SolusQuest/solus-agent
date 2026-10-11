@@ -37,8 +37,10 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
         {
             try
             {
+                // A cut after successful Host admission must retain the inherited cursor and facts even before the first attempt.
+                if (restored is not null) state.Initialize();
                 if (cut.Check() != RuntimeStop.None) return CutOutcome(state);
-                state.Initialize();
+                if (restored is null) state.Initialize();
                 if (!await state.WaitForRestoredRetryAsync().ConfigureAwait(false)) return StopOutcome(state);
                 while (true)
                 {
