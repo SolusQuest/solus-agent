@@ -63,6 +63,15 @@ The `ConsumerProbes.Apr` tests exercise the Api-only APR-shaped business Host an
 dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Apr"
 ```
 
+The M4 Scribe fresh reconstruction checks in `Runtime.Consumption.M4ScribeFreshProcessTests` run actual production Runtime/Api-only ScribeHost A/B child processes. They cover accepted-progress reconstruction after later failure, work/dispatch/token/accounting/duration stops, unfinished repair and held-feedback cancellation; new identities/history/allowances/current controls; optional combined capture and legal hookless ordinary candidates; invalid progress before effects, causal classified data and canary confinement. The existing child dispatcher adds only the Scribe route; no separate executable project is used. Run the owning checks and existing evaluated/compiled boundaries after the same-tree Release build:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Runtime.Consumption|FullyQualifiedName~SolusAgent.ContractTests.ConsumerProbes.Scribe|FullyQualifiedName~SolusAgent.ContractTests.Architecture"
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
+```
+
+The original `M4ScribeFreshProcessTests` delivery adds 17 checks, including actual independent child execution. Record actual nonzero counts for the current tree, distinct local Windows and exact-head Linux evidence, and real child exit/PID observations. A test-only business JSON carrier and acceptance journal do not establish durable product checkpointing, campaign accounting, Runtime continuation, safe replay of unknown mutating effects, live-provider certification or downstream migration. See the [Scribe consumption draft](../20_architecture/drafts/scribe-consumption.md#m4-fresh-reconstruction-across-processes).
+
 ## DeepSeek adapter
 
 The optional [DeepSeek provider draft](../20_architecture/drafts/deepseek-provider.md) has owning tests in the existing runner. They execute the real writer/invoker/reader/parser/guard with controlled handlers, actual generic tool preparation/results and all historical replay. Negatives cover finish/identity/schema/association, bounded JSON/Unicode, usage retention, cancellation cuts, disposal, concurrent calls and wire/logical ceilings. Actual observation integration checks cover single-use/presealed requests, external sealing during held send/read and frozen earlier measurements without late payload acceptance. Evaluated and compiled assertions require Runtime.Api as the adapter's sole direct production edge, with no packages or Runtime dependency. Run the owning tests first:
