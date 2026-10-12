@@ -42,7 +42,7 @@ public sealed class RuntimeSupport
 public sealed class RuntimeToolRegistration
 {
     /// <summary>Snapshots descriptor association with an explicitly injected narrow capability.</summary>
-    public RuntimeToolRegistration(IFunctionTool tool, IToolCapability capability)
+    public RuntimeToolRegistration(IFunctionTool tool, IToolCapability capability, ToolRecoveryBinding? recovery = null)
     {
         Tool = tool ?? throw new ArgumentNullException(nameof(tool));
         Capability = capability ?? throw new ArgumentNullException(nameof(capability));
@@ -51,6 +51,8 @@ public sealed class RuntimeToolRegistration
             Descriptor = tool.Descriptor;
             if (Descriptor is null || capability.CapabilityId != Descriptor.CapabilityId)
                 throw new ArgumentException();
+            if (recovery is not null && tool is not IRecoverableFunctionTool) throw new ArgumentException();
+            Recovery = recovery;
         }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { throw new ArgumentException("The Host tool binding is invalid."); }
@@ -61,6 +63,8 @@ public sealed class RuntimeToolRegistration
     public IToolCapability Capability { get; }
     /// <summary>Gets the immutable descriptor captured during Host registration.</summary>
     public ToolDescriptor Descriptor { get; }
+    /// <summary>Gets the optional trusted Host recovery declaration; saved metadata never replaces this binding.</summary>
+    public ToolRecoveryBinding? Recovery { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(RuntimeToolRegistration);
 }

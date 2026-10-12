@@ -42,6 +42,7 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
                 if (cut.Check() != RuntimeStop.None) return CutOutcome(state);
                 if (restored is null) state.Initialize();
                 if (!await state.WaitForRestoredRetryAsync().ConfigureAwait(false)) return StopOutcome(state);
+                if (!await PartialToolBatchOperation.ResumeAsync(state).ConfigureAwait(false)) return StopOutcome(state);
                 while (true)
                 {
                     var providerRequest = state.AdmitTurn();

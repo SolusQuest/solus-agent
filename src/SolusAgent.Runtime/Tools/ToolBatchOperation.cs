@@ -28,6 +28,7 @@ internal static class ToolBatchOperation
         var registry = state.Configuration.Tools.ToDictionary(binding => binding.Descriptor.Name, StringComparer.Ordinal);
         var bindings = new List<RuntimeToolRegistration>();
         var prepared = new List<PreparedToolInvocation>();
+        var operations = new List<ToolOperation>();
         try
         {
             foreach (var call in response.Calls)
@@ -45,14 +46,18 @@ internal static class ToolBatchOperation
                 if (preparation.Error != ToolError.None || !handle.Call.Matches(call)) return Fail(ToolError.CallMismatch);
                 var admission = binding.Tool.ValidateInvocation(handle, call, binding.Capability);
                 if (admission != ToolError.None) return Fail(admission);
+                var operation = new ToolOperation(Guid.NewGuid(), call, binding.Recovery);
+                if (binding.Recovery is not null && ((IRecoverableFunctionTool)binding.Tool).ValidateOperation(operation, binding.Capability) is var error
+                    && error != ToolError.None) return Fail(error);
                 bindings.Add(binding); prepared.Add(handle);
+                operations.Add(operation);
             }
         }
         catch (ToolContractException exception) { return Fail(exception.Error); }
         catch (Exception exception) when (Recoverable(exception)) { return Fail(ToolError.InvocationFailed); }
 
         var first = -1;
-        if (!cut.TryCommit(() => first = state.ReserveToolBatch(response, bindings))) return Stopped();
+        if (!cut.TryCommit(() => first = state.ReserveToolBatch(response, bindings, operations))) return Stopped();
         if (first < 0) return Fail(ToolError.LimitExceeded);
         try
         {
@@ -67,8 +72,13 @@ internal static class ToolBatchOperation
                     // Authority is checked again by the tool guard; preflight never grants lasting permission.
                     if (!cut.TryStart(() =>
                     {
+                        if (!SameDescriptor(binding.Descriptor, binding.Tool.Descriptor)
+                            || binding.Recovery is not null && (binding.Tool.ValidateInvocation(prepared[i], call, binding.Capability) != ToolError.None
+                                || ((IRecoverableFunctionTool)binding.Tool).ValidateOperation(operations[i], binding.Capability) != ToolError.None))
+                            throw new ToolContractException(ToolError.UnsupportedCapability);
                         state.EnterTool(index);
-                        return binding.Tool.InvokeAsync(prepared[i], call, binding.Capability, cut.Token).AsTask();
+                        return binding.Recovery is null ? binding.Tool.InvokeAsync(prepared[i], call, binding.Capability, cut.Token).AsTask()
+                            : ((IRecoverableFunctionTool)binding.Tool).InvokeOperationAsync(prepared[i], operations[i], binding.Capability, cut.Token).AsTask();
                     }, out pending)) return Stopped();
                     var completion = await cut.WaitAsync(pending!).ConfigureAwait(false);
                     if (!completion.Obtained) return Stopped();
@@ -85,7 +95,7 @@ internal static class ToolBatchOperation
                 catch (Exception exception) when (Recoverable(exception))
                 {
                     if (cut.Check() != RuntimeStop.None) return Stopped();
-                    if (!cut.TryCommit(() => state.FailToolInvocation(index))) return Stopped();
+                    if (!cut.TryCommit(() => { if (state.ToolRecords[index].State != ToolMemberState.Unstarted) state.FailToolInvocation(index); })) return Stopped();
                     return Fail(ToolError.InvocationFailed);
                 }
             }
@@ -109,7 +119,7 @@ internal static class ToolBatchOperation
         }
     }
 
-    private static ToolError ValidateResult(ToolResult? result, ToolCall call, ToolDescriptor descriptor)
+    internal static ToolError ValidateResult(ToolResult? result, ToolCall call, ToolDescriptor descriptor)
     {
         if (result is null || result.IsHistorical) return ToolError.InvalidResult;
         if (!result.Call.Matches(call)) return ToolError.ResultMismatch;
@@ -122,7 +132,7 @@ internal static class ToolBatchOperation
             && (result.Outcome != ToolOutcome.Cancelled || result.Error == ToolError.Cancelled)
             ? ToolError.None : ToolError.InvalidResult;
     }
-    private static bool SameDescriptor(ToolDescriptor expected, ToolDescriptor? actual) => actual is not null
+    internal static bool SameDescriptor(ToolDescriptor expected, ToolDescriptor? actual) => actual is not null
         && expected.Name == actual.Name && expected.Description == actual.Description && expected.CapabilityId == actual.CapabilityId
         && expected.Effect == actual.Effect && expected.MaximumArgumentBytes == actual.MaximumArgumentBytes
         && expected.MaximumResultBytes == actual.MaximumResultBytes && expected.InputSchema.Profile == actual.InputSchema.Profile
