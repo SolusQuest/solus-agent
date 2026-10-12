@@ -16,6 +16,8 @@ internal sealed partial class RuntimeAgent : IContextCandidateAgent
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(bounds);
         ArgumentNullException.ThrowIfNull(host);
+        if (configuration.Hooks is null)
+            throw new NotSupportedException("Candidate context requires exposure hooks.");
         var current = request.Request;
         var unsupported = current.RequiredCapabilities & ~SupportedCapabilities;
         if (unsupported != 0 || cancellationToken.IsCancellationRequested)

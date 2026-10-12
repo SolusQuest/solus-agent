@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Execution;
+using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Runtime.Startup;
 
@@ -9,6 +10,9 @@ namespace SolusAgent.Runtime.Context;
 internal static partial class OrdinaryContextCodec
 {
     internal static int CandidateBytes(SavedCandidates value) => JsonSerializer.SerializeToUtf8Bytes(value, Json).Length;
+
+    private static bool PermitsCandidateSubmission(SavedAttempt final) => final is
+        { AcceptedFinal: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true };
 
     private static void ValidateCandidates(OrdinaryCheckpoint saved, RuntimeOptions options)
     {
@@ -71,8 +75,7 @@ internal static partial class OrdinaryContextCodec
                     || invoked < roundIndex[episode.AdmissionRound!.Value])
                 || !submission.Invoked && index != ledger.Submissions.Length - 1) throw new JsonException();
             var finalFact = facts.Single(f => f.Attempt.Matches(final.Attempt));
-            if (submission.Invoked && (!finalFact.ClosureAcknowledged || finalFact.SettlementStop != SolusAgent.Runtime.Api.Exposure.RuntimeStop.None
-                || finalFact.Stop != SolusAgent.Runtime.Api.Exposure.RuntimeStop.None)) throw new JsonException();
+            if (submission.Invoked && !PermitsCandidateSubmission(finalFact)) throw new JsonException();
             var firstIndex = Array.FindIndex(facts, f => f.Attempt.Matches(episode.FirstAttempt));
             var finalIndex = Array.FindIndex(facts, f => f.Attempt.Matches(final.Attempt));
             var nextEpisode = Array.FindIndex(ledger.Episodes, e => e.Id == episode.Id) + 1;

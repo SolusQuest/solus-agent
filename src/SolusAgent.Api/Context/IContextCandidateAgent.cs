@@ -7,6 +7,7 @@ namespace SolusAgent.Api.Context;
 public interface IContextCandidateAgent : IContextAgent, ICandidateAgent
 {
     /// <summary>Executes candidate work using explicit context intent and transfers restricted state separately.</summary>
+    /// <exception cref="NotSupportedException">The implementation's documented combined integration is unavailable.</exception>
     ValueTask<ContextCandidateExecutionResult> ExecuteCandidatesWithContextAsync(ContextExecutionRequest request,
         CandidateExecutionBounds bounds, ICandidateHost host, IRestrictedContextSink? contextSink = null,
         IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default);

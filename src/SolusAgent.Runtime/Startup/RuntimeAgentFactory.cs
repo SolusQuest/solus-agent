@@ -21,7 +21,7 @@ public static class RuntimeAgentFactory
         RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>
-    /// <remarks>Both entrypoints honor explicit bounded provider retry policy on the same run ledger and cut. Ordinary execution uses complete tool admission and sequential guarded invocation. The returned agent implements IContextCandidateAgent, ICandidateAgent and IContextAgent. Context restoration requires provider persistence admission and trusted exclusive Host recovery authority. Completed tool batches and candidate protocol cursors are retained; unresolved partial tool batches and unknown candidate feedback do not authorize replay.</remarks>
+    /// <remarks>Both entrypoints honor explicit bounded provider retry policy on the same run ledger and cut. Ordinary execution uses complete tool admission and sequential guarded invocation. The returned agent implements IContextCandidateAgent, ICandidateAgent and IContextAgent. The combined candidate-context invocation requires exposure hooks and otherwise throws NotSupportedException before context claim or work, even when the ordinary startup profile permits omitted hooks. Context restoration requires provider persistence admission and trusted exclusive Host recovery authority. Completed tool batches and candidate protocol cursors are retained; unresolved partial tool batches and unknown candidate feedback do not authorize replay.</remarks>
     public static IAgent Create(RuntimeConfiguration configuration, RuntimeOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);

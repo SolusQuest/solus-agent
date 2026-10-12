@@ -92,7 +92,7 @@ internal static partial class OrdinaryContextCodec
             var uninvoked = saved.Candidates.Submissions[^1];
             var origin = saved.Records[uninvoked.FinalIndex].Final!.Attempt;
             var fact = saved.Rounds.SelectMany(r => r.Facts).Single(f => f.Attempt.Matches(origin));
-            if (!fact.ClosureAcknowledged || fact.SettlementStop != RuntimeStop.None)
+            if (!PermitsCandidateSubmission(fact))
                 throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
         }
         if (saved.Candidates?.Cursor == CandidateCursor.ProducingAdmittedEpisode && !saved.RetryEligible && saved.ToolCursor is null)
