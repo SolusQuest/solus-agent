@@ -120,5 +120,28 @@ public sealed class CandidateContextBoundaryTests
             new(CandidateContextFixture.Request(), ContextExecutionIntent.Fresh), new(1, 0, 0), host);
         Assert.Equal(CandidateStopReason.RuntimeLimit, result.Candidates!.StopReason); Assert.Equal(0, provider.Effects); Assert.Empty(host.Submissions);
     }
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("unknown")]
+    [InlineData("missing")]
+    public async Task UninvokedFinalCannotTurnDeniedOrUnknownClosureIntoDeliveryPermission(string closure)
+    {
+        var hooks = new RuntimeHooks { After = (s, _) => ValueTask.FromResult<SettlementAcknowledgement?>(closure switch
+        {
+            "missing" => null,
+            "unknown" => new(s.Exposure, RuntimeHookStatus.Unknown),
+            _ => new(s.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Stop, s.Accounting),
+        }) };
+        var sink = new RestrictedContextHost(); var firstHost = CandidateContextFixture.Host();
+        var source = await CandidateConsumer.RunWithContextAsync(CandidateContextFixture.Agent(new(), hooks: hooks),
+            new(CandidateContextFixture.Request(), ContextExecutionIntent.Fresh), new(1, 0, 0), firstHost, sink);
+        Assert.Empty(firstHost.Submissions); Assert.Equal(ContextCaptureStatus.Delivered, source.Context.CaptureStatus);
+        var envelope = sink.CopyRestrictedContext(); var authority = new SelectedAuthority(envelope, source.Context.Checkpoint!);
+        var provider = new PersistentProvider(); var host = CandidateContextFixture.Host();
+        var result = await CandidateConsumer.RunWithContextAsync(CandidateContextFixture.Agent(provider, authority),
+            CandidateContextFixture.Resume(source, envelope, CandidateContextFixture.Request()), new(1, 0, 0), host);
+        Assert.Equal(ContextRejectionCode.UnsupportedContext, result.Context.RejectionCode);
+        Assert.Equal(0, authority.Claims); Assert.Equal(0, provider.Imports); Assert.Equal(0, provider.Effects); Assert.Empty(host.Submissions);
+    }
     private sealed class ThrowingSink : IRestrictedContextSink { public void Capture(AgentContextEnvelope context) => throw new InvalidOperationException("SINK_CANARY"); }
 }

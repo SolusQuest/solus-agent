@@ -71,7 +71,7 @@ The current implementation grammar distinguishes ordinary and candidate mode bef
 | Saved candidate cursor | ContinueRun behavior |
 | --- | --- |
 | Initial | Admit initial production under current controls. |
-| Final ready, never invoked | First invocation of the same saved submission, without another provider call. Original execution identity is retained; its first Host invocation consumes the current submission allowance. |
+| Final ready, never invoked | First invocation of the same saved submission, without another provider call, only after acknowledged permissive original settlement. Denied or uncertain original closure is unsupported and rejects before Host claim. Original execution identity is retained; its first Host invocation consumes the current submission allowance. |
 | Invoked with uncertain, missing or failed feedback | Return the original safe observation with zero dependent provider or Host work. Resolution by a different/new callback is unsupported. |
 | Acknowledged Continue, follow-on not admitted | Apply any uncommitted rejection correction as data once, then admit under current repair/continuation allowance. |
 | Episode already admitted | Continue its genuine retry or completed-tool cursor without charging another repair/continuation or inserting another correction. Unsupported partial tool state rejects. |

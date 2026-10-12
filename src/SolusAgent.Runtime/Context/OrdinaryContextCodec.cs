@@ -86,6 +86,14 @@ internal static partial class OrdinaryContextCodec
             || saved.Rounds.Any(r => r.RoundId == grant.RoundId || r.Usage.ExecutionId == grant.ExecutionId))
             throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         var continuing = request.Intent == ContextExecutionIntent.ContinueRun;
+        if (saved.Candidates?.Cursor == CandidateCursor.FinalReadyUnsubmitted)
+        {
+            var uninvoked = saved.Candidates.Submissions[^1];
+            var origin = saved.Records[uninvoked.FinalIndex].Final!.Attempt;
+            var fact = saved.Rounds.SelectMany(r => r.Facts).Single(f => f.Attempt.Matches(origin));
+            if (!fact.ClosureAcknowledged || fact.SettlementStop != RuntimeStop.None)
+                throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
+        }
         if (saved.Candidates?.Cursor == CandidateCursor.ProducingAdmittedEpisode && !saved.RetryEligible && saved.ToolCursor is null)
             throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
         if (saved.Candidates is null && (continuing ? !saved.RetryEligible && saved.ToolCursor is null : !saved.Final)
