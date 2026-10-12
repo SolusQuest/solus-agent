@@ -33,7 +33,8 @@ internal sealed partial class RunState
         contextElapsed = elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
     }
     internal IReadOnlyList<ContextRoundObservation> ContextHistory => restored?.Checkpoint.Rounds.Select(r => r.Observe()).ToArray() ?? [];
-    internal AgentContextEnvelope? CaptureOrdinary(AgentOutcome outcome, out ContextCheckpointInfo? info)
+    internal AgentContextEnvelope? CaptureOrdinary(AgentOutcome outcome, out ContextCheckpointInfo? info,
+        SavedCandidates? candidates = null, SavedCandidateRound? candidateRound = null)
     {
         info = null;
         FreezeContext(outcome);
@@ -77,7 +78,7 @@ internal sealed partial class RunState
         var round = new SavedRound(logicalWork, contextRound, Usage(), outcome.Reason, Completed,
             contextStop!.Value, contextFacts.ToArray(), toolCursor,
             recoveryActions.Select(a => new SavedRecoveryAction(a.ActionId, a.MemberIndex, a.Kind, a.State, SavedResult.From(a.Result), a.Error)).ToArray(),
-            recoveryReleased.ToArray());
+            recoveryReleased.ToArray(), candidateRound);
         var history = restored?.Checkpoint.Rounds ?? [];
         if (history.Length >= 64) return null;
         var checkpoint = new ContextCheckpointInfo(Guid.NewGuid(), logicalWork, contextRound, Request.ExecutionId);
@@ -88,7 +89,7 @@ internal sealed partial class RunState
             [.. history, round], latestRequest?.Bounds ?? restored?.OriginalBounds, provider,
             last is { AcceptedFinal: true, SettlementStop: RuntimeStop.None or RuntimeStop.HostStopped },
             pending is not null, pending,
-            contextElapsed, members, toolCursor);
+            contextElapsed, members, toolCursor, candidates);
         var envelope = OrdinaryContextCodec.Encode(value, Options);
         info = checkpoint;
         return envelope;
