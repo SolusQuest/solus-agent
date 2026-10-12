@@ -66,7 +66,7 @@ internal static partial class OrdinaryContextCodec
         if (seen.Count != contract.Properties.Count) throw new JsonException();
     }
     internal static string Binding(RuntimeConfiguration config, RuntimeOptions options) => Convert.ToHexString(SHA256.HashData(
-        JsonSerializer.SerializeToUtf8Bytes(new { config.Scope, Tools = config.Tools.Select(t => t.Descriptor).ToArray(), config.Bounds,
+        JsonSerializer.SerializeToUtf8Bytes(new { config.Scope, Tools = config.Tools.Select(t => new { t.Descriptor, t.Recovery }).ToArray(), config.Bounds,
             config.RequiredAcknowledgement, config.RequiredGuarantees, options.RequireContinuation })));
 
     internal static RestoredOrdinary Decode(ContextExecutionRequest request, RuntimeConfiguration config, RuntimeOptions options, bool candidateMode = false)
@@ -81,6 +81,7 @@ internal static partial class OrdinaryContextCodec
         var saved = JsonSerializer.Deserialize<OrdinaryCheckpoint>(bytes, Json)!;
         if ((saved.Candidates is not null) != candidateMode) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         Validate(saved, config, options);
+        if (saved.Rounds.Length >= 64) throw new JsonException();
         var grant = request.RoundGrant;
         if (grant is null || grant.Source != saved.Info || grant.ExecutionId != request.Request.ExecutionId
             || saved.Rounds.Any(r => r.RoundId == grant.RoundId || r.Usage.ExecutionId == grant.ExecutionId))
@@ -100,6 +101,10 @@ internal static partial class OrdinaryContextCodec
             || saved.Candidates is not null && !continuing && saved.Candidates.Cursor != CandidateCursor.End) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         if (continuing && (request.Request.Data.Count != 0 || request.Request.Instructions != saved.Records[0].Text
             || saved.RetryEligible && request.Request.UsageLimits?.RetryPolicy is null)) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
+        if (saved.Candidates is not null && saved.ToolCursor is { } candidateTools
+            && EffectiveMembers(saved, config, options, out _).Any(m => m.ModelAttempt.Matches(candidateTools)
+                && m.State != Tools.ToolMemberState.Succeeded))
+            throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
         if (saved.Candidates is not null || saved.Records.Any(r => r.ToolModel is not null)) return DecodeTools(request, saved, config, options, bytes.Length);
         var records = Rehydrate(saved, config, options);
         var continuation = records.LastOrDefault(r => r.Model is not null)?.Model?.Continuation;
@@ -174,7 +179,8 @@ internal static partial class OrdinaryContextCodec
             || saved.Records.Skip(1).Any(r => r.Kind == ProviderInputKind.HostInstruction) || saved.Rounds.Length is < 1 or > 64
             || saved.Elapsed < TimeSpan.Zero || saved.Final && (saved.RetryEligible || saved.ToolCursor is not null)
             || saved.RetryEligible && saved.ToolCursor is not null) throw new JsonException();
-        var batches = ValidateToolRecords(saved, config, options);
+        var effective = EffectiveMembers(saved, config, options, out var toolCursors);
+        var batches = ValidateToolRecords(saved with { Members = effective }, config, options);
         var executions = new HashSet<Guid>(); var rounds = new HashSet<Guid>(); var works = new HashSet<Guid>();
         var physical = new Dictionary<Guid, UsageAttemptObservation>();
         var operations = new HashSet<Guid>();
@@ -195,10 +201,6 @@ internal static partial class OrdinaryContextCodec
                 || (round.Reason == AgentTerminationReason.Cancelled) != (round.Stop == RuntimeStop.Cancelled)
                 || round.Stop is RuntimeStop.DurationLimit or RuntimeStop.ResourceLimit && round.Reason != AgentTerminationReason.ResourceLimit)
                 throw new JsonException();
-            var owned = saved.Members.Where(m => m.ModelAttempt.ExecutionId == round.Usage.ExecutionId).ToArray();
-            if (round.Usage.ToolInvocations is not { ReservedUnstarted: 0 } toolUsage
-                || toolUsage.Invoked != owned.Count(m => m.State != Tools.ToolMemberState.Unstarted)
-                || toolUsage.ReleasedUnstarted != owned.Count(m => m.State == Tools.ToolMemberState.Unstarted)) throw new JsonException();
             var sameWorkToolContinuation = previous is not null && (previous.ToolCursor is not null || saved.Candidates is not null)
                 && round.LogicalWorkId == previous.LogicalWorkId;
             if (round.Usage.ContinuedCalls.Count > 1 || previous is null && round.Usage.ContinuedCalls.Count != 0
@@ -245,11 +247,7 @@ internal static partial class OrdinaryContextCodec
                 cursor = tail is { Retry: not null, AcceptedFinal: false, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
                     && round.Usage.Attempts[^1].Exposure == DispatchExposure.Dispatched ? tail.Attempt : null;
             else if (round.Usage.ContinuedCalls.Count == 0) cursor = null;
-            var toolCursor = round.Facts.LastOrDefault() is { } latestFact
-                ? latestFact is { AcceptedTools: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true }
-                    && batches.GetValueOrDefault(latestFact.Attempt.PhysicalAttemptId) ? latestFact.Attempt : null
-                : sameWorkToolContinuation ? previous!.ToolCursor : null;
-            if (!SameAttempt(round.ToolCursor, toolCursor)) throw new JsonException();
+            if (!SameAttempt(round.ToolCursor, toolCursors[round.RoundId])) throw new JsonException();
             previous = round;
         }
         if (physical.Count > options.MaximumAttempts) throw new JsonException();

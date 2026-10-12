@@ -27,6 +27,9 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
     private ProviderRequest? latestRequest;
     private bool toolBatchClaimed;
     private readonly List<ToolExecutionRecord> toolRecords = [];
+    private readonly List<ToolExecutionRecord> originalToolRecords = [];
+    private readonly List<RecoveryExecutionRecord> recoveryActions = [];
+    private readonly List<int> recoveryReleased = [];
     private readonly object toolUsageGate = new();
     private int invokedTools;
     private int reservedTools;
@@ -48,6 +51,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         {
             records.AddRange(restored.Records); continuation = restored.Continuation; retainedBytes = restored.RetainedBytes;
             toolRecords.AddRange(restored.Members ?? []);
+            originalToolRecords.AddRange(restored.OriginalMembers ?? restored.Members ?? []);
             return;
         }
         if (Request.Data.Count >= Configuration.Bounds.MaximumInputs || Request.Data.Count >= Options.MaximumRecords)
@@ -174,11 +178,13 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         toolBatchClaimed = true;
         return true;
     }
-    public int ReserveToolBatch(ProviderResponse response, IReadOnlyList<RuntimeToolRegistration> bindings)
+    public int ReserveToolBatch(ProviderResponse response, IReadOnlyList<RuntimeToolRegistration> bindings,
+        IReadOnlyList<ToolOperation> operations)
     {
         var count = response.Calls.Count;
+        var recoveryCount = recoveryActions.Count + (restored?.Checkpoint.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0) ?? 0);
         if (count == 0 || count != bindings.Count || count > Configuration.Bounds.MaximumToolCalls
-            || records.Count > Options.MaximumRecords - count || toolRecords.Count > Options.MaximumRecords - count)
+            || records.Count + recoveryCount > Options.MaximumRecords - count || toolRecords.Count + recoveryCount > Options.MaximumRecords - count)
         { Close(RuntimeStop.ResourceLimit); return -1; }
         long reservation = 0;
         for (var i = 0; i < count; i++) reservation += ToolCallBytes(response.Calls[i]) + bindings[i].Descriptor.MaximumResultBytes;
@@ -190,7 +196,11 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             { Close(RuntimeStop.ResourceLimit); return -1; }
             var first = toolRecords.Count;
             for (var i = 0; i < count; i++)
-                toolRecords.Add(new(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted, ReservationHeld: true));
+            {
+                var member = new ToolExecutionRecord(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted,
+                    ReservationHeld: true, Operation: operations[i]);
+                toolRecords.Add(member); originalToolRecords.Add(member);
+            }
             reservedTools += count;
             return first;
         }
@@ -203,6 +213,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             if (!member.ReservationHeld || member.State != ToolMemberState.Unstarted)
                 throw new ProviderContractException(ProviderError.InvalidAssociation);
             toolRecords[index] = member with { State = ToolMemberState.InvokedUnknown, ReservationHeld = false };
+            originalToolRecords[index] = toolRecords[index];
             reservedTools--; invokedTools++;
         }
     }
@@ -216,6 +227,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
                 var member = toolRecords[i];
                 if (member.State != ToolMemberState.Unstarted || !member.ReservationHeld) continue;
                 toolRecords[i] = member with { ReservationHeld = false };
+                originalToolRecords[i] = toolRecords[i];
                 reservedTools--; releasedTools++;
             }
         }
@@ -224,9 +236,9 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
     {
         lock (toolUsageGate) return new(invokedTools, reservedTools, releasedTools);
     }
-    public void RejectToolResult(int index, ToolError error) => toolRecords[index] = toolRecords[index] with
+    public void RejectToolResult(int index, ToolError error) => originalToolRecords[index] = toolRecords[index] = toolRecords[index] with
         { State = ToolMemberState.Rejected, Error = error };
-    public void FailToolInvocation(int index) => toolRecords[index] = toolRecords[index] with
+    public void FailToolInvocation(int index) => originalToolRecords[index] = toolRecords[index] = toolRecords[index] with
         { State = ToolMemberState.Failed, Error = ToolError.InvocationFailed };
     public void CompleteTool(int index, ToolResult result)
     {
@@ -243,6 +255,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             _ => ToolMemberState.Failed,
         };
         toolRecords[index] = toolRecords[index] with { State = phase, Result = result, Error = result.Error };
+        originalToolRecords[index] = toolRecords[index];
     }
     internal static int ToolCallBytes(ToolCall call) => Encoding.UTF8.GetByteCount(call.CallId)
         + Encoding.UTF8.GetByteCount(call.ToolName) + Encoding.UTF8.GetByteCount(call.ArgumentsJson);

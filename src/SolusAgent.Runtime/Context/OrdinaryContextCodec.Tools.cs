@@ -114,10 +114,11 @@ internal static partial class OrdinaryContextCodec
     }
 
     // The same immutable admitted facts drive checked preclaim accounting and postclaim materialization.
-    private static int ProspectivePayload(ContextExecutionRequest request, OrdinaryCheckpoint saved, RuntimeConfiguration config)
+    private static int ProspectivePayload(ContextExecutionRequest request, OrdinaryCheckpoint saved, RuntimeConfiguration config, RuntimeOptions options)
     {
         var continuing = request.Intent == ContextExecutionIntent.ContinueRun;
         var total = checked(ScopeBytes(config.Scope) + DefinitionBytes(config));
+        var effective = EffectiveMembers(saved, config, options, out _);
         foreach (var entry in saved.Records)
         {
             var count = entry.Kind switch
@@ -125,8 +126,8 @@ internal static partial class OrdinaryContextCodec
                 ProviderInputKind.HostInstruction => Bytes(continuing ? entry.Text : request.Request.Instructions),
                 ProviderInputKind.InputData => Bytes(entry.Text),
                 ProviderInputKind.ModelData => Candidate(entry).PayloadByteCount,
-                ProviderInputKind.ToolResultData => checked(CallBytes(saved.Members[entry.ToolMember!.Value].Result!.Call)
-                    + Bytes(saved.Members[entry.ToolMember.Value].Result!.Json)),
+                ProviderInputKind.ToolResultData => checked(CallBytes(effective[entry.ToolMember!.Value].Result!.Call)
+                    + Bytes(effective[entry.ToolMember.Value].Result!.Json)),
                 _ => throw new JsonException()
             };
             total = checked(total + count);
@@ -148,9 +149,29 @@ internal static partial class OrdinaryContextCodec
         // Validate added Host data before its bytes participate in admission.
         _ = ProviderInput.Instruction(request.Request.Instructions);
         foreach (var data in request.Request.Data) _ = ProviderInput.Data(data.Text);
-        var payload = ProspectivePayload(request, saved, config);
+        var payload = ProspectivePayload(request, saved, config, options);
         var retained = Math.Max(payload, checked(encodedBytes + DefinitionBytes(config)
             + (continuing ? 0 : Bytes(request.Request.Instructions) + request.Request.Data.Sum(d => Bytes(d.Text)))));
+        var effective = EffectiveMembers(saved, config, options, out _);
+        var remaining = continuing && saved.ToolCursor is not null
+            ? effective.Select((m, i) => (Member: m, Index: i)).Where(p => p.Member.ModelAttempt.Matches(saved.ToolCursor)
+                && p.Member.State != ToolMemberState.Succeeded).ToArray() : [];
+        long recoveryBytes = 0; long futurePayload = payload;
+        foreach (var (member, index) in remaining)
+        {
+            var descriptor = config.Tools.Single(t => t.Descriptor.Name == member.Call.ToolName).Descriptor;
+            recoveryBytes += RecoveryReservationBytes(index, member.Call, descriptor);
+            futurePayload += CallBytes(member.Call) + descriptor.MaximumResultBytes;
+            if (member.Result is { } old) futurePayload -= CallBytes(old.Call) + Bytes(old.Json);
+        }
+        var actions = saved.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0);
+        var projectedInputs = checked(count + remaining.Count(p => p.Member.Result is null));
+        if (count + remaining.Length + actions > options.MaximumRecords
+            || projectedInputs > bounds.MaximumInputs
+            || saved.Members.Length + actions + remaining.Length > options.MaximumRecords
+            || futurePayload > bounds.MaximumRequestBytes || recoveryBytes > options.MaximumRetainedBytes - retained
+            || continuing && (saved.Candidates is null || saved.Pending is not null)
+                && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained - recoveryBytes) throw new JsonException();
         if (count >= options.MaximumRecords || count > bounds.MaximumInputs || config.Tools.Count > bounds.MaximumTools
             || payload > bounds.MaximumRequestBytes || saved.Candidates is null && saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
             || retained >= options.MaximumRetainedBytes
@@ -172,9 +193,11 @@ internal static partial class OrdinaryContextCodec
     {
         if (!restored.Deferred) return restored;
         var saved = restored.Checkpoint;
-        var members = saved.Members.Select(m => new ToolExecutionRecord(m.ModelAttempt, m.Ordinal, m.Call, m.State,
+        ToolExecutionRecord RestoreMember(SavedMember m) => new(m.ModelAttempt, m.Ordinal, m.Call, m.State,
             m.Result is { } result ? ToolResult.RestoreHistorical(config.Tools.Single(t => t.Descriptor.Name == m.Call.ToolName).Descriptor,
-                m.Call, result.Call, result.Outcome, result.Error, result.InvocationStarted, result.Json) : null, m.Error, m.ReservationHeld)).ToArray();
+                m.Call, result.Call, result.Outcome, result.Error, result.InvocationStarted, result.Json) : null, m.Error, m.ReservationHeld, m.Operation);
+        var originals = saved.Members.Select(RestoreMember).ToArray();
+        var members = EffectiveMembers(saved, config, options, out _).Select(RestoreMember).ToArray();
         var records = new List<ProviderInput>(); ProviderContinuation? continuation = null;
         foreach (var entry in saved.Records)
         {
@@ -198,12 +221,15 @@ internal static partial class OrdinaryContextCodec
             records.AddRange(request.Request.Data.Select(d => ProviderInput.Data(d.Text)));
         }
         var pending = restored.Pending;
+        if (request.Intent == ContextExecutionIntent.ContinueRun && saved.ToolCursor is not null
+            && members.Any(m => m.ModelAttempt.Matches(saved.ToolCursor) && m.State != ToolMemberState.Succeeded))
+            return restored with { Records = records, Continuation = continuation, Members = members, OriginalMembers = originals, Deferred = false };
         var next = new ProviderRequest(config.Scope, new(request.Request.ExecutionId, pending?.LogicalCallId ?? Guid.NewGuid(), Guid.NewGuid(),
             pending is null ? 1 : checked(pending.AttemptNumber + 1)), records, config.Tools.Select(t => t.Descriptor).ToArray(), continuation,
             options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None,
             pending is null ? config.Bounds : saved.OriginalBounds,
             new(records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray(), pending));
-        if (next.PayloadByteCount != restored.ProspectiveBytes || next.PayloadByteCount != ProspectivePayload(request, saved, config)) throw new JsonException();
-        return restored with { Records = records, Continuation = continuation, Members = members, Deferred = false };
+        if (next.PayloadByteCount != restored.ProspectiveBytes || next.PayloadByteCount != ProspectivePayload(request, saved, config, options)) throw new JsonException();
+        return restored with { Records = records, Continuation = continuation, Members = members, OriginalMembers = originals, Deferred = false };
     }
 }

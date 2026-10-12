@@ -30,7 +30,9 @@ internal sealed record SavedResult(ToolCall Call, ToolOutcome Outcome, ToolError
         : new(result.Call, result.Outcome, result.Error, result.InvocationStarted, result.Json);
 }
 internal sealed record SavedMember(ProviderAttempt ModelAttempt, int Ordinal, ToolCall Call, SavedDescriptor Descriptor,
-    ToolMemberState State, SavedResult? Result, ToolError Error, bool ReservationHeld);
+    ToolMemberState State, SavedResult? Result, ToolError Error, bool ReservationHeld, ToolOperation Operation);
+internal sealed record SavedRecoveryAction(Guid ActionId, int MemberIndex, RecoveryActionKind Kind,
+    RecoveryActionState State, SavedResult? Result, ToolError Error);
 internal sealed record SavedInput(ProviderInputKind Kind, string? Text, SavedFinal? Final,
     SavedToolModel? ToolModel = null, int? ToolMember = null);
 internal sealed record SavedProvider(ProviderScope Scope, ProviderAttempt Origin, int FormatVersion, byte[] Bytes);
@@ -38,7 +40,8 @@ internal sealed record SavedAttempt(ProviderAttempt Attempt, RuntimeStop Stop, R
     ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged,
     ProviderExchangeBounds Bounds, bool AcceptedTools = false);
 internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsage Usage, AgentTerminationReason Reason,
-    int Completed, RuntimeStop Stop, SavedAttempt[] Facts, ProviderAttempt? ToolCursor = null, SavedCandidateRound? Candidates = null)
+    int Completed, RuntimeStop Stop, SavedAttempt[] Facts, ProviderAttempt? ToolCursor = null,
+    SavedRecoveryAction[]? RecoveryActions = null, int[]? RecoveryReleased = null, SavedCandidateRound? Candidates = null)
 {
     public ContextRoundObservation Observe() => new(LogicalWorkId, RoundId, Usage, Reason, Completed);
 }
@@ -47,7 +50,8 @@ internal sealed record OrdinaryCheckpoint(ContextCheckpointInfo Info, ProviderSc
     bool Final, bool RetryEligible, ProviderAttempt? Pending, TimeSpan Elapsed, SavedMember[] Members, ProviderAttempt? ToolCursor, SavedCandidates? Candidates = null);
 internal sealed record RestoredOrdinary(OrdinaryCheckpoint Checkpoint, IReadOnlyList<ProviderInput> Records,
     ProviderContinuation? Continuation, ProviderAttempt? Pending, Guid WorkId, Guid RoundId, int RetainedBytes,
-    int ProspectiveBytes, bool Deferred = false, IReadOnlyList<ToolExecutionRecord>? Members = null)
+    int ProspectiveBytes, bool Deferred = false, IReadOnlyList<ToolExecutionRecord>? Members = null,
+    IReadOnlyList<ToolExecutionRecord>? OriginalMembers = null)
 {
     public IReadOnlyList<UsageCallLineage> Seeds { get; } = Pending is null ? [] : [new(Pending.LogicalCallId, Pending.ExecutionId, Pending.PhysicalAttemptId, Pending.AttemptNumber)];
     public ProviderExchangeBounds? OriginalBounds => Checkpoint.OriginalBounds;
