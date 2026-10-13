@@ -21,7 +21,7 @@ using Xunit;
 
 namespace SolusAgent.ContractTests.Runtime.Candidates;
 
-public sealed class CandidatePartialRecoveryTests
+public sealed partial class CandidatePartialRecoveryTests
 {
     private const string Correction = "PARTIAL_CANDIDATE_CORRECTION";
     private static readonly ProviderExchangeBounds Bounds = new(maximumResponseBytes: 512);
@@ -212,7 +212,7 @@ public sealed class CandidatePartialRecoveryTests
         var prospective = ledger with
         {
             Submissions = [.. ledger.Submissions, new(ledger.Episodes[^1].Id, request.ExecutionId, id, 7, true, resume.RoundGrant!.RoundId,
-                new(request.ExecutionId, id, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue), null)],
+                new(request.ExecutionId, id, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue), MaximumEscapingCorrection)],
             Episodes = [.. ledger.Episodes, new(Guid.NewGuid(), ledger.Episodes[^1].WorkId, id, null, null, null)]
         };
         var required = source.Envelope.PayloadByteCount + definitions + recovery + Bounds.MaximumResponseBytes

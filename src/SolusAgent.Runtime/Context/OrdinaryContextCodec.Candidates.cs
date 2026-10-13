@@ -12,6 +12,11 @@ internal static partial class OrdinaryContextCodec
 {
     internal static int CandidateBytes(SavedCandidates value) => JsonSerializer.SerializeToUtf8Bytes(value, Json).Length;
 
+    // Sizing only: each NUL is one admitted UTF-8 byte and the configured JSON encoder writes it as \u0000.
+    // A BMP scalar needs at most six JSON bytes; a supplementary scalar needs twelve for four UTF-8 bytes.
+    // Thus this legal correction attains the maximum, measured through CandidateBytes, including quotes/null replacement.
+    internal static readonly string MaximumCorrectionForReservation = new('\0', CandidateFeedback.MaximumCorrectionBytes);
+
     // Reserve a possible Final and the same worst-case receipt/follow-on bookkeeping as Host delivery.
     // These sizing-only identities never enter the restored ledger or authorize work.
     private static int CandidateProductionGrowth(SavedCandidates ledger, int finalIndex, ContextExecutionRequest request)
@@ -19,7 +24,7 @@ internal static partial class OrdinaryContextCodec
         var submissionId = Guid.NewGuid();
         var submission = new SavedCandidateSubmission(ledger.Episodes[^1].Id, request.Request.ExecutionId, submissionId,
             finalIndex, true, request.RoundGrant!.RoundId,
-            new(request.Request.ExecutionId, submissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue), null);
+            new(request.Request.ExecutionId, submissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue), MaximumCorrectionForReservation);
         var prospective = ledger with
         {
             Submissions = [.. ledger.Submissions, submission],

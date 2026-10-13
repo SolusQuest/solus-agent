@@ -142,7 +142,8 @@ internal static class CandidateExecutionDriver
                 // Reserve worst-case safe receipt/cursor bookkeeping before invoking a potentially effecting Host.
                 var prospective = Snapshot();
                 prospective.Submissions[^1] = pendingSubmission with { Invoked = true, InvocationRound = state.CandidateRoundId,
-                    Receipt = new(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue) };
+                    Receipt = new(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue),
+                    Correction = OrdinaryContextCodec.MaximumCorrectionForReservation };
                 prospective = prospective with { Episodes = [.. prospective.Episodes, new(Guid.NewGuid(), state.CandidateWorkId, pendingSubmission.SubmissionId, null, null, null)] };
                 if (terminal is not null && !state.ReserveCandidateLedger(prospective)) return StateStop();
                 CandidateFeedback? feedback;
