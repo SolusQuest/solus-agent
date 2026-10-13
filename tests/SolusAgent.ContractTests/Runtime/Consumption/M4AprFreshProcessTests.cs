@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Xml.Linq;
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using AprHost;
 using SolusAgent.Api.Candidates;
 using SolusAgent.Api.Context;
@@ -28,6 +29,86 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         Guid? Source, int Claims, long CurrentCharge = 0, long HistoricalCharge = 0, long? MeasuredInput = null,
         long ClockTicks = 0, long[]? RunTimers = null, CandidateStopReason? Stop = null, bool HistoricalInputUnknown = false,
         Guid? Round = null, Guid[]? AcceptedIds = null, Guid[]? HistoricalIds = null, Guid[]? SubmittedIds = null);
+
+    [Theory]
+    [InlineData("source-sibling")]
+    [InlineData("source-future")]
+    public async Task NewHeadChoosesOnlyItsAuthorizedPriorSourceWhenJournalContainsUnrelatedAcceptedHistory(string unrelatedStage)
+    {
+        var directory = NewDirectory();
+        var prior = await Run(directory, "source-accepted");
+        await Run(directory, "source-failed");
+        var unrelated = await Run(directory, unrelatedStage);
+        var selected = await Run(directory, "new-head");
+        Assert.Equal(ContextAdmission.Supplied, selected.Admission);
+        Assert.Equal(prior.Source, selected.Source); Assert.NotEqual(unrelated.Source, selected.Source);
+        Assert.Equal(1, selected.HistoricalReceipts);
+        Assert.Equal(Assert.Single(prior.AcceptedIds!), Assert.Single(selected.HistoricalIds!));
+        Assert.Equal(3, selected.Accepted); Assert.Equal(3, selected.Effects); Assert.Equal(1, selected.NewEffects);
+    }
+
+    [Theory]
+    [InlineData("head")]
+    [InlineData("source")]
+    public async Task NewHeadTransitionDeniesMismatchedOrUnapprovedSourceAuthorization(string mismatch)
+    {
+        var directory = NewDirectory();
+        await Run(directory, "source-accepted"); await Run(directory, "source-failed");
+        var path = Path.Combine(directory, "head-transition.json");
+        var authorization = JsonNode.Parse(File.ReadAllText(path))!;
+        if (mismatch == "head") authorization["Head"] = "n+2";
+        else authorization["Sources"] = JsonSerializer.SerializeToNode(new[] { FileContextAuthority.Selection(Path.Combine(directory, "source-failed")).Info });
+        File.WriteAllText(path, authorization.ToJsonString());
+        var denied = await Run(directory, "new-head");
+        Assert.Equal(ContextAdmission.Rejected, denied.Admission);
+        Assert.Equal(0, denied.Claims); Assert.Equal(0, denied.Imports); Assert.Equal(0, denied.Dispatches);
+        Assert.Equal(0, denied.Submissions); Assert.Equal(0, denied.NewEffects); Assert.Equal(1, denied.Effects);
+        Assert.False(Directory.Exists(Path.Combine(directory, "authorization")));
+        Assert.False(File.Exists(Path.Combine(directory, "grant.json")));
+    }
+
+    [Fact]
+    public async Task JournalReopenPreservesActualAcknowledgementOrderDespiteReversedPhysicalFileCreation()
+    {
+        var directory = NewDirectory();
+        var source = await Run(directory, "order-source");
+        Assert.Equal(16, source.Dispatches); Assert.Equal(16, source.Submissions);
+        Assert.Equal(0, source.Effects);
+        CopyJournalRecords(directory, source.AcceptedIds!);
+        var reopened = await Run(directory, "order-reopen");
+        var again = await Run(directory, "order-reopen-again");
+        Assert.Equal(3, new[] { source.Pid, reopened.Pid, again.Pid }.Distinct().Count());
+        Assert.Equal(source.AcceptedIds, reopened.AcceptedIds); Assert.Equal(source.AcceptedIds, again.AcceptedIds);
+        Assert.Equal(16, reopened.NewEffects); Assert.Equal(16, reopened.Effects);
+        Assert.Equal(0, again.NewEffects); Assert.Equal(16, again.Effects);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task JournalRejectsNonpositiveOrDuplicatePersistedOrderBeforeApplyingEffects(int invalidOrder)
+    {
+        var directory = NewDirectory();
+        var source = await Run(directory, "order-source");
+        CopyJournalRecords(directory, source.AcceptedIds!);
+        var target = Path.Combine(directory, "ordered-reopen");
+        var path = Path.Combine(target, $"accepted-{source.AcceptedIds![1]:D}.json");
+        var entry = JsonNode.Parse(File.ReadAllText(path))!; entry["Sequence"] = invalidOrder;
+        File.WriteAllText(path, entry.ToJsonString());
+        var denied = await Run(directory, "order-corrupt");
+        Assert.Equal(ContextAdmission.Rejected, denied.Admission); Assert.Equal(0, denied.NewEffects);
+        Assert.Empty(Directory.GetFiles(target, "effect-*.json"));
+    }
+
+    private static void CopyJournalRecords(string directory, IEnumerable<Guid> orderedIds)
+    {
+        var target = Path.Combine(directory, "ordered-reopen"); Directory.CreateDirectory(target);
+        foreach (var id in orderedIds.Reverse())
+        {
+            var name = $"accepted-{id:D}.json";
+            File.Copy(Path.Combine(directory, "ordered-original", name), Path.Combine(target, name));
+        }
+    }
 
     [Theory]
     [InlineData(false, "payload")]
@@ -260,7 +341,8 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         var stage = Environment.GetEnvironmentVariable(StageVariable);
         if (stage is null) return;
         var directory = Environment.GetEnvironmentVariable(DirectoryVariable) ?? throw new InvalidOperationException("Missing APR child directory.");
-        var result = stage.StartsWith("mixed-", StringComparison.Ordinal) ? await AprMixedProcessFixture.Execute(directory, stage)
+        var result = stage.StartsWith("order-", StringComparison.Ordinal) ? await AprJournalProcessFixture.Execute(directory, stage)
+            : stage.StartsWith("mixed-", StringComparison.Ordinal) ? await AprMixedProcessFixture.Execute(directory, stage)
             : stage.StartsWith("round-", StringComparison.Ordinal) ? await AprRoundProcessFixture.Execute(directory, stage)
             : await AprFreshProcessFixture.Execute(directory, stage);
         File.WriteAllText(Path.Combine(directory, stage + "-observation.json"), JsonSerializer.Serialize(result));
@@ -308,6 +390,7 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
 
 internal static class AprFreshProcessFixture
 {
+    private sealed record HeadTransition(string Head, ContextCheckpointInfo[] Sources);
     internal static async Task<M4AprFreshProcessTests.Observation> Execute(string directory, string stage)
     {
         var source = stage.StartsWith("source-", StringComparison.Ordinal);
@@ -362,8 +445,15 @@ internal static class AprFreshProcessFixture
                     InputDigest(request),
                     stage == "wrong-target" ? "other" : "snapshot", stage == "wrong-authority" ? "other" : "authority");
                 AprCheckpointRecord selected;
-                try { selected = AprCheckpointSelector.Select(records, binding, stage == "new-head"); }
-                catch (InvalidOperationException) when (stage is "wrong-input" or "wrong-target" or "wrong-authority")
+                HashSet<ContextCheckpointInfo>? authorized = null;
+                if (stage == "new-head")
+                {
+                    var transition = JsonSerializer.Deserialize<HeadTransition>(File.ReadAllText(Path.Combine(directory, "head-transition.json")))!;
+                    if (transition.Head != binding.Head) return RejectedSelection();
+                    authorized = transition.Sources.ToHashSet();
+                }
+                try { selected = AprCheckpointSelector.Select(records, binding, stage == "new-head", authorized); }
+                catch (InvalidOperationException) when (stage is "new-head" or "wrong-input" or "wrong-target" or "wrong-authority")
                 {
                     return RejectedSelection();
                 }
@@ -389,9 +479,13 @@ internal static class AprFreshProcessFixture
         {
             Assert.Equal(ContextCaptureStatus.Delivered, result.Context.CaptureStatus);
             FileContextAuthority.Save(Path.Combine(directory, stage), sink!.CopyRestrictedContext(), result.Context.Checkpoint!);
-            var record = new AprCheckpointRecord(result.Context.Checkpoint!, new(stage == "source-accepted" ? "n-1" : "n",
-                InputDigest(request), "snapshot", "authority"), stage == "source-accepted", stage == "source-accepted" ? 1 : 2);
+            var accepted = stage is "source-accepted" or "source-sibling" or "source-future";
+            var head = stage switch { "source-accepted" => "n-1", "source-sibling" => "sibling", "source-future" => "n+2", _ => "n" };
+            var record = new AprCheckpointRecord(result.Context.Checkpoint!, new(head,
+                InputDigest(request), "snapshot", "authority"), accepted, stage == "source-accepted" ? 1 : accepted ? 99 : 2);
             File.WriteAllText(Path.Combine(directory, stage + ".record.json"), JsonSerializer.Serialize(record));
+            if (stage == "source-accepted")
+                File.WriteAllText(Path.Combine(directory, "head-transition.json"), JsonSerializer.Serialize(new HeadTransition("n+1", [record.Source])));
             selectedSource = record.Source.CheckpointId;
         }
         return new(stage, Environment.ProcessId, result.Context.Admission, provider.Imports, provider.Effects,

@@ -50,12 +50,17 @@ public sealed class M4AprContextTests
         var accepted = new AprCheckpointRecord(new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()), new("n-1", "old-input", "snapshot", "authority"), true, 1);
         var failed = new AprCheckpointRecord(new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()), new("n", "failed-input", "snapshot", "authority"), false, 2);
         Assert.Same(failed, AprCheckpointSelector.Select([accepted, failed], failed.Binding, false));
-        Assert.Same(accepted, AprCheckpointSelector.Select([accepted, failed], new("n+1", "new-input", "snapshot", "authority"), true));
+        var newHead = new AprCheckpointBinding("n+1", "new-input", "snapshot", "authority");
+        var authorized = new HashSet<ContextCheckpointInfo> { accepted.Source };
+        Assert.Same(accepted, AprCheckpointSelector.Select([accepted, failed], newHead, true, authorized));
+        Assert.Throws<InvalidOperationException>(() => AprCheckpointSelector.Select([accepted, failed], newHead, true));
+        Assert.Throws<InvalidOperationException>(() => AprCheckpointSelector.Select([accepted, failed], newHead, true,
+            new HashSet<ContextCheckpointInfo>()));
         foreach (var mismatch in new[] { failed.Binding with { InputDigest = "other" }, failed.Binding with { Target = "other" },
             failed.Binding with { Authority = "other" }, failed.Binding with { Head = "other" } })
             Assert.Throws<InvalidOperationException>(() => AprCheckpointSelector.Select([accepted, failed], mismatch, false));
         Assert.Throws<InvalidOperationException>(() => AprCheckpointSelector.Select([accepted, accepted with { Source = failed.Source }],
-            new("n+1", "new-input", "snapshot", "authority"), true));
+            newHead, true, new HashSet<ContextCheckpointInfo> { accepted.Source, failed.Source }));
     }
 
     [Fact]
