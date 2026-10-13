@@ -41,7 +41,8 @@ internal static class AprRoundProcessFixture
         var request = new AgentRequest(Guid.NewGuid(), "CURRENT_HOST_INSTRUCTIONS", [], new(4, TimeSpan.FromMinutes(30)),
             SolusAgent.Api.Capabilities.AgentCapability.None, limits);
         var authorityDirectory = Path.Combine(directory, "round-authorization");
-        var agent = CandidateContextFixture.Agent(provider, resumed ? new FileContextAuthority(authorityDirectory) : null,
+        var authority = resumed ? new AprFreshProcessFixture.CountingAuthority(authorityDirectory) : null;
+        var agent = CandidateContextFixture.Agent(provider, authority,
             options: new(clock, requireContinuation: true));
         var host = new AprBusinessHost((IAgent)agent, contextCandidateAgent: agent, acceptance: new(Path.Combine(directory, "round-business")));
         ContextExecutionRequest context;
@@ -81,7 +82,7 @@ internal static class AprRoundProcessFixture
         var usage = result.Context.Outcome?.Usage;
         return new(stage, Environment.ProcessId, result.Context.Admission, provider.Imports, provider.Effects, submissions,
             host.Acceptance.AcceptedCount, host.Acceptance.EffectCount, effects, result.Candidates?.HistoricalReceipts.Count ?? 0,
-            result.Context.History.Sum(h => h.Usage.Attempts.Count), selected, 0,
+            result.Context.History.Sum(h => h.Usage.Attempts.Count), selected, authority?.Claims ?? 0,
             usage?.Accounting?.Input.ConservativeChargeTokens ?? 0,
             result.Context.History.Sum(h => h.Usage.Accounting?.Input.ConservativeChargeTokens ?? 0), usage?.InputTokens.ObservedTokens,
             clock.GetTimestamp(), timers.ToArray(), result.Candidates?.StopReason,

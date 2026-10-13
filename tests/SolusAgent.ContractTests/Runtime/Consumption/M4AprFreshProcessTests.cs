@@ -54,6 +54,7 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         Assert.NotEqual(first.Pid, second.Pid);
         Assert.Equal(1, first.Dispatches); Assert.Equal(100000, first.CurrentCharge); Assert.Null(first.MeasuredInput);
         Assert.Equal(ContextAdmission.Supplied, second.Admission);
+        Assert.Equal(1, second.Claims);
         Assert.Equal(1, second.Dispatches); Assert.Equal(100000, second.CurrentCharge);
         Assert.Equal(100000, second.HistoricalCharge); Assert.Null(second.MeasuredInput);
         Assert.True(second.HistoricalInputUnknown); Assert.NotEqual(first.Round, second.Round);
@@ -74,6 +75,7 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         Assert.Equal(CandidateStopReason.Cancelled, first.Stop);
         Assert.NotEqual(first.Round, second.Round);
         Assert.Equal(ContextAdmission.Supplied, second.Admission);
+        Assert.Equal(1, second.Claims);
         Assert.Equal(TimeSpan.FromMinutes(25).Ticks, second.ClockTicks);
         Assert.Equal(CandidateStopReason.Completed, second.Stop); Assert.Equal(1, second.Submissions);
         Assert.Contains(TimeSpan.FromMinutes(30).Ticks, first.RunTimers!);
@@ -82,6 +84,22 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         Assert.Equal(2, retry.Dispatches); Assert.Equal(TimeSpan.FromMinutes(31).Ticks, retry.ClockTicks);
         Assert.Equal(CandidateStopReason.DurationLimit, retry.Stop);
         Assert.Single(retry.RunTimers!, t => t == TimeSpan.FromMinutes(30).Ticks);
+    }
+
+    [Fact]
+    public async Task UnknownHostReceiptAdmitsItsHistoryButBlocksNewDispatchSubmissionAndBusinessEffects()
+    {
+        var directory = NewDirectory();
+        var first = await Run(directory, "source-unknown");
+        var second = await Run(directory, "resume-unknown");
+        Assert.NotEqual(first.Pid, second.Pid);
+        Assert.Equal(1, first.Submissions); Assert.Equal(0, first.Accepted); Assert.Equal(0, first.NewEffects);
+        Assert.Equal(CandidateStopReason.UnknownAcknowledgement, first.Stop);
+        Assert.Equal(ContextAdmission.Supplied, second.Admission); Assert.Equal(1, second.Claims); Assert.Equal(1, second.Imports);
+        Assert.Equal(CandidateStopReason.UnknownAcknowledgement, second.Stop);
+        Assert.Equal(1, second.HistoricalReceipts); Assert.Equal(0, second.Dispatches);
+        Assert.Equal(0, second.Submissions); Assert.Equal(0, second.Accepted); Assert.Equal(0, second.NewEffects);
+        Assert.Single(File.ReadAllLines(Path.Combine(directory, "provider-entries.txt")));
     }
 
     [Fact]
@@ -186,6 +204,8 @@ internal static class AprFreshProcessFixture
         {
             submissions++;
             submittedIds.Add(s.SubmissionId);
+            if (stage == "source-unknown") return ValueTask.FromResult<CandidateFeedback?>(
+                new(s.ExecutionId, s.SubmissionId, CandidateAcknowledgement.Unknown));
             return ValueTask.FromResult<CandidateFeedback?>(new(s.ExecutionId, s.SubmissionId,
                 CandidateAcknowledgement.Acknowledged, CandidateDecision.Accept, CandidateContinuation.End));
         });
@@ -209,7 +229,8 @@ internal static class AprFreshProcessFixture
                     [new(AgentInputSource.Repository, "NEW_HEAD_INPUT")], request.Bounds, request.RequiredCapabilities, request.UsageLimits);
                 if (stage == "wrong-input") request = new(request.ExecutionId, "UNRELATED_INSTRUCTIONS", request.Data,
                     request.Bounds, request.RequiredCapabilities, request.UsageLimits);
-                var records = Directory.GetFiles(directory, "source-*.record.json").Select(p =>
+                var recordPaths = Directory.GetFiles(directory, "source-*.record.json");
+                var records = recordPaths.Select(p =>
                     JsonSerializer.Deserialize<AprCheckpointRecord>(File.ReadAllText(p))!).ToArray();
                 var binding = new AprCheckpointBinding(stage == "new-head" ? "n+1" : "n",
                     InputDigest(request),
@@ -221,7 +242,8 @@ internal static class AprFreshProcessFixture
                     return new(stage, Environment.ProcessId, ContextAdmission.Rejected, provider.Imports, provider.Effects, submissions,
                         host.Acceptance.AcceptedCount, host.Acceptance.EffectCount, 0, 0, 0, null, authority?.Claims ?? 0);
                 }
-                var saved = Path.Combine(directory, selected.Accepted ? "source-accepted" : "source-failed");
+                var recordPath = recordPaths.Single(p => JsonSerializer.Deserialize<AprCheckpointRecord>(File.ReadAllText(p))!.Source == selected.Source);
+                var saved = Path.Combine(directory, Path.GetFileName(recordPath).Replace(".record.json", "", StringComparison.Ordinal));
                 FileContextAuthority.Save(authorization, FileContextAuthority.Read(saved), selected.Source);
                 grant = new(Guid.NewGuid(), selected.Source, request.ExecutionId, Guid.NewGuid());
                 File.WriteAllText(grantPath, JsonSerializer.Serialize(grant));
@@ -245,6 +267,7 @@ internal static class AprFreshProcessFixture
         return new(stage, Environment.ProcessId, result.Context.Admission, provider.Imports, provider.Effects,
             submissions, host.Acceptance.AcceptedCount, host.Acceptance.EffectCount, newEffects,
             result.Candidates?.HistoricalReceipts.Count ?? 0, result.Context.History.Sum(h => h.Usage.Attempts.Count), selectedSource, authority?.Claims ?? 0,
+            Stop: result.Candidates?.StopReason,
             AcceptedIds: host.Acceptance.Accepted.Select(r => r.SubmissionId).ToArray(),
             HistoricalIds: result.Candidates?.HistoricalReceipts.Select(r => r.SubmissionId).ToArray(), SubmittedIds: submittedIds.ToArray());
     }
@@ -252,7 +275,7 @@ internal static class AprFreshProcessFixture
     private static string InputDigest(AgentRequest request) => Convert.ToHexString(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(new { request.Instructions, request.Data })));
 
-    private sealed class CountingAuthority(string directory) : IRuntimeContextAuthority
+    internal sealed class CountingAuthority(string directory) : IRuntimeContextAuthority
     {
         private readonly FileContextAuthority inner = new(directory);
         internal int Claims { get; private set; }
