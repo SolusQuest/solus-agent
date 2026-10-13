@@ -103,7 +103,8 @@ internal static partial class OrdinaryContextCodec
             || saved.RetryEligible && request.Request.UsageLimits?.RetryPolicy is null)) throw new ContextRejected(ContextRejectionCode.InvalidRunTransition);
         if (saved.Candidates is not null && saved.ToolCursor is { } candidateTools
             && EffectiveMembers(saved, config, options, out _).Any(m => m.ModelAttempt.Matches(candidateTools)
-                && m.State != Tools.ToolMemberState.Succeeded))
+                && m.State != Tools.ToolMemberState.Succeeded)
+            && saved.Candidates.Cursor != CandidateCursor.ProducingAdmittedEpisode)
             throw new ContextRejected(ContextRejectionCode.UnsupportedContext);
         if (saved.Candidates is not null || saved.Records.Any(r => r.ToolModel is not null)) return DecodeTools(request, saved, config, options, bytes.Length);
         var records = Rehydrate(saved, config, options);

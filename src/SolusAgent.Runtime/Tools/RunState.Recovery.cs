@@ -10,12 +10,13 @@ internal sealed partial class RunState
 {
     internal ProviderAttempt? RestoredToolCursor => restored?.Checkpoint.ToolCursor;
     private readonly Dictionary<int, int> recoveryReservations = [];
+    private int RecoveryRecordCount => (restored?.Checkpoint.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0) ?? 0) + recoveryActions.Count;
     internal bool ReserveRecoveryBatch(IReadOnlyList<int> indices)
     {
-        var history = restored?.Checkpoint.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0) ?? 0;
         if (indices.Count == 0) return true;
-        if (records.Count + history + recoveryActions.Count > Options.MaximumRecords - indices.Count
-            || toolRecords.Count + history + recoveryActions.Count > Options.MaximumRecords - indices.Count)
+        var newResults = indices.Count(i => toolRecords[i].Result is null);
+        if (records.Count + newResults + candidateMetadataRecords + RecoveryRecordCount > Options.MaximumRecords - indices.Count
+            || toolRecords.Count + candidateMetadataRecords + RecoveryRecordCount > Options.MaximumRecords - indices.Count)
         { Close(RuntimeStop.ResourceLimit); return false; }
         long bytes = 0;
         foreach (var index in indices)

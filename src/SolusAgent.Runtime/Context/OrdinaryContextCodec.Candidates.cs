@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SolusAgent.Api.Candidates;
+using SolusAgent.Api.Context;
 using SolusAgent.Api.Execution;
 using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
@@ -10,6 +11,22 @@ namespace SolusAgent.Runtime.Context;
 internal static partial class OrdinaryContextCodec
 {
     internal static int CandidateBytes(SavedCandidates value) => JsonSerializer.SerializeToUtf8Bytes(value, Json).Length;
+
+    // Reserve a possible Final and the same worst-case receipt/follow-on bookkeeping as Host delivery.
+    // These sizing-only identities never enter the restored ledger or authorize work.
+    private static int CandidateProductionGrowth(SavedCandidates ledger, int finalIndex, ContextExecutionRequest request)
+    {
+        var submissionId = Guid.NewGuid();
+        var submission = new SavedCandidateSubmission(ledger.Episodes[^1].Id, request.Request.ExecutionId, submissionId,
+            finalIndex, true, request.RoundGrant!.RoundId,
+            new(request.Request.ExecutionId, submissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue), null);
+        var prospective = ledger with
+        {
+            Submissions = [.. ledger.Submissions, submission],
+            Episodes = [.. ledger.Episodes, new(Guid.NewGuid(), ledger.Episodes[^1].WorkId, submissionId, null, null, null)]
+        };
+        return Math.Max(0, CandidateBytes(prospective) - CandidateBytes(ledger));
+    }
 
     private static bool PermitsCandidateSubmission(SavedAttempt final) => final is
         { AcceptedFinal: true, Stop: RuntimeStop.None, SettlementStop: RuntimeStop.None, ClosureAcknowledged: true };

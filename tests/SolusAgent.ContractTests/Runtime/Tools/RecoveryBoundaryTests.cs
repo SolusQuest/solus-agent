@@ -84,9 +84,10 @@ public sealed class RecoveryBoundaryTests
     public async Task WholeRemainingRecordReservationRejectsOneBelowBeforeClaim()
     {
         var source = await PartialRecoveryTests.Capture();
-        var (below, _, provider) = await PartialRecoveryTests.Resume(source, options: new(maximumRecords: 5, requireContinuation: true));
+        // Four saved inputs, one newly projected result and two recovery actions require seven slots.
+        var (below, _, provider) = await PartialRecoveryTests.Resume(source, options: new(maximumRecords: 6, requireContinuation: true));
         Assert.Equal(ContextAdmission.Rejected, below.Admission); Assert.Equal(0, provider.Imports); Assert.Equal(0, source.Recovery.Queries);
-        var (exact, _, _) = await PartialRecoveryTests.Resume(source, options: new(maximumRecords: 6, requireContinuation: true));
+        var (exact, _, _) = await PartialRecoveryTests.Resume(source, options: new(maximumRecords: 7, requireContinuation: true));
         Assert.Equal(ContextAdmission.Supplied, exact.Admission); Assert.Equal(AgentTerminationReason.Completed, exact.Outcome!.Reason);
         Assert.Equal(ContextCaptureStatus.Delivered, exact.CaptureStatus);
     }
