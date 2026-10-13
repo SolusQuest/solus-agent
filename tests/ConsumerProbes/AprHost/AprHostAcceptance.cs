@@ -42,7 +42,23 @@ public sealed class AprHostAcceptance
     private readonly object gate = new();
     private readonly List<AprAcceptanceRecord> accepted = [];
     private readonly HashSet<Guid> applied = [];
+    private readonly AprAcceptanceStore? store;
     private int effectCount;
+
+    /// <summary>Creates in-memory acceptance, or reopens a trusted synthetic file journal. This journal demonstrates Host conformance, not arbitrary-crash or distributed transaction durability.</summary>
+    public AprHostAcceptance(string? storageDirectory = null)
+    {
+        if (storageDirectory is null) return;
+        store = new(storageDirectory);
+        foreach (var record in store.ReadAccepted())
+            accepted.Add(new(record.ExecutionId, record.SubmissionId, record.RepairsSubmissionId, new(record.ItemId, record.Value)));
+        foreach (var id in store.ReadApplied())
+        {
+            if (!accepted.Any(r => r.SubmissionId == id)) throw new InvalidOperationException("An effect has no committed Host acceptance.");
+            applied.Add(id);
+        }
+        effectCount = applied.Count;
+    }
 
     /// <summary>Gets the defensive ordered snapshot of Host-owned accepted candidates.</summary>
     public IReadOnlyList<AprAcceptanceRecord> Accepted
@@ -81,11 +97,16 @@ public sealed class AprHostAcceptance
         ArgumentNullException.ThrowIfNull(item);
         lock (gate)
         {
-            if (accepted.Any(record => record.SubmissionId == submissionId))
+            var previous = accepted.FirstOrDefault(record => record.SubmissionId == submissionId);
+            if (previous is not null)
             {
+                if (previous.ExecutionId != executionId || previous.RepairsSubmissionId != repairsSubmissionId
+                    || previous.Item.ItemId != item.ItemId || previous.Item.Value != item.Value)
+                    throw new InvalidOperationException("A Host submission identity cannot change its accepted facts.");
                 return;
             }
 
+            store?.RecordAccepted(new(executionId, submissionId, repairsSubmissionId, item.ItemId, item.Value));
             accepted.Add(new AprAcceptanceRecord(executionId, submissionId, repairsSubmissionId, item));
         }
     }
@@ -102,13 +123,15 @@ public sealed class AprHostAcceptance
             var newlyApplied = 0;
             foreach (var record in accepted)
             {
-                if (applied.Add(record.SubmissionId))
+                if (!applied.Contains(record.SubmissionId))
                 {
-                    newlyApplied++;
+                    var created = store?.Apply(record.SubmissionId) ?? true;
+                    applied.Add(record.SubmissionId);
+                    if (created) newlyApplied++;
                 }
             }
 
-            effectCount += newlyApplied;
+            effectCount = applied.Count;
             return newlyApplied;
         }
     }

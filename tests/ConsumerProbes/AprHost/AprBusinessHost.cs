@@ -44,22 +44,41 @@ public sealed class AprBusinessHost
     private readonly IAgent agent;
     private readonly ICandidateAgent? candidateAgent;
     private readonly IContextAgent? contextAgent;
+    private readonly IContextCandidateAgent? contextCandidateAgent;
 
     /// <summary>
     /// Creates the business Host over the outer agent seam and its optional candidate and context
-    /// seams. The same implementation object may supply all three; a missing optional seam is
+    /// seams. The same implementation object may supply every seam; a missing optional seam is
     /// rejected before any work instead of silently falling back to another seam.
     /// </summary>
     /// <exception cref="ArgumentNullException">The outer agent seam is null.</exception>
-    public AprBusinessHost(IAgent agent, ICandidateAgent? candidateAgent = null, IContextAgent? contextAgent = null)
+    public AprBusinessHost(IAgent agent, ICandidateAgent? candidateAgent = null, IContextAgent? contextAgent = null,
+        IContextCandidateAgent? contextCandidateAgent = null, AprHostAcceptance? acceptance = null)
     {
         this.agent = agent ?? throw new ArgumentNullException(nameof(agent));
         this.candidateAgent = candidateAgent;
         this.contextAgent = contextAgent;
+        this.contextCandidateAgent = contextCandidateAgent;
+        Acceptance = acceptance ?? new();
     }
 
     /// <summary>Gets the Host-owned synthetic acceptance and product-effect state of this Host.</summary>
-    public AprHostAcceptance Acceptance { get; } = new();
+    public AprHostAcceptance Acceptance { get; }
+
+    /// <summary>Delegates one combined context/candidate execution and records correlated Host acceptance. No separate-call fallback is performed.</summary>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <exception cref="NotSupportedException">The combined seam was not supplied.</exception>
+    public ValueTask<ContextCandidateExecutionResult> ExecuteCandidatesWithContextAsync(ContextExecutionRequest request,
+        CandidateExecutionBounds bounds, ICandidateHost feedback, IRestrictedContextSink? contextSink = null,
+        IProgress<AgentProgress>? progress = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(bounds);
+        ArgumentNullException.ThrowIfNull(feedback);
+        if (contextCandidateAgent is null) throw new NotSupportedException("The combined context/candidate seam is required.");
+        return contextCandidateAgent.ExecuteCandidatesWithContextAsync(request, bounds,
+            new RecordingCandidateHost(feedback, Acceptance), contextSink, progress, cancellationToken);
+    }
 
     /// <summary>Executes the ordinary outer seam without candidate or context behavior.</summary>
     /// <exception cref="ArgumentNullException">The request is null.</exception>
