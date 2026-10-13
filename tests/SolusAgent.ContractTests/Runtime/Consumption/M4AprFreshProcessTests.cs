@@ -29,6 +29,45 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         long ClockTicks = 0, long[]? RunTimers = null, CandidateStopReason? Stop = null, bool HistoricalInputUnknown = false,
         Guid? Round = null, Guid[]? AcceptedIds = null, Guid[]? HistoricalIds = null, Guid[]? SubmittedIds = null);
 
+    [Theory]
+    [InlineData(false, "payload")]
+    [InlineData(true, "payload")]
+    [InlineData(false, "source-info")]
+    public async Task SelectedCheckpointMustMatchCaptureTimeFingerprintAndSourceBeforeReauthorization(bool newHead, string corruption)
+    {
+        var directory = NewDirectory();
+        var stage = newHead ? "source-accepted" : "source-failed";
+        var source = await Run(directory, stage);
+        if (newHead) await Run(directory, "source-failed");
+        var saved = Path.Combine(directory, stage);
+        if (corruption == "payload")
+        {
+            var envelope = FileContextAuthority.Read(saved);
+            var stored = new FileContextAuthority.StoredEnvelope(envelope.ImplementationId, envelope.FormatVersion,
+                envelope.CompatibilityVersion, [.. envelope.CopyRestrictedPayload(), (byte)' ']);
+            File.WriteAllText(Path.Combine(saved, "checkpoint.json"), JsonSerializer.Serialize(stored));
+            Assert.False(CryptographicOperations.FixedTimeEquals(FileContextAuthority.Selection(saved).Fingerprint,
+                OrdinaryFixture.Fingerprint(FileContextAuthority.Read(saved))));
+        }
+        else
+        {
+            var path = Path.Combine(directory, stage + ".record.json");
+            var record = JsonSerializer.Deserialize<AprCheckpointRecord>(File.ReadAllText(path))!;
+            File.WriteAllText(path, JsonSerializer.Serialize(record with { Source = record.Source with { CheckpointId = Guid.NewGuid() } }));
+        }
+        var before = File.ReadAllLines(Path.Combine(directory, "provider-entries.txt")).Length;
+        Assert.False(Directory.Exists(Path.Combine(directory, "authorization")));
+        var denied = await Run(directory, newHead ? "new-head" : "resume");
+        Assert.NotEqual(source.Pid, denied.Pid);
+        Assert.Equal(ContextAdmission.Rejected, denied.Admission);
+        Assert.Equal(0, denied.Claims); Assert.Equal(0, denied.Imports); Assert.Equal(0, denied.Dispatches);
+        Assert.Equal(0, denied.Submissions); Assert.Equal(0, denied.NewEffects);
+        Assert.Equal(newHead ? 1 : 0, denied.Accepted); Assert.Equal(newHead ? 1 : 0, denied.Effects);
+        Assert.Equal(before, File.ReadAllLines(Path.Combine(directory, "provider-entries.txt")).Length);
+        Assert.False(Directory.Exists(Path.Combine(directory, "authorization")));
+        Assert.False(File.Exists(Path.Combine(directory, "grant.json")));
+    }
+
     [Fact]
     public async Task SameCandidateCheckpointRecoversFixedSnapshotReadWhileOriginalInvocationIsOutstanding()
     {
@@ -295,6 +334,9 @@ internal static class AprFreshProcessFixture
         });
         var request = CandidateContextFixture.Request(limits: new(maximumLogicalCalls: 4,
             maximumPhysicalDispatches: stage == "source-failed" ? 1 : 4, retryPolicy: new(2)));
+        M4AprFreshProcessTests.Observation RejectedSelection() => new(stage, Environment.ProcessId, ContextAdmission.Rejected,
+            provider.Imports, provider.Effects, submissions, host.Acceptance.AcceptedCount, host.Acceptance.EffectCount,
+            0, 0, 0, null, authority?.Claims ?? 0);
         ContextExecutionRequest context;
         Guid? selectedSource = null;
         if (source) context = new(request, ContextExecutionIntent.Fresh);
@@ -323,13 +365,17 @@ internal static class AprFreshProcessFixture
                 try { selected = AprCheckpointSelector.Select(records, binding, stage == "new-head"); }
                 catch (InvalidOperationException) when (stage is "wrong-input" or "wrong-target" or "wrong-authority")
                 {
-                    return new(stage, Environment.ProcessId, ContextAdmission.Rejected, provider.Imports, provider.Effects, submissions,
-                        host.Acceptance.AcceptedCount, host.Acceptance.EffectCount, 0, 0, 0, null, authority?.Claims ?? 0);
+                    return RejectedSelection();
                 }
                 var recordPath = recordPaths.Single(p => JsonSerializer.Deserialize<AprCheckpointRecord>(File.ReadAllText(p))!.Source == selected.Source);
                 var saved = Path.Combine(directory, Path.GetFileName(recordPath).Replace(".record.json", "", StringComparison.Ordinal));
-                FileContextAuthority.Save(authorization, FileContextAuthority.Read(saved), selected.Source);
-                grant = new(Guid.NewGuid(), selected.Source, request.ExecutionId, Guid.NewGuid());
+                var envelope = FileContextAuthority.Read(saved);
+                var trusted = FileContextAuthority.Selection(saved);
+                if (trusted.Info != selected.Source || !CryptographicOperations.FixedTimeEquals(trusted.Fingerprint,
+                    OrdinaryFixture.Fingerprint(envelope))) return RejectedSelection();
+                // Copy only the verified in-memory snapshot, never re-authorize bytes freshly read from storage.
+                FileContextAuthority.Save(authorization, envelope, trusted.Info);
+                grant = new(Guid.NewGuid(), trusted.Info, request.ExecutionId, Guid.NewGuid());
                 File.WriteAllText(grantPath, JsonSerializer.Serialize(grant));
             }
             selectedSource = grant.Source.CheckpointId;
