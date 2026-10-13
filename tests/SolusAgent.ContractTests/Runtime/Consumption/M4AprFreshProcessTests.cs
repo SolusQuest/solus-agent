@@ -29,6 +29,77 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         long ClockTicks = 0, long[]? RunTimers = null, CandidateStopReason? Stop = null, bool HistoricalInputUnknown = false,
         Guid? Round = null, Guid[]? AcceptedIds = null, Guid[]? HistoricalIds = null, Guid[]? SubmittedIds = null);
 
+    [Fact]
+    public async Task SameCandidateCheckpointRecoversFixedSnapshotReadWhileOriginalInvocationIsOutstanding()
+    {
+        var directory = NewDirectory(); var running = Start(directory, "mixed-source-read");
+        Observation resumed; Observation duplicate; Observation? source = null;
+        try
+        {
+            await AprMixedProcessFixture.WaitFile(Path.Combine(directory, "source-ready"));
+            var original = ReadMixed(directory, "mixed-source-read");
+            Assert.Equal(1, original.CounterEffects); Assert.Equal(0, original.ReadMutations);
+            Assert.Equal(1, original.Accepted); Assert.Equal(1, original.Effects);
+            Assert.Equal(2, original.Dispatches); Assert.Equal(2, original.ToolCharges);
+            resumed = await Run(directory, "mixed-resume"); duplicate = await Run(directory, "mixed-duplicate");
+            Assert.Equal(ContextAdmission.Supplied, resumed.Admission);
+            var recovered = ReadMixed(directory, "mixed-resume");
+            Assert.Equal(1, recovered.Claims); Assert.Equal(1, recovered.Imports); Assert.Equal(1, recovered.Dispatches);
+            Assert.Equal(0, recovered.OriginalEntries); Assert.Equal(1, recovered.Queries);
+            Assert.Equal(1, recovered.CounterEntries);
+            Assert.Equal(2, recovered.CounterEffects); Assert.Equal(8, recovered.CounterTotal); Assert.Equal(0, recovered.ReadMutations);
+            Assert.Equal(2, recovered.ToolCharges); Assert.Equal(2, recovered.HistoricalToolCharges);
+            Assert.True(recovered.CompleteBatch); Assert.True(recovered.PriorHostCommitted);
+            Assert.Equal(original.OriginalSubmission, recovered.OriginalSubmission);
+            Assert.Equal(1, recovered.HistoricalReceipts); Assert.Equal(1, recovered.Submissions);
+            Assert.Equal(2, recovered.Accepted); Assert.Equal(2, recovered.Effects); Assert.Equal(1, recovered.NewEffects);
+            Assert.Equal(ContextAdmission.Rejected, duplicate.Admission);
+            var denied = ReadMixed(directory, "mixed-duplicate");
+            Assert.Equal(1, denied.Claims); Assert.Equal(0, denied.Imports); Assert.Equal(0, denied.Dispatches);
+            Assert.Equal(0, denied.OriginalEntries); Assert.Equal(0, denied.Queries); Assert.Equal(0, denied.CounterEntries);
+            Assert.Equal(0, denied.Submissions); Assert.Equal(0, denied.NewEffects);
+        }
+        finally { File.WriteAllText(Path.Combine(directory, "release-original"), "release"); source = await Finish(running); }
+        Assert.Equal(3, new[] { source.Pid, resumed.Pid, duplicate.Pid }.Distinct().Count());
+        Assert.True(ReadMixed(directory, "mixed-source-read").FrozenAfterLateReturn);
+    }
+
+    [Theory]
+    [InlineData("mutation", "resume")]
+    [InlineData("metadata", "resume")]
+    [InlineData("read", "wrong-target")]
+    [InlineData("read", "wrong-authority")]
+    [InlineData("read", "wrong-tool")]
+    [InlineData("read", "insufficient")]
+    public async Task MixedRecoveryDeniesUnsafeOrMismatchedContinuationBeforeNewEffects(string sourceKind, string transition)
+    {
+        var directory = NewDirectory(); var sourceStage = "mixed-source-" + sourceKind;
+        var running = Start(directory, sourceStage);
+        try
+        {
+            await AprMixedProcessFixture.WaitFile(Path.Combine(directory, "source-ready"));
+            var denied = await Run(directory, "mixed-" + transition);
+            Assert.Equal(transition == "insufficient" ? ContextAdmission.Supplied : ContextAdmission.Rejected, denied.Admission);
+            var observation = ReadMixed(directory, "mixed-" + transition);
+            Assert.Equal(transition == "insufficient" ? 1 : 0, observation.Imports);
+            Assert.Equal(0, observation.Dispatches); Assert.Equal(0, observation.CounterEntries);
+            Assert.Equal(0, observation.OriginalEntries); Assert.Equal(0, observation.Queries); Assert.Equal(0, observation.Submissions);
+            Assert.Equal(0, observation.NewEffects); Assert.Equal(1, observation.CounterEffects); Assert.Equal(1, observation.Effects);
+            Assert.Equal(sourceKind == "mutation" ? 1 : 0, observation.ReadMutations);
+            Assert.Equal(transition is "wrong-authority" or "insufficient" ? 1 : 0, observation.Claims);
+            if (transition == "insufficient")
+            {
+                Assert.Equal(CandidateStopReason.RuntimeLimit, denied.Stop);
+                Assert.Equal(0, observation.ToolCharges);
+            }
+        }
+        finally { File.WriteAllText(Path.Combine(directory, "release-original"), "release"); await Finish(running); }
+        Assert.True(ReadMixed(directory, sourceStage).FrozenAfterLateReturn);
+    }
+
+    private static AprMixedProcessFixture.MixedObservation ReadMixed(string directory, string stage) =>
+        JsonSerializer.Deserialize<AprMixedProcessFixture.MixedObservation>(File.ReadAllText(Path.Combine(directory, stage + "-mixed.json")))!;
+
     [Theory]
     [InlineData("wrong-input")]
     [InlineData("wrong-target")]
@@ -150,8 +221,9 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
         var stage = Environment.GetEnvironmentVariable(StageVariable);
         if (stage is null) return;
         var directory = Environment.GetEnvironmentVariable(DirectoryVariable) ?? throw new InvalidOperationException("Missing APR child directory.");
-        var result = stage.StartsWith("round-", StringComparison.Ordinal)
-            ? await AprRoundProcessFixture.Execute(directory, stage) : await AprFreshProcessFixture.Execute(directory, stage);
+        var result = stage.StartsWith("mixed-", StringComparison.Ordinal) ? await AprMixedProcessFixture.Execute(directory, stage)
+            : stage.StartsWith("round-", StringComparison.Ordinal) ? await AprRoundProcessFixture.Execute(directory, stage)
+            : await AprFreshProcessFixture.Execute(directory, stage);
         File.WriteAllText(Path.Combine(directory, stage + "-observation.json"), JsonSerializer.Serialize(result));
     }
 
@@ -163,22 +235,34 @@ public sealed class M4AprFreshProcessTests(ITestOutputHelper output)
     }
 
     private async Task<Observation> Run(string directory, string stage)
+        => await Finish(Start(directory, stage));
+
+    private sealed record ChildRun(Process Process, Task<string> Output, Task<string> Error, string Directory, string Stage);
+
+    private static ChildRun Start(string directory, string stage)
     {
         var info = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         info.ArgumentList.Add("vstest"); info.ArgumentList.Add(typeof(M4AprFreshProcessTests).Assembly.Location);
         info.ArgumentList.Add("/TestCaseFilter:FullyQualifiedName=SolusAgent.ContractTests.Runtime.Consumption.M4AprFreshProcessTests.ChildStage");
         info.ArgumentList.Add("/Logger:trx;LogFileName=" + stage + ".trx"); info.ArgumentList.Add("/ResultsDirectory:" + directory);
         info.Environment[StageVariable] = stage; info.Environment[DirectoryVariable] = directory;
-        using var process = Process.Start(info) ?? throw new InvalidOperationException("APR child did not start.");
+        var process = Process.Start(info) ?? throw new InvalidOperationException("APR child did not start.");
         var standardOutput = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
+        return new(process, standardOutput, error, directory, stage);
+    }
+
+    private async Task<Observation> Finish(ChildRun child)
+    {
+        using var process = child.Process; var directory = child.Directory; var stage = child.Stage;
         try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(90)); }
         catch { if (!process.HasExited) process.Kill(entireProcessTree: true); throw; }
-        Assert.True(process.ExitCode == 0, (await standardOutput) + (await error));
+        Assert.True(process.ExitCode == 0, (await child.Output) + (await child.Error));
         var counters = XDocument.Load(Path.Combine(directory, stage + ".trx")).Descendants().Single(e => e.Name.LocalName == "Counters");
         Assert.Equal("1", counters.Attribute("executed")!.Value); Assert.Equal("1", counters.Attribute("passed")!.Value);
         var observation = JsonSerializer.Deserialize<Observation>(File.ReadAllText(Path.Combine(directory, stage + "-observation.json")))!;
         Assert.Equal(stage, observation.Stage); Assert.NotEqual(Environment.ProcessId, observation.Pid);
         output.WriteLine(JsonSerializer.Serialize(observation));
+        if (stage.StartsWith("mixed-", StringComparison.Ordinal)) output.WriteLine("Mixed: " + JsonSerializer.Serialize(ReadMixed(directory, stage)));
         return observation;
     }
 }
