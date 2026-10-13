@@ -31,6 +31,7 @@ internal static class PersistenceChild
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "deepseek-restoration-child") return await RuntimeIntegration.RestorationChild.Run(args);
         // Preserve every other command, including future C1-owned routes and unknown-argument exit behavior.
         if (args.Length == 0 || args[0] != "deepseek-persistence-child") return await OrdinaryContextChild.Main(args);
         if (args.Length != 3) return 2;

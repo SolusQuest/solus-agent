@@ -38,11 +38,20 @@ internal static class CandidateExecutionDriver
         var repairs = 0; var continuations = 0; var invokedSubmissions = 0;
         try
         {
+            // Restored facts remain capturable even if the new round is cut before its first effect.
+            if (restored is not null) state.Initialize();
             if (cut.Check() != RuntimeStop.None) return CutStop();
-            state.Initialize();
+            if (restored is null) state.Initialize();
             state.InitializeCandidateRetention(saved ?? new(cursor, [], []));
             if (!Reserve()) return StateStop();
             if (restored?.Pending is not null && !await state.WaitForRestoredRetryAsync().ConfigureAwait(false)) return StateStop();
+            if (cursor == CandidateCursor.ProducingAdmittedEpisode && state.RestoredToolCursor is { } tools
+                && state.ToolRecords.Any(m => m.ModelAttempt.Matches(tools) && m.State != ToolMemberState.Succeeded))
+            {
+                // Complete the original admitted episode's dependencies before reserving another provider turn.
+                if (!await PartialToolBatchOperation.ResumeAsync(state).ConfigureAwait(false)) return StateStop();
+                if (!Report()) return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed);
+            }
             while (true)
             {
                 if (cut.Check() != RuntimeStop.None) return CutStop();
@@ -133,7 +142,8 @@ internal static class CandidateExecutionDriver
                 // Reserve worst-case safe receipt/cursor bookkeeping before invoking a potentially effecting Host.
                 var prospective = Snapshot();
                 prospective.Submissions[^1] = pendingSubmission with { Invoked = true, InvocationRound = state.CandidateRoundId,
-                    Receipt = new(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue) };
+                    Receipt = new(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, CandidateAcknowledgement.Acknowledged, CandidateDecision.Reject, CandidateContinuation.Continue),
+                    Correction = OrdinaryContextCodec.MaximumCorrectionForReservation };
                 prospective = prospective with { Episodes = [.. prospective.Episodes, new(Guid.NewGuid(), state.CandidateWorkId, pendingSubmission.SubmissionId, null, null, null)] };
                 if (terminal is not null && !state.ReserveCandidateLedger(prospective)) return StateStop();
                 CandidateFeedback? feedback;

@@ -165,17 +165,23 @@ internal static partial class OrdinaryContextCodec
             if (member.Result is { } old) futurePayload -= CallBytes(old.Call) + Bytes(old.Json);
         }
         var actions = saved.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0);
+        var candidateRecords = saved.Candidates is { } ledger ? ledger.Episodes.Length + ledger.Submissions.Length : 0;
+        var candidateProduction = saved.Candidates?.Cursor == CandidateCursor.ProducingAdmittedEpisode && saved.ToolCursor is not null;
+        var reserveResponse = continuing && (saved.Candidates is null || saved.Pending is not null || candidateProduction);
         var projectedInputs = checked(count + remaining.Count(p => p.Member.Result is null));
-        if (count + remaining.Length + actions > options.MaximumRecords
+        var productionBytes = candidateProduction ? CandidateProductionGrowth(saved.Candidates!, projectedInputs, request) : 0;
+        // One possible model record, its submission and the prospective Host follow-on episode.
+        var productionRecords = candidateProduction ? 3 : 0;
+        if (projectedInputs + remaining.Length + actions + candidateRecords + productionRecords > options.MaximumRecords
             || projectedInputs > bounds.MaximumInputs
-            || saved.Members.Length + actions + remaining.Length > options.MaximumRecords
-            || futurePayload > bounds.MaximumRequestBytes || recoveryBytes > options.MaximumRetainedBytes - retained
-            || continuing && (saved.Candidates is null || saved.Pending is not null)
-                && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained - recoveryBytes) throw new JsonException();
+            || saved.Members.Length + actions + remaining.Length + candidateRecords > options.MaximumRecords
+            || futurePayload > bounds.MaximumRequestBytes || recoveryBytes + productionBytes > options.MaximumRetainedBytes - retained
+            || reserveResponse
+                && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained - recoveryBytes - productionBytes) throw new JsonException();
         if (count >= options.MaximumRecords || count > bounds.MaximumInputs || config.Tools.Count > bounds.MaximumTools
-            || payload > bounds.MaximumRequestBytes || saved.Candidates is null && saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
+            || payload > bounds.MaximumRequestBytes || (saved.Candidates is null || candidateProduction) && saved.Rounds.Sum(r => r.Usage.Attempts.Count) >= options.MaximumAttempts
             || retained >= options.MaximumRetainedBytes
-            || continuing && (saved.Candidates is null || saved.Pending is not null) && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
+            || reserveResponse && bounds.MaximumResponseBytes > options.MaximumRetainedBytes - retained) throw new JsonException();
         var last = saved.Rounds.SelectMany(r => r.Facts).LastOrDefault();
         if (last is null && saved.Candidates is not null)
             return new(saved, [], null, pending, continuing ? saved.Info.LogicalWorkId : Guid.NewGuid(), request.RoundGrant!.RoundId,
