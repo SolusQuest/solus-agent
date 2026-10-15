@@ -1,6 +1,6 @@
 # Project structure
 
-The four core production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime implements public bounded provider-turn startup and execution. The optional [DeepSeek provider draft](drafts/deepseek-provider.md) adds a fifth production library with actual bounded HTTP exchange. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools, Providers and DeepSeek.Adapter tests, while separate Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost libraries provide their actual independent compile boundaries. The generic [runtime tool adapter](drafts/runtime-tools.md) implements bounded model/tool turns; the [managed candidate driver](drafts/runtime-candidates.md) lives in Runtime `/Candidates`, with tests under `Runtime/Candidates` and `Runtime/Consumption` and the existing Api-only Hosts. Neither adds projects or reference edges. Generators, product-specific tools and complete context paths remain future work.
+The four core production libraries retain the selected dependency boundaries. `SolusAgent.Api` contains the executable outer [execution draft](drafts/agent-execution.md), and `SolusAgent.Tools.Api` contains the [prepared function-tool draft](drafts/function-tools.md); Runtime.Api contains the provider exchange draft; Runtime implements public bounded provider-turn startup and execution. The optional [DeepSeek provider draft](drafts/deepseek-provider.md) adds a fifth production library with actual bounded HTTP exchange. Under `tests/`, one managed runner holds Architecture, Execution, Usage, Candidates, Tools, Providers and DeepSeek.Adapter tests, while separate Api-only custom-agent, CustomTools, CustomProvider, ScribeHost and AprHost libraries provide their actual independent compile boundaries. The generic [runtime tool adapter](drafts/runtime-tools.md) implements bounded model/tool turns; the [managed candidate driver](drafts/runtime-candidates.md) lives in Runtime `/Candidates`, with tests under `Runtime/Candidates` and `Runtime/Consumption` and the existing Api-only Hosts. Neither adds projects or reference edges. Production M3 accounting/retries and M4 ordinary/tool/candidate context paths are implemented in the existing Runtime and test projects. Generators and product-specific tools remain future work.
 
 ## Layout
 
@@ -55,7 +55,7 @@ The XML solution format follows ContractScribe's .NET solution layout. All five 
 | `SolusAgent.Runtime` | Self-owned loop, per-run enforcement, context handling, and integration with shared tools and model providers. | Product result acceptance, campaign ownership, GitHub publication, or host storage policy. |
 | `SolusAgent.Providers.DeepSeek` | Optional bounded thinking/tool HTTP projection, transport, response admission, usage and restricted in-run replay. | Runtime loop, budget ledger, durable restoration, product acceptance or tool invocation authority. |
 
-Project filenames and output DLLs use these exact names. Root namespaces and assembly names use the SDK defaults rather than separate aliases. Distribution metadata will be planned later.
+Project filenames and output DLLs use these exact names. Root namespaces and assembly names use the SDK defaults rather than separate aliases. Each production assembly is an opt-in packable NuGet boundary; all five use the same internal version. [Internal package consumption](../10_workflow/package-consumption.md) owns feed, pins and support policy.
 
 ## Reference graph
 
@@ -89,6 +89,10 @@ Downstream product source, repository snapshots, fixtures, and machine-local pat
 
 `tests/ConsumerProbes/AprHost` is a non-packable test-only library with Api as its only production reference and no packages. It contains the APR-shaped synthetic business Host and its minimized synthetic item, acceptance and effect types with XML documentation, and it references neither Runtime.Api, Runtime, the tool or provider fixtures nor any downstream product source. The [APR-shaped draft consumption document](drafts/apr-consumption.md) owns its seams, synthetic policies and evidence matrix; its evaluated and compiled boundary checks run with the Apr tests in the existing runner.
 
+## Clean package consumers
+
+`tests/PackageConsumers/Foundation` contains four non-packable, separately compiled projects: Api-only business, Tools.Api-only custom tool, Runtime.Api-only custom provider and startup. Its `scenario.json` declares every project and executable entrypoint. `scripts/packages` packs the five production libraries and verifies copied consumers outside repository build inheritance using exact-version PackageReference, isolated caches, selected-source mapping and evaluated MSBuild boundaries. These consumer projects are not production packages or another contract-test runner. See [clean package foundation](../00_project/validation.md#clean-package-foundation) for execution and negative checks.
+
 ## Downstream consumption
 
 - Product agent orchestration depends on `SolusAgent.Api`.
@@ -103,4 +107,4 @@ A single downstream project can begin with these source-level responsibilities. 
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
-Additional provider implementations, provider packaging, additional agent implementations, production tool adapters, generators, further test runners and convenience hosting packages remain future work. The four core libraries and optional source adapter do not establish a distribution decision.
+Additional providers, agent implementations, product tool adapters, generators, further test runners and convenience hosting packages remain future work. The five current production assemblies are the selected five internal packages; no new production reference edge or hosting package is added.

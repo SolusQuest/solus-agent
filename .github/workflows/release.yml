@@ -1,0 +1,59 @@
+name: Internal release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical 0.1.0-internal.N version (never reused)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-package-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Require manual main dispatch and selected x64 host
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(uname -m)" = x86_64
+
+      - name: Check out the selected source once
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Set up native TypeScript
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          architecture: x64
+
+      - name: Prepare and validate offline archives
+        id: prepare
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/release/prepare.ts --version "$RELEASE_VERSION" --output artifacts/internal-release
+
+      - name: Publish the same archives then tag
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOLUS_INTERNAL_PACKAGE_ACCESS: ${{ vars.SOLUS_INTERNAL_PACKAGE_ACCESS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/publish.ts --version "$RELEASE_VERSION" --feed artifacts/internal-release
