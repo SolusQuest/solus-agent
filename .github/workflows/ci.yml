@@ -52,7 +52,7 @@ jobs:
         run: node scripts/packages/pack.ts --version 0.1.0-internal.1 --output artifacts/packages
 
       - name: Execute clean public package consumers
-        run: node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario foundation --scenario apr
+        run: node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario foundation --scenario apr --scenario scribe
 
       - name: Verify deliberate rejection and independent discovery
         run: node scripts/packages/verify-negatives.ts --feed artifacts/packages --version 0.1.0-internal.1

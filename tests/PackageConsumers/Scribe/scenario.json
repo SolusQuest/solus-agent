@@ -1,0 +1,10 @@
+{
+  "projects": [
+    "Business/Business.csproj",
+    "CustomTool/CustomTool.csproj",
+    "Startup/Startup.csproj"
+  ],
+  "entrypoints": [
+    "Startup/Startup.csproj"
+  ]
+}
