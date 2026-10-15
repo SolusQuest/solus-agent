@@ -56,3 +56,6 @@ jobs:
 
       - name: Verify deliberate rejection and independent discovery
         run: node scripts/packages/verify-negatives.ts --feed artifacts/packages --version 0.1.0-internal.1
+
+      - name: Execute deterministic package smoke
+        run: node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario smoke-offline

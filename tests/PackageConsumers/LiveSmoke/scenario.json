@@ -1,0 +1,7 @@
+{
+  "projects": ["LiveSmoke.csproj"],
+  "entrypoints": ["LiveSmoke.csproj"],
+  "aliases": ["smoke-offline"],
+  "liveAlias": "smoke-live",
+  "liveProfile": "deepseek-flash-thinking-high"
+}
