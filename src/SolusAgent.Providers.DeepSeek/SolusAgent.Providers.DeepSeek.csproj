@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
-    <PropertyGroup><GenerateDocumentationFile>true</GenerateDocumentationFile></PropertyGroup>
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>SolusAgent.Providers.DeepSeek</PackageId>
+        <Description>Optional bounded DeepSeek HTTP provider for the self-owned runtime.</Description>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    </PropertyGroup>
     <ItemGroup><ProjectReference Include="../SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" /></ItemGroup>
     <ItemGroup><InternalsVisibleTo Include="SolusAgent.ContractTests" /></ItemGroup>
 </Project>

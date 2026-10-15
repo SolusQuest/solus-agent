@@ -27,3 +27,32 @@ jobs:
 
       - name: Test
         run: dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
+
+  package-foundation:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Require the selected x64 host
+        run: test "$(uname -m)" = x86_64
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Set up native TypeScript runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          architecture: x64
+
+      - name: Pack and inspect production packages
+        run: node scripts/packages/pack.ts --version 0.1.0-internal.1 --output artifacts/packages
+
+      - name: Execute clean public package consumers
+        run: node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario foundation
+
+      - name: Verify deliberate rejection and independent discovery
+        run: node scripts/packages/verify-negatives.ts --feed artifacts/packages --version 0.1.0-internal.1

@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>SolusAgent.Runtime.Api</PackageId>
+        <Description>Self-owned runtime provider, configuration and extension contracts.</Description>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
     <ItemGroup>

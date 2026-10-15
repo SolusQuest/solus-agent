@@ -5,6 +5,11 @@
         <Nullable>enable</Nullable>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <AnalysisLevel>latest</AnalysisLevel>
+        <IsPackable>false</IsPackable>
+        <Authors>SolusQuest</Authors>
+        <RepositoryUrl>https://github.com/SolusQuest/solus-agent</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageProjectUrl>https://github.com/SolusQuest/solus-agent</PackageProjectUrl>
         <PublishAot>false</PublishAot>
         <PublishTrimmed>false</PublishTrimmed>
     </PropertyGroup>

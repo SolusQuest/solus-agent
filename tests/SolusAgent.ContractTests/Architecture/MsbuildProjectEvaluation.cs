@@ -37,7 +37,7 @@ internal static class MsbuildProjectEvaluation
         startInfo.ArgumentList.Add("-nologo");
         startInfo.ArgumentList.Add("-property:Configuration=Release");
         startInfo.ArgumentList.Add("-getItem:ProjectReference,PackageReference,Compile");
-        startInfo.ArgumentList.Add("-getProperty:TargetFramework,PublishAot,PublishTrimmed");
+        startInfo.ArgumentList.Add("-getProperty:TargetFramework,PublishAot,PublishTrimmed,IsPackable,AssemblyName,PackageId");
 
         using var process = new Process { StartInfo = startInfo };
         var standardOutput = new StringBuilder();
