@@ -48,7 +48,8 @@ test('GitHub NuGet requires a supplied username and never invents an account or 
     assert.equal(authenticatedEnvironment('/local/feed', { GITHUB_TOKEN: 'synthetic' }).NuGetPackageSourceCredentials_selected, undefined);
 });
 
-test('consumer execution failure suppresses raw stdout/stderr', () => {
+test('controlled success summaries remain available while failures suppress raw output', () => {
+    assert.equal(run(process.execPath, ['-e', 'console.log("Controlled cases:43")'], repository, {}, true).trim(), 'Controlled cases:43');
     assert.throws(() => run(process.execPath, ['-e', 'console.error("SYNTHETIC_SECRET");process.exit(4)'], repository, {}, true), error => String(error).includes('entrypoint failed (4)') && !String(error).includes('SYNTHETIC_SECRET'));
 });
 

@@ -164,7 +164,8 @@ export function verifyConsumers(input: VerificationOptions): string {
                 run('dotnet', ['build', project, '--configuration', 'Release', '--no-restore', ...properties], scenario, env);
             }
             for (const entrypoint of inventory.entrypoints) {
-                run('dotnet', [join(dirname(entrypoint), 'bin/Release/net10.0', `${evaluations[inventory.projects.indexOf(entrypoint)].Properties.AssemblyName}.dll`), ...selection.arguments], scenario, env, true);
+                const summary = run('dotnet', [join(dirname(entrypoint), 'bin/Release/net10.0', `${evaluations[inventory.projects.indexOf(entrypoint)].Properties.AssemblyName}.dll`), ...selection.arguments], scenario, env, true);
+                if (summary.trim()) console.log(summary.trim());
             }
             console.log(`Scenario ${name.toLowerCase()} passed: ${inventory.projects.length} clean projects, ${inventory.entrypoints.length} executed entrypoints, exact ${version}.`);
         }
