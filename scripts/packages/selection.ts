@@ -1,6 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { run, within } from './common.ts';
+import { within } from './common.ts';
 
 export interface SelectionOptions {
     scenarios: string[];
@@ -13,9 +14,39 @@ export interface SelectedScenario { name: string; path: string; arguments: strin
 const valid = (value: unknown): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/i.test(value) && value.toLowerCase() !== 'all';
 
 export function ignoredKeyFile(path: string): void {
-    if (!isAbsolute(path) || !lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) throw new Error('live: key source must be an absolute regular local file');
-    const root = run('git', ['rev-parse', '--show-toplevel'], dirname(path)).trim();
-    run('git', ['check-ignore', '--quiet', path], root);
+    try {
+        const stat = lstatSync(path);
+        if (!isAbsolute(path) || !stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 4096
+            || (stat.mode & 0o7777 & ~0o600) !== 0 || !(stat.mode & 0o400)
+            || typeof process.getuid === 'function' && stat.uid !== process.getuid()) throw new Error();
+        const overrides = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES',
+            'GIT_DISCOVERY_ACROSS_FILESYSTEM', 'GIT_CONFIG', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
+        if (overrides.some(name => process.env[name] !== undefined)) throw new Error();
+        const canonical = realpathSync(path);
+        const parent = dirname(canonical);
+        const env = { ...process.env, LC_ALL: 'C', LANG: 'C', GIT_TERMINAL_PROMPT: '0' };
+        for (const name of Object.keys(env)) if (name.startsWith('GIT_TRACE')) delete env[name];
+        Object.assign(env, { GIT_TRACE: '0', GIT_TRACE2: '0', GIT_TRACE2_EVENT: '0', GIT_TRACE2_PERF: '0' });
+        const probe = (args: string[]) => spawnSync('git', ['-C', parent, ...args],
+            { env, encoding: 'utf8', timeout: 5000, maxBuffer: 8192 });
+        const root = probe(['rev-parse', '--show-toplevel']);
+        if (root.error || root.signal) throw new Error();
+        if (root.status === 0) {
+            const directory = root.stdout.replace(/\r?\n$/, '');
+            if (root.stderr !== '' || !isAbsolute(directory) || !lstatSync(directory).isDirectory()) throw new Error();
+            const ignored = probe(['check-ignore', '--quiet', '--', canonical]);
+            if (ignored.error || ignored.signal || ignored.status !== 0 || ignored.stdout !== '' || ignored.stderr !== '') throw new Error();
+            return;
+        }
+        if (root.status !== 128 || root.stdout !== ''
+            || root.stderr !== 'fatal: not a git repository (or any of the parent directories): .git\n') throw new Error();
+        // A broken repository must not masquerade as an external file. Only missing metadata is absence.
+        for (let directory = parent; ; directory = dirname(directory)) {
+            try { lstatSync(join(directory, '.git')); throw new Error(); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+            if (dirname(directory) === directory) break;
+        }
+    } catch { throw new Error('LiveSmoke failed: CredentialSource.'); }
 }
 
 export function selectScenarios(root: string, options: SelectionOptions, checkKey = ignoredKeyFile, ci = !!process.env.CI): SelectedScenario[] {

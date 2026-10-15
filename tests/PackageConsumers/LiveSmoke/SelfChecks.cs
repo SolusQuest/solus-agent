@@ -56,6 +56,15 @@ internal static class SelfChecks
                     && second.Sends == 1 && second.Tools == 0 && second.HistoryTools == 1 && second.HistoryAttempts == 1);
                 Check.That(first.Input == 10 && first.Output == 5 && second.Input == 10 && second.Output == 5);
                 Check.That(first.HistoryInput == 0 && first.HistoryOutput == 0 && second.HistoryInput == 10 && second.HistoryOutput == 5);
+                var safe = SafeSummary.Create(first with { Pid = 987654321 }, second, host.Sends, host.ToolEntries, host.Effects, TimeSpan.FromSeconds(1), false);
+                Check.That(Fixture.Confined(safe) && !safe.Contains("987654321", StringComparison.Ordinal));
+                using var measured = JsonDocument.Parse(safe);
+                Check.That(measured.RootElement.GetProperty("currentInputTokens").GetInt64() == 20
+                    && measured.RootElement.GetProperty("restorer").GetProperty("historicalInputTokens").GetInt64() == 10);
+                using var unknown = JsonDocument.Parse(SafeSummary.Create(first with { Input = null, Output = null }, second,
+                    host.Sends, host.ToolEntries, host.Effects, TimeSpan.FromSeconds(1), false));
+                Check.That(unknown.RootElement.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null
+                    && unknown.RootElement.GetProperty("currentOutputTokens").ValueKind == JsonValueKind.Null);
                 Check.That(host.Sends == 2 && fake.Entries == 2 && host.ToolEntries == 1 && host.Effects == 1 && host.Claims == 1);
                 Check.That(File.Exists(Path.Combine(path, "context.json")) && first.OrdinaryConfined && second.OrdinaryConfined);
                 Check.That(File.GetUnixFileMode(Path.Combine(path, "context.json")) == (UnixFileMode.UserRead | UnixFileMode.UserWrite));
@@ -208,6 +217,7 @@ internal static class SelfChecks
                 LiveGate.ReadCredential, _ => { factories++; return fake.SendAsync; }, fake.SendAsync)));
             Check.That(factories == 0 && fake.Entries == 0);
         });
+        await Case("real-credential-source-admission", () => { CredentialSourceChecks.Run(); return Task.CompletedTask; });
         foreach (var bytes in new byte[][] { [], [0], [0xff], Encoding.UTF8.GetBytes("\n"), Encoding.UTF8.GetBytes("has space"), new byte[4097] })
             await Case("invalid-key-" + cases, async () =>
             {

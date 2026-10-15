@@ -15,13 +15,16 @@ try
     }
     else
     {
+        Report first, second; string directory; int sends, tools, effects;
         using (var host = new SmokeHost(transport, duration: TimeSpan.FromMinutes(5) - elapsed.Elapsed))
         {
-            var first = await host.RunAsync(fresh: true);
-            var second = await host.RunAsync(fresh: false);
+            first = await host.RunAsync(fresh: true);
+            second = await host.RunAsync(fresh: false);
             Check.That(first.Pid != second.Pid && host.Sends == 2 && host.ToolEntries == 1 && host.Effects == 1);
+            directory = host.DirectoryPath; sends = host.Sends; tools = host.ToolEntries; effects = host.Effects;
         }
-        Console.WriteLine("LiveSmoke live passed: 2 dispatches, 1 tool entry, 2 distinct processes; restricted temporary context removed.");
+        var removed = !Directory.Exists(directory); Check.That(removed, Failure.Confinement);
+        Console.WriteLine("LiveSmoke live passed: " + SafeSummary.Create(first, second, sends, tools, effects, elapsed.Elapsed, removed));
     }
     return 0;
 }
