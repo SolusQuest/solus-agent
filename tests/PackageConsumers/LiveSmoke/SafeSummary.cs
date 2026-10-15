@@ -6,7 +6,7 @@ internal static class SafeSummary
 {
     internal static string Create(Report first, Report second, int sends, int tools, int effects, TimeSpan elapsed, bool removed)
     {
-        Check.That(double.IsFinite(elapsed.TotalMilliseconds) && elapsed >= TimeSpan.Zero && elapsed <= TimeSpan.FromMinutes(5), Failure.Capacity);
+        Check.That(double.IsFinite(elapsed.TotalMilliseconds) && elapsed >= TimeSpan.Zero && elapsed <= TimeSpan.FromMinutes(15), Failure.Capacity);
         return JsonSerializer.Serialize(new
         {
             dispatches = sends, toolEntries = tools, toolEffects = effects, distinctProcesses = first.Pid != second.Pid,

@@ -16,6 +16,7 @@ internal sealed record WireReply(int Status, string Body);
 internal sealed class SmokeHost : IDisposable
 {
     private readonly Send send;
+    private readonly SafeFailureFacts? facts;
     private readonly CancellationTokenSource deadline;
     private readonly int maximumSends, maximumTools;
     private readonly HashSet<Guid> consumedSources = [];
@@ -31,10 +32,10 @@ internal sealed class SmokeHost : IDisposable
     internal int Claims { get; private set; }
     internal bool ChildTerminated { get; private set; }
 
-    internal SmokeHost(Send send, int maximumSends = 6, int maximumTools = 3, TimeSpan? duration = null)
+    internal SmokeHost(Send send, int maximumSends = 6, int maximumTools = 3, TimeSpan? duration = null, SafeFailureFacts? facts = null)
     {
         Check.That(maximumSends is > 0 and <= 6 && maximumTools is >= 0 and <= 3, Failure.Capacity);
-        this.send = send; this.maximumSends = maximumSends; this.maximumTools = maximumTools;
+        this.facts = facts; this.send = send; this.maximumSends = maximumSends; this.maximumTools = maximumTools;
         var elapsed = duration ?? TimeSpan.FromMinutes(5);
         Check.That(elapsed > TimeSpan.Zero && elapsed <= TimeSpan.FromMinutes(5), Failure.Capacity);
         deadline = new(elapsed);
@@ -47,6 +48,7 @@ internal sealed class SmokeHost : IDisposable
         bool providerMismatch = false, bool replay = false, bool expectRejected = false,
         int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false)
     {
+        facts?.BeginRound(fresh);
         var token = deadline.Token;
         if (token.IsCancellationRequested) throw new SmokeFailure(Failure.Deadline);
         var source = fresh ? null : ReadContext();
@@ -84,14 +86,17 @@ internal sealed class SmokeHost : IDisposable
                 {
                     case "send":
                         Check.That(Sends < maximumSends, Failure.DispatchLimit);
+                        if (facts is not null) facts.RequestProfileMatch = false;
                         CheckWire(frame.Body!, boot.Fresh);
+                        if (facts is not null) facts.RequestProfileMatch = true;
                         // Charge before entering transport. A thrown/unknown request never refunds this slot.
-                        Sends++; stageSends++;
+                        Sends++; stageSends++; facts?.BeginDispatch();
                         WireReply reply;
                         try { reply = await send(frame.Body!, boot.Fresh, token).WaitAsync(token); }
                         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                         catch (SmokeFailure) { throw; }
                         catch { throw new SmokeFailure(Failure.Transport); }
+                        facts?.ObserveStatus(reply.Status);
                         Check.That(Encoding.UTF8.GetByteCount(reply.Body) <= 65536, Failure.Capacity);
                         try { ObserveReply(reply, boot.Fresh); }
                         catch (JsonException) { throw new SmokeFailure(Failure.UnexpectedReply); }
@@ -118,7 +123,9 @@ internal sealed class SmokeHost : IDisposable
                         if (allowed) { consumedSources.Add(selected!.Checkpoint.RoundId); Claims++; }
                         response = new("reply", Allowed: allowed);
                         break;
-                    case "report": report = frame.Report ?? throw new SmokeFailure(Failure.Protocol); continue;
+                    case "report":
+                        report = frame.Report ?? throw new SmokeFailure(Failure.Protocol);
+                        facts?.ObserveReport(report); continue;
                     default: throw new SmokeFailure(Failure.Protocol);
                 }
                 await Pipe.WriteAsync(process.StandardInput, response, token);
@@ -216,6 +223,8 @@ internal sealed class SmokeHost : IDisposable
     {
         if (reply.Status != 200) return; // Let the actual adapter classify errors, with no retry policy.
         var root = JsonNode.Parse(reply.Body)!;
+        if (facts is not null) facts.ResponseProfileMatch = root["model"] is JsonValue model
+            && model.TryGetValue<string>(out var name) && name == "deepseek-flash";
         var choice = root["choices"]![0]!; var message = choice["message"]!.DeepClone();
         // Remove a wire-only null field which the adapter intentionally omits on replay.
         if (message["tool_calls"] is null) message.AsObject().Remove("tool_calls");

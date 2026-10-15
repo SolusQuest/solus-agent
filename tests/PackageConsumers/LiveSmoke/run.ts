@@ -9,7 +9,7 @@ export function executeSmokeCommand(input: string[], entry = verifier): { status
     if (!args.includes('--scenario')) args.push('--scenario', 'smoke-offline');
     const result = spawnSync(process.execPath, [entry, ...args], { encoding: 'utf8', timeout: 900_000, maxBuffer: 1024 * 1024 });
     if (result.error || result.status !== 0) {
-        const diagnostic = !result.error && result.status !== null
+        const diagnostic = !result.error && !result.signal && result.status !== null
             ? smokeFailureDiagnostic(result.stderr ?? '', result.stdout ?? '') : undefined;
         return { status: 1, output: '', diagnostic: diagnostic ?? 'LiveSmoke command failed; check the selected inputs.' };
     }

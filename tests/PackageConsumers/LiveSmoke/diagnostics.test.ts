@@ -112,3 +112,70 @@ test('common runner to verifier to local wrapper retains the category and reject
         rmSync(join(root,'.git'),{recursive:true,force:true}); writeFileSync(join(root,'.git'),'gitdir: absent-directory\n'); denied(key);
     } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+const facts = {
+    stage: 'producer', dispatches: 1, toolEntries: 0, toolEffects: 0, elapsedMilliseconds: 123,
+    httpStatus: 503, providerError: null, requestProfileMatch: true, responseProfileMatch: null, replyMatch: null,
+    currentInputTokens: null, currentOutputTokens: null, historicalInputTokens: null, historicalOutputTokens: null, contextRemoved: true,
+};
+const envelope = (value: unknown) => `${diagnostic}\nLiveSmoke facts: ${JSON.stringify(value)}`;
+
+test('closed facts survive both private boundaries with nulls and known numeric observations', () => {
+    const root = mkdtempSync(join(tmpdir(), 'solus-safe-facts-'));
+    const entry = join(root, 'verifier.ts');
+    const common = pathToFileURL(join(repository, 'scripts/packages/common.ts')).href;
+    try {
+        for (const value of [facts, { ...facts, stage: 'restore', dispatches: 6, toolEntries: 3, toolEffects: 3,
+            elapsedMilliseconds: 310000, httpStatus: 599, providerError: 11, replyMatch: false,
+            currentInputTokens: Number.MAX_SAFE_INTEGER, currentOutputTokens: 0, historicalInputTokens: 10, historicalOutputTokens: 5,
+            contextRemoved: false }, { ...facts, dispatches: null, toolEntries: null, toolEffects: null,
+            elapsedMilliseconds: null, httpStatus: null, requestProfileMatch: null, contextRemoved: null }]) {
+            const expected = envelope(value);
+            for (const ending of ['', '\n', '\r\n']) assert.equal(smokeFailureDiagnostic(expected + ending), expected);
+            const child = `process.stderr.write(${JSON.stringify(expected + '\n')});process.exit(1)`;
+            writeFileSync(entry, `import {run,reportFailure} from ${JSON.stringify(common)};try{run(process.execPath,['-e',${JSON.stringify(child)}],${JSON.stringify(root)},{},true)}catch(error){reportFailure(error)}`);
+            assert.deepEqual(executeSmokeCommand([], entry), { status: 1, output: '', diagnostic: expected });
+        }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('facts reject every schema neighbor, duplicate, noncanonical, partial, and injected envelope', () => {
+    const invalid: string[] = [];
+    for (const key of Object.keys(facts)) {
+        const missing: Record<string, unknown> = { ...facts }; delete missing[key]; invalid.push(envelope(missing));
+        for (const value of [secret, [], {}, undefined]) invalid.push(envelope({ ...facts, [key]: value }));
+    }
+    for (const key of ['dispatches', 'toolEntries', 'toolEffects', 'elapsedMilliseconds', 'httpStatus', 'providerError',
+        'currentInputTokens', 'currentOutputTokens', 'historicalInputTokens', 'historicalOutputTokens']) {
+        for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, true]) invalid.push(envelope({ ...facts, [key]: value }));
+    }
+    for (const [key, value] of Object.entries({ stage: 'unknown', dispatches: 7, toolEntries: 4, toolEffects: 4,
+        elapsedMilliseconds: 900001, httpStatus: 99, providerError: 12, replyMatch: 1, contextRemoved: 0 }))
+        invalid.push(envelope({ ...facts, [key]: value }));
+    const good = envelope(facts);
+    invalid.push(envelope({ ...facts, unknown: null }), good.replace('"dispatches":1', '"dispatches":1,"dispatches":1'),
+        good.replace('"dispatches":1', '"dispatches":1.0'), good.replace('"dispatches":1', '"dispatches":1e0'),
+        good.replace('"toolEntries":0', '"toolEntries":-0'), good + ' ', good + '{}', good + '\n',
+        good.replace('{', '{ '), good + `\n${secret}`, `${good}\u0000`, `${good}\u001b`,
+        `${diagnostic}\nLiveSmoke facts: ${' '.repeat(8192)}`, `${diagnostic}\nLiveSmoke facts: {`,
+        envelope(Object.fromEntries(Object.entries(facts).reverse())));
+    const root = mkdtempSync(join(tmpdir(), 'solus-invalid-facts-'));
+    const entry = join(root, 'verifier.ts');
+    const common = pathToFileURL(join(repository, 'scripts/packages/common.ts')).href;
+    try {
+        for (const value of invalid) {
+            // The final newline is framing; a second newline inside the envelope is rejected.
+            assert.equal(smokeFailureDiagnostic(value + '\n'), undefined);
+            const child = `process.stderr.write(${JSON.stringify(value + '\n')});process.exit(1)`;
+            writeFileSync(entry, `import {run,reportFailure} from ${JSON.stringify(common)};try{run(process.execPath,['-e',${JSON.stringify(child)}],${JSON.stringify(root)},{},true)}catch(error){reportFailure(error)}`);
+            const result = executeSmokeCommand([], entry);
+            assert.deepEqual(result, { status: 1, output: '', diagnostic: 'LiveSmoke command failed; check the selected inputs.' });
+            assert.ok(!JSON.stringify(result).includes(secret));
+        }
+        writeFileSync(entry, `process.stderr.write(${JSON.stringify(good + '\n')});process.kill(process.pid,'SIGTERM')`);
+        assert.equal(executeSmokeCommand([], entry).diagnostic, 'LiveSmoke command failed; check the selected inputs.');
+        assert.throws(() => run(process.execPath, ['-e', `process.stderr.write(${JSON.stringify(good + '\n')});process.kill(process.pid,'SIGTERM')`], root, {}, true),
+            error => error instanceof Error && error.message === 'consumer entrypoint failed (execution)');
+        assert.equal(smokeFailureDiagnostic(good, secret), undefined);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});

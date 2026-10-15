@@ -118,12 +118,21 @@ internal static class Child
             if (value.Response is { } response)
             {
                 var expected = fresh ? response.Finish == ProviderFinish.ToolCalls && response.Calls.Count == 1
-                    && response.Calls[0].ToolName == "smoke_increment" && response.Calls[0].ArgumentsJson == "{}"
+                    && response.Calls[0].ToolName == "smoke_increment" && IsEmptyObject(response.Calls[0].ArgumentsJson)
                     : response.Finish == ProviderFinish.Final && response.Text == Fixture.Final && response.Calls.Count == 0;
                 ReplyMatches &= expected;
                 if (!expected) throw new SmokeFailure(Failure.UnexpectedReply);
             }
             return value;
+        }
+        private static bool IsEmptyObject(string arguments)
+        {
+            try
+            {
+                using var value = JsonDocument.Parse(arguments);
+                return value.RootElement.ValueKind == JsonValueKind.Object && !value.RootElement.EnumerateObject().Any();
+            }
+            catch (JsonException) { return false; }
         }
         public ProviderSavedState? ExportContext(ProviderContextBinding binding) => inner.ExportContext(binding);
         public bool AdmitContext(ProviderContextBinding binding, ProviderSavedState state) { Imports++; return inner.AdmitContext(binding, state); }

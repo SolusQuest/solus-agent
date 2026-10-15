@@ -43,25 +43,53 @@ export function within(path: string, root: string): boolean {
     return difference === '' || !isAbsolute(difference) && difference !== '..' && !difference.startsWith(`..${sep}`);
 }
 
-// Diagnostics are data, never authority. Reconstruct only a whole, closed stderr line;
-// accompanying output, unknown text and extra lines must stay private.
+// One exact stderr envelope at every private boundary; facts are observations, never authority.
 export function smokeFailureDiagnostic(stderr: string, stdout = ''): string | undefined {
-    if (stdout !== '') return undefined;
-    const line = stderr.endsWith('\r\n') ? stderr.slice(0, -2) : stderr.endsWith('\n') ? stderr.slice(0, -1) : stderr;
+    if (stdout !== '' || Buffer.byteLength(stderr, 'utf8') > 8192) return undefined;
+    const text = stderr.endsWith('\r\n') ? stderr.slice(0, -2) : stderr.endsWith('\n') ? stderr.slice(0, -1) : stderr;
+    const lines = text.split('\n');
     const categories = ['Arguments', 'OptIn', 'Profile', 'Ci', 'CredentialSource', 'Credential', 'DispatchLimit',
         'ToolLimit', 'Deadline', 'Capacity', 'Transport', 'UnexpectedReply', 'UnknownUsage', 'Authority', 'Child', 'Protocol', 'Confinement'];
-    for (const category of categories) {
-        const diagnostic = `LiveSmoke failed: ${category}.`;
-        if (line === diagnostic) return diagnostic;
-    }
-    return undefined;
+    const category = categories.find(value => lines[0] === `LiveSmoke failed: ${value}.`);
+    if (!category || lines.length > 2) return undefined;
+    if (lines.length === 1) return `LiveSmoke failed: ${category}.`;
+    const prefix = 'LiveSmoke facts: ';
+    if (!lines[1].startsWith(prefix)) return undefined;
+    const raw = lines[1].slice(prefix.length);
+    try {
+        const facts = JSON.parse(raw);
+        const integer = (value: unknown, maximum: number, minimum = 0) => value === null
+            || typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+        const boolean = (value: unknown) => value === null || typeof value === 'boolean';
+        const rules: Record<string, (value: unknown) => boolean> = {
+            stage: value => ['preparation', 'credential', 'producer', 'restore'].includes(value as string),
+            dispatches: value => integer(value, 6), toolEntries: value => integer(value, 3), toolEffects: value => integer(value, 3),
+            elapsedMilliseconds: value => integer(value, 900000), httpStatus: value => integer(value, 599, 100),
+            providerError: value => integer(value, 11), requestProfileMatch: boolean, responseProfileMatch: boolean,
+            replyMatch: boolean, currentInputTokens: value => integer(value, Number.MAX_SAFE_INTEGER),
+            currentOutputTokens: value => integer(value, Number.MAX_SAFE_INTEGER),
+            historicalInputTokens: value => integer(value, Number.MAX_SAFE_INTEGER),
+            historicalOutputTokens: value => integer(value, Number.MAX_SAFE_INTEGER), contextRemoved: boolean,
+        };
+        if (!facts || Array.isArray(facts) || typeof facts !== 'object'
+            || JSON.stringify(Object.keys(facts)) !== JSON.stringify(Object.keys(rules))) return undefined;
+        const rebuilt: Record<string, unknown> = {};
+        for (const [key, rule] of Object.entries(rules)) {
+            if (!rule(facts[key])) return undefined;
+            rebuilt[key] = facts[key];
+        }
+        const canonical = JSON.stringify(rebuilt);
+        // Also rejects duplicate keys, noncanonical numbers, escapes, and trailing text.
+        if (raw !== canonical) return undefined;
+        return `LiveSmoke failed: ${category}.\n${prefix}${canonical}`;
+    } catch { return undefined; }
 }
 
 export function run(command: string, args: string[], cwd: string, env = process.env, privateOutput = false): string {
     const result = spawnSync(command, args, { cwd, env: { ...env, DOTNET_CLI_UI_LANGUAGE: 'en-US', DOTNET_NOLOGO: '1' }, encoding: 'utf8', timeout: 300_000, maxBuffer: 32 * 1024 * 1024 });
     if (result.error || result.status !== 0) {
         if (privateOutput) {
-            const diagnostic = !result.error && result.status !== null
+            const diagnostic = !result.error && !result.signal && result.status !== null
                 ? smokeFailureDiagnostic(result.stderr ?? '', result.stdout ?? '') : undefined;
             throw new Error(diagnostic ?? `consumer entrypoint failed (${result.status ?? 'execution'})`);
         }
