@@ -58,4 +58,6 @@ jobs:
         run: node scripts/packages/verify-negatives.ts --feed artifacts/packages --version 0.1.0-internal.1
 
       - name: Execute deterministic package smoke
-        run: node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario smoke-offline
+        run: |
+          node --test tests/PackageConsumers/LiveSmoke/diagnostics.test.ts
+          node scripts/packages/verify-consumers.ts --feed artifacts/packages --version 0.1.0-internal.1 --scenario smoke-offline

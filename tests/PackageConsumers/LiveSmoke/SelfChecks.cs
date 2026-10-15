@@ -43,8 +43,7 @@ internal static class SelfChecks
         var cases = 0;
         async Task Case(string name, Func<Task> body)
         {
-            try { await body(); cases++; }
-            catch (SmokeFailure failure) { Console.Error.WriteLine($"LiveSmoke check failed: {name} ({failure.Code})."); throw; }
+            await body(); cases++;
         }
         await Case("installed-package-process-flow", async () =>
         {
