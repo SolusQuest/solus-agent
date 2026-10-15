@@ -29,11 +29,14 @@ Published identities are immutable: never replace the contents of an existing pa
 
 The selected registry index is `https://nuget.pkg.github.com/SolusQuest/index.json`. Only use a version actually published there; the local validation version below is not a publication claim. An authorized consumer needs both usable authentication and package read access. GitHub documents a personal access token (classic) with `read:packages` for private NuGet installation; its owner must also have effective access. An Actions `GITHUB_TOKEN` needs `packages: read` and the consumer repository must have access to the package. Scope alone does not provision access. See [GitHub's NuGet authentication documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry).
 
-Supply an existing consumer token securely through the environment, without putting it in a feed URL, committed NuGet.Config, command arguments or logs. The verifier accepts `GITHUB_TOKEN` and optional `GITHUB_ACTOR`, translating them to child-process `NuGetPackageSourceCredentials_selected`. Alternatively supply that credential environment variable directly using NuGet's `Username=...;Password=...;ValidAuthenticationTypes=Basic` convention. Do not echo its value. The runner does not provision credentials or package access and writes no credential into its generated config.
+Supply an existing consumer token securely through the environment, without putting it in a feed URL, committed NuGet.Config, command arguments or logs. For a local PAT, set `GITHUB_TOKEN` to the existing token and explicitly set `GITHUB_ACTOR` to the token owner's personal GitHub account name; the verifier translates both into child-process `NuGetPackageSourceCredentials_selected`. The runner's placeholder username fallback is not a substitute for that account name. Alternatively supply `NuGetPackageSourceCredentials_selected` directly using NuGet's `Username=...;Password=...;ValidAuthenticationTypes=Basic` convention, with `Username` set to the token owner's account name. In Actions, provide the workflow's actor username with its authorized workflow token; a PAT used in Actions still needs its owner's username. Do not echo its value. The runner does not provision credentials or package access and writes no credential into its generated config.
 
-After an authorized publication and with the environment already configured:
+For the local PAT path, after an authorized publication and with the existing token, its owner's account name and exact published version securely configured in the environment:
 
 ```sh
+: "${GITHUB_ACTOR:?Set the personal GitHub account name that owns the PAT}"
+: "${GITHUB_TOKEN:?Supply the existing authorized consumer PAT securely}"
+: "${SOLUS_AGENT_VERSION:?Set the exact published internal version}"
 node scripts/packages/verify-consumers.ts --feed https://nuget.pkg.github.com/SolusQuest/index.json --version "$SOLUS_AGENT_VERSION" --scenario foundation
 ```
 
@@ -82,9 +85,9 @@ Current-round allowances and duration renew on authorized restoration; historica
 
 ## Support and qualification boundaries
 
-The selected internal environment is managed .NET 10 on `ubuntu-24.04` x64, without Native AOT or trimming qualification. The ordinary [package-foundation CI job](../../.github/workflows/ci.yml) explicitly selects that host and executes the local-package checks with `0.1.0-internal.1`. Use the successful run at the reviewed/released revision as Linux evidence; a queued job or another revision is not proof. Local `.89` execution and CI `.1` execution are different inputs.
+The selected internal environment is managed .NET 10 on `ubuntu-24.04` x64, without Native AOT or trimming qualification. The ordinary [package-foundation CI job](../../.github/workflows/ci.yml) explicitly selects that host and executes the local-package checks with `0.1.0-internal.1`. Use the successful run at the reviewed/released revision as Linux evidence; a queued job or another revision is not proof. The local `.89` example and CI `.1` execution use different inputs.
 
-For this guide's validation, SDK 10.0.109 and Node.js 24.21.0 on macOS arm64 packed and inspected five packages at `0.1.0-internal.89`, executed Foundation's four clean projects and one entrypoint, passed all 12 deliberate negatives and executed the independent scenario. This local development result does not add macOS to the selected support commitment. PR evidence records the exact-head CI outcome separately.
+Historical local results and exact-head CI evidence belong to [PR #97's validation record](https://github.com/SolusQuest/solus-agent/pull/97), scoped to the tested revisions and execution inputs recorded there. They do not qualify later packages or add the local development platform to the selected support commitment. Confirm successful CI and the owning qualification record for the actual reviewed or released revision.
 
 Current source implements M3 run admission/accounting/retries and M4 ordinary, completed/partial-tool and candidate restoration, including controlled DeepSeek mixed process tests and APR/Scribe Host-shaped probes. These are bounded synthetic/controlled-transport results. They do not establish live service behavior, provider billing accuracy, arbitrary-kill recovery, production Host persistence or actual product migration. Missing usage remains unknown; post-response token thresholds and cancellation observation do not promise remote preemption.
 
