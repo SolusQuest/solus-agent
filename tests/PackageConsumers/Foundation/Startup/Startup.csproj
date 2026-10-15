@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>PackageConsumers.Foundation.Startup</AssemblyName>
+        <SolusAgentVersion Condition="'$(SolusAgentVersion)' == ''">0.1.0-internal.1</SolusAgentVersion>
+        <OutputType>Exe</OutputType>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="SolusAgent.Runtime" Version="[$(SolusAgentVersion)]" />
+        <PackageReference Include="SolusAgent.Providers.DeepSeek" Version="[$(SolusAgentVersion)]" />
+        <ProjectReference Include="../Business/Business.csproj" />
+        <ProjectReference Include="../CustomTool/CustomTool.csproj" />
+        <ProjectReference Include="../CustomProvider/CustomProvider.csproj" />
+    </ItemGroup>
+</Project>

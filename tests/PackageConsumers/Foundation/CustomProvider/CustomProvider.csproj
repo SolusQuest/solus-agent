@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>PackageConsumers.Foundation.CustomProvider</AssemblyName>
+        <SolusAgentVersion Condition="'$(SolusAgentVersion)' == ''">0.1.0-internal.1</SolusAgentVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="SolusAgent.Runtime.Api" Version="[$(SolusAgentVersion)]" />
+    </ItemGroup>
+</Project>
