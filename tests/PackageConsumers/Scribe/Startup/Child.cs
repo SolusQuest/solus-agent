@@ -16,6 +16,9 @@ internal static class Child
     {
         var transfer = JsonSerializer.Deserialize<BusinessProgress>(File.ReadAllBytes(Path.Combine(directory, "business.json")))!;
         Check.That(Directory.GetFiles(directory).Select(Path.GetFileName).Order().SequenceEqual(new[] { "business.json" }), "Child received unexpected persisted input.");
+        // JSON encoders replace unpaired UTF-16; inject these two malformed strings at the actual Host entry.
+        if (variant is "negative-surrogate-high" or "negative-surrogate-low")
+            transfer = transfer with { Accepted = [new("alpha", new string((char)(variant.EndsWith("high", StringComparison.Ordinal) ? 0xD800 : 0xDC00), 1), true)] };
         ScribeHost host;
         try { host = new(transfer, member =>
         {

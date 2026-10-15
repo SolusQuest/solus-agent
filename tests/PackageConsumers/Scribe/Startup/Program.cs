@@ -14,7 +14,7 @@ try
         Check.That(pair.Item1.GetReferencedAssemblies().Where(a => a.Name!.StartsWith("SolusAgent.", StringComparison.Ordinal)).Select(a => a.Name).SequenceEqual(new[] { pair.Item2 }), "Forbidden compiled consumer edge.");
     var root = Path.Combine(Environment.CurrentDirectory, ".local", "scribe", Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
     var pids = new List<int>();var cases = new List<string>();string? normalGamma = null;
-    foreach (var variant in new[] { "normal", "changed", "instruction", "repair", "unknown", "usage" })
+    foreach (var variant in new[] { "normal", "changed", "instruction", "unicode", "repair", "unknown", "usage" })
     {
         var aDirectory = Path.Combine(root, variant, "A");var bDirectory = Path.Combine(root, variant, "B");
         var initial = new BusinessProgress(["alpha", "beta", "gamma"], []);
@@ -37,7 +37,7 @@ try
         Check.That(a.Execution != b.Execution && !a.Physical.Intersect(b.Physical).Any() && !a.Logical.Intersect(b.Logical).Any()
             && !a.Submissions.Intersect(b.Submissions).Any(), "Fresh execution identities were inherited.");
         Check.That(targetBefore.SequenceEqual(Directory.GetFiles(Path.Combine(aDirectory, "targets")).Select(File.ReadAllBytes).Select(Convert.ToHexString)), "Earlier effect target changed during fresh B.");
-        if (variant is "normal" or "changed" or "instruction" or "usage")
+        if (variant is "normal" or "changed" or "instruction" or "unicode" or "usage")
             Check.That(a.Stop == CandidateStopReason.WorkUnitLimit && a.Sends == 4 && a.Receipts == 3 && a.Accepts == 2 && a.Repairs == 1
                 && a.Backlinks == 1 && a.Input == (variant == "usage" ? 30 : 40) && a.Unresolved == (variant == "usage" ? 64 : 0), "Primary repair/partial/accounting path differed.");
         if (variant == "repair") Check.That(a.Stop == CandidateStopReason.RepairLimit && a.Sends == 3 && a.Receipts == 2 && a.Accepts == 1 && a.Repairs == 0, "Denied repair dispatched dependent work.");
@@ -48,16 +48,16 @@ try
         if (variant == "changed") Check.That(gamma != normalGamma, "Changed correction did not change reconstructed result.");
         cases.Add(variant);
     }
-    foreach (var negative in new[] { "duplicate", "foreign", "malformed" })
+    foreach (var negative in new[] { "duplicate", "foreign", "malformed", "control", "newline", "nul", "surrogate-high", "surrogate-low", "utf8-bound" })
     {
         var fact = new Fact("alpha", ScribeHost.Alpha("normal"), true);
-        Fact[] facts = negative == "duplicate" ? [fact, fact] : negative == "foreign" ? [fact with { Member = "foreign" }] : [fact with { Text = "" }];
+        Fact[] facts = negative == "duplicate" ? [fact, fact] : negative == "foreign" ? [fact with { Member = "foreign" }] : [fact with { Text = negative switch { "control" => "invalid\u0001text", "newline" => "invalid\ntext", "nul" => "invalid\0text", "utf8-bound" => new string((char)0x00E9, 200), _ => "" } }];
         var observed = await Run(Path.Combine(root, negative), "B", "negative-" + negative, new(["alpha", "beta", "gamma"], facts));
         Check.That(observed.Rejected && observed.Sends == 0 && observed.HostEffects == 0 && observed.Imports == 0 && observed.ToolEntries.Length == 0, "Invalid business input reached work.");cases.Add(negative);
     }
-    Check.That(cases.Count == 9 && pids.Count == 15 && pids.Distinct().Count() == 15, "Incorrect executed case/process count.");
+    Check.That(cases.Count == 16 && pids.Count == 23 && pids.Distinct().Count() == 23, "Incorrect executed case/process count.");
     File.WriteAllText(Path.Combine(root, "summary.json"), JsonSerializer.Serialize(new { Cases = cases, Children = pids.Count }));
-    Console.WriteLine("Scribe passed: 9 cases, 15 distinct child processes; fresh business reconstruction, no Runtime import.");return 0;
+    Console.WriteLine("Scribe passed: 16 cases, 23 distinct child processes; fresh business reconstruction, no Runtime import.");return 0;
 
     async Task<Observation> Run(string directory, string stage, string variant, BusinessProgress progress)
     {
