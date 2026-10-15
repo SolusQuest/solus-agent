@@ -43,9 +43,10 @@ export function within(path: string, root: string): boolean {
     return difference === '' || !isAbsolute(difference) && difference !== '..' && !difference.startsWith(`..${sep}`);
 }
 
-export function run(command: string, args: string[], cwd: string, env = process.env): string {
+export function run(command: string, args: string[], cwd: string, env = process.env, privateOutput = false): string {
     const result = spawnSync(command, args, { cwd, env: { ...env, DOTNET_CLI_UI_LANGUAGE: 'en-US', DOTNET_NOLOGO: '1' }, encoding: 'utf8', timeout: 300_000, maxBuffer: 32 * 1024 * 1024 });
     if (result.error || result.status !== 0) {
+        if (privateOutput) throw new Error(`consumer entrypoint failed (${result.status ?? 'execution'})`);
         let detail = `${result.error?.message ?? ''}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`;
         if (env.GITHUB_TOKEN) detail = detail.split(env.GITHUB_TOKEN).join('[redacted]');
         throw new Error(`${command} failed (${result.status ?? 'execution'}): ${detail}`);

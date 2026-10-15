@@ -7,6 +7,8 @@ try {
     const args = options(['--feed', '--version']);
     const feed = resolve(required(args, '--feed'));
     const version = requireVersion(required(args, '--version'));
+    run(process.execPath, ['--test', resolve(repository, 'scripts/packages/selection.test.ts')], repository);
+    console.log('Scenario selection, authentication and private diagnostic tests passed.');
     inspectPackages(feed, version);
     mkdirSync(resolve(repository, '.local/packages'), { recursive: true });
     const scratch = mkdtempSync(resolve(repository, '.local/packages/negatives-'));
