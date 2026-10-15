@@ -32,7 +32,7 @@ test('live selection is exclusive, explicit, non-CI and forwards exact argv with
 }));
 
 test('aliases cannot redefine reserved names or collide across directories', () => fixture(root => {
-    for (const aliases of [['all'], ['foundation'], ['smoke-offline', 'smoke-offline']]) {
+    for (const aliases of [['all'], ['smoke-live'], ['foundation'], ['smoke-offline', 'smoke-offline']]) {
         writeFileSync(join(root, 'LiveSmoke/scenario.json'), JSON.stringify({ projects: ['Entry.csproj'], entrypoints: ['Entry.csproj'], aliases }));
         assert.throws(() => selectScenarios(root, { scenarios: ['all'] }), /scenario:/);
     }

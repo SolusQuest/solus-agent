@@ -35,6 +35,7 @@ export function selectScenarios(root: string, options: SelectionOptions, checkKe
         if (!Array.isArray(aliases) || aliases.some(alias => !valid(alias))) throw new Error('scenario: invalid aliases');
         const add = (alias: string, live: boolean) => {
             const key = alias.toLowerCase();
+            if (!live && key === 'smoke-live') throw new Error('scenario: reserved live alias cannot name a default');
             if (inventory.has(key)) throw new Error('scenario: duplicate or ambiguous alias');
             inventory.set(key, { scenario, live, profile: manifest.liveProfile });
         };
