@@ -32,7 +32,8 @@ internal sealed class SafeFailureFacts
         input = Add(input, report.Input); output = Add(output, report.Output);
         HistoricalInput = Number(report.HistoryInput); HistoricalOutput = Number(report.HistoryOutput);
         ProviderError = report.ProviderError is { } error && Enum.IsDefined(error) ? (int)error : null;
-        ReplyMatch = report.ReplyMatches;
+        // The child's aggregate starts true; it is not an observed match when the adapter returned no response.
+        ReplyMatch = report.ProviderError == SolusAgent.Runtime.Api.Providers.ProviderError.None ? report.ReplyMatches : null;
     }
     internal string Envelope(Failure failure, SmokeHost? host)
     {

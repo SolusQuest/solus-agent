@@ -22,7 +22,10 @@ internal static class FailureChecks
                 Check.That(facts.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null
                     && facts.GetProperty("currentOutputTokens").ValueKind == JsonValueKind.Null);
             if (mode is FakeMode.RateLimited or FakeMode.Unavailable)
-                Check.That(facts.GetProperty("httpStatus").GetInt32() == (mode == FakeMode.RateLimited ? 429 : 503));
+            {
+                Check.That(facts.GetProperty("httpStatus").GetInt32() == (mode == FakeMode.RateLimited ? 429 : 503)
+                    && facts.GetProperty("replyMatch").ValueKind == JsonValueKind.Null);
+            }
             cases++;
         }
         // Failure during restoration keeps current-run totals distinct from inherited history.
