@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { inspectPackages, options, reportFailure, repository, required, requireVersion, run } from './common.ts';
 import { verifyConsumers } from './verify-consumers.ts';
@@ -7,6 +7,12 @@ try {
     const args = options(['--feed', '--version']);
     const feed = resolve(required(args, '--feed'));
     const version = requireVersion(required(args, '--version'));
+    run(process.execPath, ['--test', resolve(repository, 'scripts/packages/selection.test.ts')], repository);
+    console.log('Scenario selection, authentication and private diagnostic tests passed.');
+    if (existsSync(resolve(repository, 'scripts/release/release.test.ts'))) {
+        run(process.execPath, ['--test', resolve(repository, 'scripts/release/release.test.ts')], repository);
+        console.log('Release helper and parsed workflow isolation tests passed.');
+    }
     inspectPackages(feed, version);
     mkdirSync(resolve(repository, '.local/packages'), { recursive: true });
     const scratch = mkdtempSync(resolve(repository, '.local/packages/negatives-'));
