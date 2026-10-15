@@ -1,6 +1,6 @@
 # Roadmap to the first consumable prerelease
 
-Status: planning baseline. M0 is the existing initialization; M1-M5 are planned outcomes, not implemented behavior. This roadmap selects delivery scope and sequencing without freezing interface signatures, saved formats, provider dependencies, package layout, or a release version.
+Status: M0-M4 implementation is present; M5 consumption qualification and first internal publication are in progress. The sections below retain the selected outcome/exit requirements. [Project validation](../00_project/validation.md) owns current controlled evidence and limits; [internal package consumption](../10_workflow/package-consumption.md) owns the selected five-package layout, internal version/feed and compatibility policy. No live result or publication is implied by implemented runtime behavior.
 
 ## Target and ownership
 
@@ -15,11 +15,11 @@ Follow the selected [architecture](../20_architecture/architecture.md), [project
 | Milestone | Independently acceptable outcome | State |
 | --- | --- | --- |
 | M0: Initialization | Project rules and four buildable library skeletons with the selected dependency graph. | Existing baseline |
-| M1: Draft contracts and consumption | Both consumer patterns can express their needs through executable draft contracts. | Planned |
-| M2: Runtime execution | A complete agent/provider/tool/Host feedback path works through the public startup surface. | Planned |
-| M3: Budgets, usage, and failure semantics | Resource admission, accounting, retries, cancellation, and termination are coherent across execution paths. | Planned |
-| M4: Complete context restoration | A new process can explicitly restore supported runtime context and continue with capabilities supplied again by the Host. | Planned |
-| M5: Consumption validation and prerelease | Versioned release artifacts can be installed independently and support the verified migration-entry scenarios. | Planned |
+| M1: Draft contracts and consumption | Both consumer patterns can express their needs through executable draft contracts. | Implemented; controlled evidence in project validation |
+| M2: Runtime execution | A complete agent/provider/tool/Host feedback path works through the public startup surface. | Implemented; controlled evidence in project validation |
+| M3: Budgets, usage, and failure semantics | Resource admission, accounting, retries, cancellation, and termination are coherent across execution paths. | Implemented; controlled evidence in project validation |
+| M4: Complete context restoration | A new process can explicitly restore supported runtime context and continue with capabilities supplied again by the Host. | Implemented; controlled evidence in project validation |
+| M5: Consumption validation and prerelease | Versioned release artifacts can be installed independently and support the verified migration-entry scenarios. | In progress; clean Foundation available, operational qualification/publication pending |
 
 These milestones group outcomes, not mandatory counts of issues, pull requests, reviews, or implementation phases. Each behavior ships with its necessary tests, fixtures, and documentation. Establish ordinary CI with the first executable contracts and evolve it with the behavior; do not postpone validation infrastructure until M5.
 
@@ -27,7 +27,7 @@ Security is an acceptance condition throughout M1-M5. As each affected path is i
 
 ## M0: Initialization
 
-The current source contains `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, and `SolusAgent.Runtime` as `net10.0` library skeletons. The independent APIs have no project references; `Runtime.Api` references those APIs; `Runtime` references all three APIs. Managed execution is the default.
+The M0 initialization baseline contained `SolusAgent.Api`, `SolusAgent.Tools.Api`, `SolusAgent.Runtime.Api`, and `SolusAgent.Runtime` as `net10.0` library skeletons. The independent APIs have no project references; `Runtime.Api` references those APIs; `Runtime` references all three APIs. Managed execution is the default.
 
 M0 establishes repository structure and selected boundaries only. It supplies no public API types, execution loop, providers, tools, test suite, CI, packages, or released distribution. Build success is not evidence of those behaviors.
 
@@ -102,7 +102,7 @@ The APR-shaped scenario includes product-owned tools and acceptance, restored co
 
 Record usage instructions, package/dependency layout, the prerelease compatibility policy, and the actually verified framework, platform, provider, and feature support scope. Resolve the license, distribution destination, version, and release authority required for the chosen distribution. Qualify the concrete consumer host environments in the declared scope; do not infer additional platform support from a build on one machine.
 
-The first release is a **0.x experimental prerelease**. Consumers pin versions, and released artifact identities remain fixed. API, package, and context-format changes can still be coordinated with the two actual consumers; this milestone does not promise strong backward compatibility or a compatibility freeze. Document breaking changes and context acceptance rules explicitly, and honor any actual retained-state or support commitment under [contract lifecycle](../00_project/contract-lifecycle.md). API/package compatibility and saved-context compatibility need not share one version boundary. Reassess a stable compatibility commitment after both downstream products have completed at least one actual migration round; that observation does not automatically freeze every boundary.
+The first release is an **internal-only experimental prerelease**, with five packages sharing one `0.1.0-internal.N` version on private GitHub Packages and managed `net10.0` on ubuntu-24.04 x64. Consumers pin exact versions, and published artifact identities must never be replaced. No upgrade compatibility is promised before formal release, including API, behavior and saved context. Document breaking changes and context acceptance rules explicitly, and honor any actual retained-state or support commitment under [contract lifecycle](../00_project/contract-lifecycle.md). API/package compatibility and saved-context compatibility need not share one version boundary. Reassess a stable compatibility commitment after both downstream products have completed at least one actual migration round; that observation does not automatically freeze every boundary.
 
 **Exit evidence:** independent clean consumers successfully restore and run the supported package paths; deterministic tests and actual-adapter fake-transport tests pass at the release revision; any required bounded live or target-platform evidence is identified separately with its actual result. The selected prerelease artifacts are published through a maintainer-authorized release and match the validated revision. Ordinary PR and push CI requires no model credentials.
 
@@ -130,4 +130,4 @@ Budgets, honest usage, candidate acknowledgement, and complete runtime restorati
 
 Later work may add other whole-agent backends, additional providers, source generators, remote tool transports, dynamic discovery, convenience hosting, broader platform support, or a stable release. These require concrete consumer needs. Native AOT, automatic context compaction, product campaign state, product acceptance, and platform publication logic are not first-prerelease runtime requirements.
 
-Exact public signatures, codecs and compatibility discriminators, budget constants, retry policy, provider package placement, release version/feed, and detailed downstream migration graphs remain decisions of their owning implementation or release work. Refine durable external, persisted-state, security, or distribution choices with the bounded precedent check required by pre-release engineering; this roadmap does not freeze those designs.
+Current public signatures, bounded codecs, budget/retry mechanics and the five-package internal distribution policy are implemented or selected in their owning documents. Future revisions and detailed downstream migration graphs remain decisions of their owning work. Refine durable external, persisted-state, security, or distribution choices with the bounded precedent check required by pre-release engineering; this roadmap does not freeze those designs.
