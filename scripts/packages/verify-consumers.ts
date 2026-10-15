@@ -1,6 +1,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { selectScenarios, authenticatedEnvironment } from './selection.ts';
 import { isMain, options, packages, reportFailure, repository, required, requireVersion, run, within } from './common.ts';
 
 export interface VerificationOptions {
@@ -10,6 +11,10 @@ export interface VerificationOptions {
     consumers?: string;
     toolingFeed?: string;
     keepWorkspace?: boolean;
+    requiredScenarios?: string[];
+    live?: boolean;
+    keyFile?: string;
+    profile?: string;
 }
 
 type Manifest = { projects: string[]; entrypoints: string[] };
@@ -126,25 +131,16 @@ function checkAssets(project: string, cache: string, feed: string, version: stri
 export function verifyConsumers(input: VerificationOptions): string {
     const version = requireVersion(input.version);
     const root = realpathSync(input.consumers ?? resolve(repository, 'tests/PackageConsumers'));
-    if (!input.scenarios.length || input.scenarios.some(name => !/^[a-z0-9][a-z0-9-]*$/i.test(name))) throw new Error('scenario: explicit nonempty required scenario set is required');
-    const requested = input.scenarios.map(name => name.toLowerCase());
-    if (new Set(requested).size !== requested.length) throw new Error('scenario: duplicate requested scenario');
-    const directories = readdirSync(root).filter(name => lstatSync(join(root, name)).isDirectory());
-    const selected = requested.map(name => {
-        const matches = directories.filter(directory => directory.toLowerCase() === name);
-        if (matches.length !== 1) throw new Error(`scenario: missing or ambiguous required scenario ${name}`);
-        const path = join(root, matches[0]);
-        if (lstatSync(path).isSymbolicLink()) throw new Error('boundary: scenario directory must not be a symlink');
-        manifest(path); // Fail before copying/running any subset.
-        return path;
-    });
+    const selected = selectScenarios(root, input);
+    for (const scenario of selected) manifest(scenario.path); // Validate the complete set before any subset runs.
     const feed = source(input.feed);
     const tooling = source(input.toolingFeed ?? 'https://api.nuget.org/v3/index.json');
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'solus-package-consumers-')));
     if (within(workspace, repository)) throw new Error('boundary: clean workspace must be outside the repository');
     try {
         writeFileSync(join(workspace, 'global.json'), readFileSync(join(repository, 'global.json')));
-        for (const original of selected) {
+        for (const selection of selected) {
+            const original = selection.path;
             const name = relative(root, original);
             const scenario = join(workspace, name);
             cpSync(original, scenario, { recursive: true, filter: path => !ignored.has(path.split(/[\\/]/).at(-1)!) });
@@ -153,9 +149,7 @@ export function verifyConsumers(input: VerificationOptions): string {
             mkdirSync(cache, { recursive: true });
             const config = join(scenario, '.local/NuGet.Config');
             writeFileSync(config, `<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources><clear /><add key="selected" value="${xml(feed)}" /><add key="tooling" value="${xml(tooling)}" /></packageSources>\n  <packageSourceMapping><clear /><packageSource key="selected"><package pattern="SolusAgent.*" /></packageSource><packageSource key="tooling"><package pattern="*" /></packageSource></packageSourceMapping>\n  <fallbackPackageFolders><clear /></fallbackPackageFolders>\n  <disabledPackageSources><clear /></disabledPackageSources>\n</configuration>\n`);
-            const env: NodeJS.ProcessEnv = { ...process.env, NUGET_PACKAGES: cache, NUGET_HTTP_CACHE_PATH: join(scenario, '.local/http-cache'), NUGET_PLUGINS_CACHE_PATH: join(scenario, '.local/plugin-cache') };
-            if (feed.startsWith('https://nuget.pkg.github.com/') && env.GITHUB_TOKEN && !env.NuGetPackageSourceCredentials_selected)
-                env.NuGetPackageSourceCredentials_selected = `Username=${env.GITHUB_ACTOR || 'token'};Password=${env.GITHUB_TOKEN};ValidAuthenticationTypes=Basic`;
+            const env: NodeJS.ProcessEnv = { ...authenticatedEnvironment(feed, process.env), NUGET_PACKAGES: cache, NUGET_HTTP_CACHE_PATH: join(scenario, '.local/http-cache'), NUGET_PLUGINS_CACHE_PATH: join(scenario, '.local/plugin-cache') };
             const properties = [`-p:SolusAgentVersion=${version}`, '-p:Configuration=Release', '-p:ImportDirectoryBuildProps=false', '-p:ImportDirectoryBuildTargets=false', '-p:ManagePackageVersionsCentrally=false', '-p:NuGetAudit=false', '-p:RestoreFallbackFolders=', `-p:RestorePackagesPath=${cache}`];
             const evaluations = inventory.projects.map(project => evaluate(project, scenario, properties, env));
             inventory.projects.forEach((project, index) => checkBoundary(project, evaluations[index], scenario, inventory.projects, cache, version));
@@ -170,7 +164,7 @@ export function verifyConsumers(input: VerificationOptions): string {
                 run('dotnet', ['build', project, '--configuration', 'Release', '--no-restore', ...properties], scenario, env);
             }
             for (const entrypoint of inventory.entrypoints) {
-                run('dotnet', [join(dirname(entrypoint), 'bin/Release/net10.0', `${evaluations[inventory.projects.indexOf(entrypoint)].Properties.AssemblyName}.dll`)], scenario, env);
+                run('dotnet', [join(dirname(entrypoint), 'bin/Release/net10.0', `${evaluations[inventory.projects.indexOf(entrypoint)].Properties.AssemblyName}.dll`), ...selection.arguments], scenario, env, true);
             }
             console.log(`Scenario ${name.toLowerCase()} passed: ${inventory.projects.length} clean projects, ${inventory.entrypoints.length} executed entrypoints, exact ${version}.`);
         }
@@ -180,8 +174,8 @@ export function verifyConsumers(input: VerificationOptions): string {
 
 if (isMain(import.meta.url)) {
     try {
-        const args = options(['--feed', '--version', '--scenario', '--consumers', '--tooling-feed', '--keep-workspace'], ['--scenario'], ['--keep-workspace']);
-        const workspace = verifyConsumers({ feed: required(args, '--feed'), version: required(args, '--version'), scenarios: (args['--scenario'] ?? []).flatMap(value => value.split(',')), consumers: args['--consumers']?.[0], toolingFeed: args['--tooling-feed']?.[0], keepWorkspace: !!args['--keep-workspace'] });
+        const args = options(['--feed', '--version', '--scenario', '--consumers', '--tooling-feed', '--keep-workspace', '--require', '--live', '--key-file', '--profile'], ['--scenario'], ['--keep-workspace', '--live']);
+        const workspace = verifyConsumers({ feed: required(args, '--feed'), version: required(args, '--version'), scenarios: (args['--scenario'] ?? []).flatMap(value => value.split(',')), consumers: args['--consumers']?.[0], toolingFeed: args['--tooling-feed']?.[0], keepWorkspace: !!args['--keep-workspace'], requiredScenarios: args['--require']?.[0].split(','), live: !!args['--live'], keyFile: args['--key-file']?.[0], profile: args['--profile']?.[0] });
         if (args['--keep-workspace']) console.log(`Retained clean workspace: ${workspace}`);
     } catch (error) { reportFailure(error); }
 }
