@@ -248,6 +248,7 @@ internal static class SelfChecks
                 Check.That(factories == 0 && fake.Entries == 0);
             });
         cases += await FailureChecks.RunAsync();
+        cases += await WireChecks.RunAsync();
         Check.That(cases > 0);
         return cases;
     }

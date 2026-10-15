@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Context;
 using SolusAgent.Api.Execution;
@@ -27,7 +28,7 @@ internal static class Child
         var rpc = new Rpc(); var counter = new Counter(rpc, boot.Target);
         var tool = new GuardedTool(counter, boot.ToolAllowance > 0, boot.FailTool);
         using var provider = new DeepSeekProvider(new(boot.Fresh ? Fixture.CredentialA : Fixture.CredentialB,
-            boot.MaximumTokens, maximumRequestBodyBytes: 65536, maximumResponseBodyBytes: 65536, timeout: TimeSpan.FromSeconds(120)), new RpcHandler(rpc));
+            boot.MaximumTokens, maximumRequestBodyBytes: 65536, maximumResponseBodyBytes: 65536, timeout: TimeSpan.FromSeconds(120)), new RpcHandler(rpc, boot.WireFault));
         var observed = new ObservedProvider(provider, boot.Fresh);
         var authority = new Authority(rpc, boot.Target);
         var agent = (IContextAgent)RuntimeAgentFactory.Create(new(observed, [new(tool, counter)], new Hooks(),
@@ -151,12 +152,23 @@ internal static class Child
             }
         }
     }
-    private sealed class RpcHandler(Rpc rpc) : HttpMessageHandler
+    private sealed class RpcHandler(Rpc rpc, WireFault fault) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Check.That(request.RequestUri?.AbsoluteUri == DeepSeekOptions.OfficialEndpoint && request.Method == HttpMethod.Post);
-            var response = rpc.Ask(new("send", Body: await request.Content!.ReadAsStringAsync(token)), token);
+            var body = await request.Content!.ReadAsStringAsync(token);
+            // Closed fault selection exists only on the trusted fixture bootstrap, never on the local CLI.
+            if (fault == WireFault.Malformed) body = "{";
+            else if (fault != WireFault.None)
+            {
+                var node = JsonNode.Parse(body)!;
+                if (fault == WireFault.Profile) node["model"] = "synthetic-unselected-model";
+                if (fault == WireFault.Input) node["messages"]![0]!["content"] = "synthetic-instruction-mismatch";
+                if (fault == WireFault.History) node["messages"]![1]!["content"] = "synthetic-history-mismatch";
+                body = node.ToJsonString();
+            }
+            var response = rpc.Ask(new("send", Body: body), token);
             return new((HttpStatusCode)response.Status) { Content = new StringContent(response.Body!, Encoding.UTF8, "application/json") };
         }
     }

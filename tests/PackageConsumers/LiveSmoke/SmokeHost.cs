@@ -46,7 +46,7 @@ internal sealed class SmokeHost : IDisposable
 
     internal async Task<Report> RunAsync(bool fresh, bool tamper = false, bool changedTarget = false,
         bool providerMismatch = false, bool replay = false, bool expectRejected = false,
-        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false)
+        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false, WireFault wireFault = WireFault.None)
     {
         facts?.BeginRound(fresh);
         var token = deadline.Token;
@@ -57,7 +57,7 @@ internal sealed class SmokeHost : IDisposable
         var grant = fresh ? null : new ContextRoundGrant(Guid.NewGuid(), selected!.Checkpoint, execution, Guid.NewGuid());
         var boot = replay ? lastBootstrap! : new Bootstrap(fresh, completedSource, source, grant, execution,
             changedTarget ? Guid.NewGuid() : target, maximumTools - ToolEntries, providerMismatch ? 4095 : 4096,
-            inputCharacters, malformedFrame, crash, failTool);
+            inputCharacters, malformedFrame, crash, failTool, wireFault);
         Check.That(boot is not null, Failure.Authority);
         lastBootstrap = boot;
         var start = new ProcessStartInfo(Environment.ProcessPath!)
@@ -85,10 +85,9 @@ internal sealed class SmokeHost : IDisposable
                 switch (frame.Kind)
                 {
                     case "send":
+                        if (facts is not null) facts.RequestProfileMatch = null;
                         Check.That(Sends < maximumSends, Failure.DispatchLimit);
-                        if (facts is not null) facts.RequestProfileMatch = false;
                         CheckWire(frame.Body!, boot.Fresh);
-                        if (facts is not null) facts.RequestProfileMatch = true;
                         // Charge before entering transport. A thrown/unknown request never refunds this slot.
                         Sends++; stageSends++; facts?.BeginDispatch();
                         WireReply reply;
@@ -204,9 +203,11 @@ internal sealed class SmokeHost : IDisposable
     {
         Check.That(Encoding.UTF8.GetByteCount(body) <= 65536, Failure.Capacity);
         var node = JsonNode.Parse(body)!;
-        Check.That(node["model"]!.GetValue<string>() == "deepseek-flash" && node["max_tokens"]!.GetValue<int>() == 4096
+        var profileMatches = node["model"]!.GetValue<string>() == "deepseek-flash" && node["max_tokens"]!.GetValue<int>() == 4096
             && !node["stream"]!.GetValue<bool>() && node["thinking"]!["type"]!.GetValue<string>() == "enabled"
-            && node["reasoning_effort"]!.GetValue<string>() == "high", Failure.Profile);
+            && node["reasoning_effort"]!.GetValue<string>() == "high";
+        if (facts is not null) facts.RequestProfileMatch = profileMatches;
+        Check.That(profileMatches, Failure.Profile);
         var messages = node["messages"]!.AsArray();
         Check.That(messages.Count <= 32 && messages[0]!["role"]!.GetValue<string>() == "system"
             && messages[0]!["content"]!.GetValue<string>() == Fixture.Instruction, Failure.Capacity);

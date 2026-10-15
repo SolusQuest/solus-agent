@@ -22,8 +22,9 @@ internal sealed record Snapshot(Guid Implementation, int Format, int Compatibili
     internal AgentContextEnvelope Envelope() => new(Implementation, Format, Compatibility, Payload);
     internal byte[] Fingerprint() => SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(this));
 }
+internal enum WireFault { None, Malformed, Profile, Input, History }
 internal sealed record Bootstrap(bool Fresh, bool CompletedSource, Snapshot? Source, ContextRoundGrant? Grant,
-    Guid Execution, Guid Target, int ToolAllowance, int MaximumTokens = 4096, int InputCharacters = 0, bool MalformedFrame = false, bool Crash = false, bool FailTool = false);
+    Guid Execution, Guid Target, int ToolAllowance, int MaximumTokens = 4096, int InputCharacters = 0, bool MalformedFrame = false, bool Crash = false, bool FailTool = false, WireFault WireFault = WireFault.None);
 internal sealed record Report(int Pid, ContextAdmission Admission, AgentTerminationReason? Reason, ContextCaptureStatus Capture,
     int Sends, int Tools, int Imports, int Claims, int HistoryTools, int HistoryAttempts, long? Input, long? Output,
     int RuntimeAttempts, int RuntimeTools, long? HistoryInput, long? HistoryOutput,
