@@ -37,7 +37,7 @@ internal static class ToolBatchOperation
                 if (!registry.TryGetValue(call.ToolName, out var binding)) return Fail(ToolError.CallMismatch);
                 var descriptor = binding.Descriptor;
                 if (!SameDescriptor(descriptor, binding.Tool.Descriptor)) return Fail(ToolError.InvalidMetadata);
-                if (descriptor.InputSchema.Profile != "closed_scalar_object" || descriptor.ResultSchema.Profile != "closed_scalar_object")
+                if (descriptor.InputSchema.Profile != "bounded_closed_object" || descriptor.ResultSchema.Profile != "bounded_closed_object")
                     return Fail(ToolError.UnsupportedSchema);
                 var argumentError = descriptor.InputSchema.Validate(call.ArgumentsJson, descriptor.MaximumArgumentBytes);
                 if (argumentError != ToolError.None) return Fail(argumentError);

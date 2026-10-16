@@ -76,12 +76,15 @@ public sealed class CounterTool : FunctionTool<CounterCapability>
     /// <summary>A deterministic signal after the effect, for in-flight cancellation/concurrent-use tests.</summary>
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     /// <inheritdoc />
-    protected override bool ValidateArguments(JsonElement arguments) => arguments.GetProperty("amount").GetInt64() is >= 0 and <= 100;
+    protected override bool ValidateArguments(JsonElement arguments) =>
+        ToolInteger.TryParse(arguments.GetProperty("amount").GetRawText(), out var amount) && amount is >= 0 and <= 100;
     /// <inheritdoc />
     protected override async ValueTask<ToolOutput> InvokeCoreAsync(ToolCall call, CounterCapability capability, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(call.ArgumentsJson);
-        var total = capability.Add(document.RootElement.GetProperty("amount").GetInt64(), cancellationToken);
+        if (!ToolInteger.TryParse(document.RootElement.GetProperty("amount").GetRawText(), out var amount))
+            throw new ToolContractException(ToolError.InvalidArguments);
+        var total = capability.Add(amount, cancellationToken);
         Started.TrySetResult();
         switch (mode)
         {

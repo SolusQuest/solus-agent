@@ -41,12 +41,12 @@ public sealed class FunctionToolTests
     [InlineData("{\"amount\":\"1\"}", ToolError.InvalidArguments)]
     [InlineData("{\"amount\":true}", ToolError.InvalidArguments)]
     [InlineData("{\"amount\":null}", ToolError.InvalidArguments)]
-    [InlineData("{\"amount\":1.0}", ToolError.InvalidArguments)]
-    [InlineData("{\"amount\":1e0}", ToolError.InvalidArguments)]
+    [InlineData("{\"amount\":1.5}", ToolError.InvalidArguments)]
+    [InlineData("{\"amount\":1e-1}", ToolError.InvalidArguments)]
     [InlineData("{\"amount\":9223372036854775808}", ToolError.InvalidArguments)]
     [InlineData("{\"amount\":-1}", ToolError.DomainRejected)]
     [InlineData("{\"amount\":101}", ToolError.DomainRejected)]
-    [InlineData("{\"amount\":[[[[0]]]]}", ToolError.InvalidJson)]
+    [InlineData("{\"amount\":[[[[[[0]]]]]]}", ToolError.InvalidJson)]
     public void ActualArgumentAndDomainFailuresRejectBeforeEffects(string json, ToolError expected)
     {
         var capability = new CounterCapability();

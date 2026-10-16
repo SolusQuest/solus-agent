@@ -20,6 +20,7 @@ internal static class OrdinaryContextChild
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "structured-context-child") return await StructuredContextChild.Run(args);
         if (args.Length == 3 && args[0] == "scribe-fresh-child") return await SolusAgent.ContractTests.Runtime.Consumption.ScribeFreshChild.Run(args);
         if (args.Length == 3 && args[0] == "candidate-context-child") return await Candidates.CandidateContextChild.Run(args);
         if (args.Length == 3 && args[0] == "partial-recovery-child") return await SolusAgent.ContractTests.Runtime.Tools.PartialRecoveryChild.Run(args);
