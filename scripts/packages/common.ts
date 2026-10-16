@@ -70,6 +70,9 @@ export function smokeFailureDiagnostic(stderr: string, stdout = ''): string | un
             currentOutputTokens: value => integer(value, Number.MAX_SAFE_INTEGER),
             historicalInputTokens: value => integer(value, Number.MAX_SAFE_INTEGER),
             historicalOutputTokens: value => integer(value, Number.MAX_SAFE_INTEGER), contextRemoved: boolean,
+            wireJsonValid: boolean, wireUsageValid: boolean, wireShape: value => integer(value, 6),
+            wireFinish: value => integer(value, 6), wireContent: value => integer(value, 3), wireIdentityValid: boolean,
+            wireCallError: value => integer(value, 15), wireArgumentsError: value => integer(value, 15),
         };
         if (!facts || Array.isArray(facts) || typeof facts !== 'object'
             || JSON.stringify(Object.keys(facts)) !== JSON.stringify(Object.keys(rules))) return undefined;

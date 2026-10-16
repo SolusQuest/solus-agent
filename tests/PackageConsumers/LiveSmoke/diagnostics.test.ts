@@ -117,6 +117,8 @@ const facts = {
     stage: 'producer', dispatches: 1, toolEntries: 0, toolEffects: 0, elapsedMilliseconds: 123,
     httpStatus: 503, providerError: null, requestProfileMatch: true, responseProfileMatch: null, replyMatch: null,
     currentInputTokens: null, currentOutputTokens: null, historicalInputTokens: null, historicalOutputTokens: null, contextRemoved: true,
+    wireJsonValid: null, wireUsageValid: null, wireShape: null, wireFinish: null, wireContent: null,
+    wireIdentityValid: null, wireCallError: null, wireArgumentsError: null,
 };
 const envelope = (value: unknown) => `${diagnostic}\nLiveSmoke facts: ${JSON.stringify(value)}`;
 
@@ -128,6 +130,7 @@ test('closed facts survive both private boundaries with nulls and known numeric 
         for (const value of [facts, { ...facts, stage: 'restore', dispatches: 6, toolEntries: 3, toolEffects: 3,
             elapsedMilliseconds: 310000, httpStatus: 599, providerError: 11, replyMatch: false,
             currentInputTokens: Number.MAX_SAFE_INTEGER, currentOutputTokens: 0, historicalInputTokens: 10, historicalOutputTokens: 5,
+            wireJsonValid: true, wireUsageValid: false, wireShape: 6, wireFinish: 6, wireContent: 3, wireIdentityValid: true, wireCallError: 15, wireArgumentsError: 0,
             contextRemoved: false }, { ...facts, dispatches: null, toolEntries: null, toolEffects: null,
             elapsedMilliseconds: null, httpStatus: null, requestProfileMatch: null, contextRemoved: null }]) {
             const expected = envelope(value);
@@ -146,11 +149,13 @@ test('facts reject every schema neighbor, duplicate, noncanonical, partial, and 
         for (const value of [secret, [], {}, undefined]) invalid.push(envelope({ ...facts, [key]: value }));
     }
     for (const key of ['dispatches', 'toolEntries', 'toolEffects', 'elapsedMilliseconds', 'httpStatus', 'providerError',
-        'currentInputTokens', 'currentOutputTokens', 'historicalInputTokens', 'historicalOutputTokens']) {
+        'currentInputTokens', 'currentOutputTokens', 'historicalInputTokens', 'historicalOutputTokens',
+        'wireShape', 'wireFinish', 'wireContent', 'wireCallError', 'wireArgumentsError']) {
         for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, true]) invalid.push(envelope({ ...facts, [key]: value }));
     }
     for (const [key, value] of Object.entries({ stage: 'unknown', dispatches: 7, toolEntries: 4, toolEffects: 4,
-        elapsedMilliseconds: 900001, httpStatus: 99, providerError: 12, replyMatch: 1, contextRemoved: 0 }))
+        elapsedMilliseconds: 900001, httpStatus: 99, providerError: 12, replyMatch: 1, contextRemoved: 0,
+        wireShape: 7, wireFinish: 7, wireContent: 4, wireCallError: 16, wireArgumentsError: 16, wireJsonValid: 1, wireIdentityValid: 0 }))
         invalid.push(envelope({ ...facts, [key]: value }));
     const good = envelope(facts);
     invalid.push(envelope({ ...facts, unknown: null }), good.replace('"dispatches":1', '"dispatches":1,"dispatches":1'),

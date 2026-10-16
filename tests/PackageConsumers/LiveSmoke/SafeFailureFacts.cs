@@ -10,6 +10,7 @@ internal sealed class SafeFailureFacts
     private readonly Stopwatch elapsed = Stopwatch.StartNew();
     private long? input = 0, output = 0;
     private bool awaitingReport = true;
+    private WireObservations wire = new();
     internal string Stage { get; private set; } = "preparation";
     internal int? HttpStatus { get; private set; }
     internal int? ProviderError { get; private set; }
@@ -20,6 +21,7 @@ internal sealed class SafeFailureFacts
     internal void Credential() => Stage = "credential";
     internal void BeginRound(bool fresh)
     {
+        wire = new();
         Stage = fresh ? "producer" : "restore"; awaitingReport = true;
         HttpStatus = null; ProviderError = null; RequestProfileMatch = null; ResponseProfileMatch = null; ReplyMatch = null;
         HistoricalInput = null; HistoricalOutput = null;
@@ -28,6 +30,7 @@ internal sealed class SafeFailureFacts
     internal void ObserveStatus(int status) => HttpStatus = status is >= 100 and <= 599 ? status : null;
     internal void ObserveReport(Report report)
     {
+        wire = (report.Wire ?? new()).Sanitize();
         awaitingReport = false;
         input = Add(input, report.Input); output = Add(output, report.Output);
         HistoricalInput = Number(report.HistoryInput); HistoricalOutput = Number(report.HistoryOutput);
@@ -46,6 +49,8 @@ internal sealed class SafeFailureFacts
             responseProfileMatch = ResponseProfileMatch, replyMatch = ReplyMatch,
             currentInputTokens = awaitingReport ? null : input, currentOutputTokens = awaitingReport ? null : output,
             historicalInputTokens = HistoricalInput, historicalOutputTokens = HistoricalOutput, contextRemoved = ContextRemoved,
+            wireJsonValid = wire.JsonValid, wireUsageValid = wire.UsageValid, wireShape = wire.Shape, wireFinish = wire.Finish,
+            wireContent = wire.Content, wireIdentityValid = wire.IdentityValid, wireCallError = wire.CallError, wireArgumentsError = wire.ArgumentsError,
         });
         return $"LiveSmoke failed: {failure}.\nLiveSmoke facts: {json}";
     }

@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace PackageConsumers.LiveSmoke;
 
-internal enum FakeMode { Normal, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage, WhitespaceArguments, NonemptyArguments, MalformedArguments, ArrayArguments }
+internal enum FakeMode { Normal, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage, WhitespaceArguments, NonemptyArguments, MalformedArguments, ArrayArguments, UsageConflict, UnknownRoot }
 internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
 {
     internal int Entries;
@@ -32,6 +32,13 @@ internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
             { prompt_tokens = 10, completion_tokens = mode == FakeMode.OutputOverflow ? 4097 : mode == FakeMode.OutputExact ? 4096 : 5,
                 total_tokens = mode == FakeMode.OutputOverflow ? 4107 : mode == FakeMode.OutputExact ? 4106 : 15 },
         });
+        if (mode == FakeMode.UsageConflict || mode == FakeMode.UnknownRoot)
+        {
+            var changed = System.Text.Json.Nodes.JsonNode.Parse(response)!;
+            if (mode == FakeMode.UsageConflict) changed["usage"]!["total_tokens"] = 16;
+            else changed[Fixture.PrivateError] = Fixture.CredentialA;
+            response = changed.ToJsonString();
+        }
         if (mode == FakeMode.ResponseExact) response = response.PadRight(65536);
         return Task.FromResult(new WireReply(mode == FakeMode.RateLimited ? 429 : mode == FakeMode.Unavailable ? 503 : 200, response));
     }
@@ -249,6 +256,15 @@ internal static class SelfChecks
             });
         cases += await FailureChecks.RunAsync();
         cases += await WireChecks.RunAsync();
+        cases += await WireObservationChecks.RunAsync();
+        await Case("observer-failure-preserves-real-tool-restoration", async () =>
+        {
+            var fake = new FakeTransport(); using var host = new SmokeHost(fake.SendAsync);
+            var first = await host.RunAsync(true, observerFailure: true);
+            var second = await host.RunAsync(false, observerFailure: true);
+            Check.That(first.Wire == new WireObservations() && second.Wire == new WireObservations()
+                && host.Sends == 2 && host.ToolEntries == 1 && host.Effects == 1 && first.Pid != second.Pid && host.Claims == 1);
+        });
         Check.That(cases > 0);
         return cases;
     }

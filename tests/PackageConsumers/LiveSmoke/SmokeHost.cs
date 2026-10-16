@@ -46,7 +46,7 @@ internal sealed class SmokeHost : IDisposable
 
     internal async Task<Report> RunAsync(bool fresh, bool tamper = false, bool changedTarget = false,
         bool providerMismatch = false, bool replay = false, bool expectRejected = false,
-        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false, WireFault wireFault = WireFault.None)
+        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false, WireFault wireFault = WireFault.None, bool observerFailure = false)
     {
         facts?.BeginRound(fresh);
         var token = deadline.Token;
@@ -57,7 +57,7 @@ internal sealed class SmokeHost : IDisposable
         var grant = fresh ? null : new ContextRoundGrant(Guid.NewGuid(), selected!.Checkpoint, execution, Guid.NewGuid());
         var boot = replay ? lastBootstrap! : new Bootstrap(fresh, completedSource, source, grant, execution,
             changedTarget ? Guid.NewGuid() : target, maximumTools - ToolEntries, providerMismatch ? 4095 : 4096,
-            inputCharacters, malformedFrame, crash, failTool, wireFault);
+            inputCharacters, malformedFrame, crash, failTool, wireFault, observerFailure);
         Check.That(boot is not null, Failure.Authority);
         lastBootstrap = boot;
         var start = new ProcessStartInfo(Environment.ProcessPath!)

@@ -8,7 +8,7 @@ internal static class FailureChecks
     internal static async Task<int> RunAsync()
     {
         var cases = 0;
-        foreach (var mode in new[] { FakeMode.RateLimited, FakeMode.Unavailable, FakeMode.Throw, FakeMode.UnknownUsage, FakeMode.EarlyFinal })
+        foreach (var mode in new[] { FakeMode.RateLimited, FakeMode.Unavailable, FakeMode.Throw, FakeMode.UnknownUsage, FakeMode.EarlyFinal, FakeMode.UsageConflict, FakeMode.UnknownRoot, FakeMode.NonemptyArguments, FakeMode.MalformedArguments })
         {
             var output = new StringWriter(); var error = new StringWriter();
             var fake = new FakeTransport(mode);
@@ -25,6 +25,16 @@ internal static class FailureChecks
             {
                 Check.That(facts.GetProperty("httpStatus").GetInt32() == (mode == FakeMode.RateLimited ? 429 : 503)
                     && facts.GetProperty("replyMatch").ValueKind == JsonValueKind.Null);
+            }
+            if (mode == FakeMode.Throw) Check.That(facts.GetProperty("wireJsonValid").ValueKind == JsonValueKind.Null);
+            else
+            {
+                Check.That(facts.GetProperty("wireJsonValid").GetBoolean());
+                if (mode == FakeMode.UnknownUsage) Check.That(facts.GetProperty("wireUsageValid").ValueKind == JsonValueKind.Null);
+                else Check.That(facts.GetProperty("wireUsageValid").GetBoolean() == (mode != FakeMode.UsageConflict));
+                if (mode == FakeMode.UnknownRoot) Check.That(facts.GetProperty("wireShape").GetInt32() == 1);
+                if (mode is FakeMode.NonemptyArguments or FakeMode.MalformedArguments)
+                    Check.That(facts.GetProperty("wireArgumentsError").GetInt32() == (mode == FakeMode.NonemptyArguments ? 6 : 4));
             }
             cases++;
         }
