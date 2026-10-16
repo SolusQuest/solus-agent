@@ -39,8 +39,8 @@ internal static partial class OrdinaryContextCodec
     private static void ValidateCandidates(OrdinaryCheckpoint saved, RuntimeOptions options)
     {
         var ledger = saved.Candidates!;
-        if (!Enum.IsDefined(ledger.Cursor) || ledger.Episodes.Length is < 1 or > 64
-            || ledger.Submissions.Length > 64 || saved.Rounds.Any(r => r.Candidates is null)
+        if (!Enum.IsDefined(ledger.Cursor) || ledger.Episodes.Length < 1
+            || saved.Rounds.Any(r => r.Candidates is null)
             || ledger.Episodes.Select(e => e.Id).Distinct().Count() != ledger.Episodes.Length
             || ledger.Submissions.Select(s => s.SubmissionId).Distinct().Count() != ledger.Submissions.Length
             || saved.Records.Length + ledger.Episodes.Length + ledger.Submissions.Length > options.MaximumRecords) throw new JsonException();
@@ -98,6 +98,9 @@ internal static partial class OrdinaryContextCodec
                 || !submission.Invoked && index != ledger.Submissions.Length - 1) throw new JsonException();
             var finalFact = facts.Single(f => f.Attempt.Matches(final.Attempt));
             if (submission.Invoked && !PermitsCandidateSubmission(finalFact)) throw new JsonException();
+            if (submission.Invoked)
+                _ = new CandidateSubmission(submission.ExecutionId, submission.SubmissionId, final.Text,
+                    maximumPayloadBytes: CandidateSubmission.MaximumPayloadBytes);
             var firstIndex = Array.FindIndex(facts, f => f.Attempt.Matches(episode.FirstAttempt));
             var finalIndex = Array.FindIndex(facts, f => f.Attempt.Matches(final.Attempt));
             var nextEpisode = Array.FindIndex(ledger.Episodes, e => e.Id == episode.Id) + 1;

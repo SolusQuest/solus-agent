@@ -50,7 +50,9 @@ public sealed class PersistenceTests
         var state = Assert.IsType<ProviderSavedState>(provider.ExportContext(later));
         Assert.True(provider.AdmitContext(later, state));
         Assert.False(provider.AdmitContext(binding, state));
-        Assert.Throws<ProviderContractException>(() => new ProviderContinuation(binding.Scope, binding.Origin, new byte[8193]));
+        Assert.Throws<ProviderContractException>(() => new ProviderContinuation(binding.Scope, binding.Origin, new byte[ProviderLimits.MaximumContinuationBytes + 1]));
+        var oversized = later with { Continuation = new(binding.Scope, binding.Continuation!.Origin, [1, .. Encoding.UTF8.GetBytes(new string('r', 8192))]) };
+        Assert.Null(provider.ExportContext(oversized)); Assert.False(provider.AdmitContext(oversized, state));
         Assert.Throws<ArgumentException>(() => new ProviderSavedState(binding.Scope, binding.Origin, 1, new byte[8193]));
     }
 

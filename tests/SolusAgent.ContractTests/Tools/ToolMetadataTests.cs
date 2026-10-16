@@ -75,8 +75,8 @@ public sealed class ToolMetadataTests
         const string prefix = "{\"amount\":1}";
         var exact = prefix + new string(' ', ToolLimits.PayloadBytes - prefix.Length);
         Assert.True(new CounterTool().Prepare(ToolCall.FromUtf8("id", "counter", Encoding.UTF8.GetBytes(exact))).Accepted);
-        AssertError(ToolError.LimitExceeded, () => ToolCall.FromUtf8("id", "counter", Encoding.UTF8.GetBytes(exact + " ")));
-        AssertError(ToolError.LimitExceeded, () => new ToolCall("id", "counter", exact + " "));
+        Assert.Equal(ToolError.LimitExceeded, new CounterTool().Prepare(ToolCall.FromUtf8("id", "counter", Encoding.UTF8.GetBytes(exact + " "))).Error);
+        Assert.Equal(ToolError.LimitExceeded, new CounterTool().Prepare(new ToolCall("id", "counter", exact + " ")).Error);
         AssertError(ToolError.InvalidEncoding, () => ToolCall.FromUtf8("id", "counter", [0xC3, 0x28]));
         AssertError(ToolError.InvalidEncoding, () => new ToolCall("id", "counter", "\udfff"));
         AssertError(ToolError.InvalidEncoding, () => ToolSchema.FromUtf8([0xFF]));

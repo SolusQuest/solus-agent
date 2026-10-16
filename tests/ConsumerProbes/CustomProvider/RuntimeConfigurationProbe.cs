@@ -265,7 +265,9 @@ public sealed class ConfigurationConsumer
 
     public static AgentContextEnvelope SaveSyntheticData(string data)
     {
-        _ = ProviderInput.Data(data); // Bound/validate before the minimized JSON producer allocates.
+        _ = ProviderInput.Data(data); // Strict construction validation precedes the minimized JSON producer.
+        // This original synthetic Host keeps its small saved-data profile independently of larger construction ceilings.
+        if (Encoding.UTF8.GetByteCount(data) > ProviderLimits.TextBytes) throw new ProviderContractException(ProviderError.LimitExceeded);
         return new(new Guid("7807ef2c-7395-4a63-82dd-0a7021955d87"), 1, 1, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { data })));
     }
 }

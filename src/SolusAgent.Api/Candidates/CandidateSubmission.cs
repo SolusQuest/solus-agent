@@ -6,13 +6,16 @@ namespace SolusAgent.Api.Candidates;
 /// <remarks>Payload is untrusted domain data. Matching identities do not authenticate the sender or authorize effects. Do not log or serialize this object as ordinary diagnostics.</remarks>
 public sealed class CandidateSubmission
 {
-    /// <summary>The maximum UTF-8 payload size admitted by this draft.</summary>
-    public const int MaximumPayloadBytes = 65_536;
+    /// <summary>The default Host-selected UTF-8 payload size.</summary>
+    public const int DefaultPayloadBytes = 65_536;
+    /// <summary>The finite maximum UTF-8 payload size a Host may explicitly select.</summary>
+    public const int MaximumPayloadBytes = 1_048_576;
 
     /// <summary>Creates an immutable individually correlated submission; each repair requires a new identity.</summary>
     /// <exception cref="ArgumentException">An identity, predecessor or UTF-8 payload is invalid.</exception>
     /// <exception cref="ArgumentNullException">The payload is null.</exception>
-    public CandidateSubmission(Guid executionId, Guid submissionId, string payload, Guid? repairsSubmissionId = null)
+    public CandidateSubmission(Guid executionId, Guid submissionId, string payload, Guid? repairsSubmissionId = null,
+        int maximumPayloadBytes = DefaultPayloadBytes)
     {
         CandidateValidation.Identity(executionId, nameof(executionId));
         CandidateValidation.Identity(submissionId, nameof(submissionId));
@@ -21,7 +24,8 @@ public sealed class CandidateSubmission
             throw new ArgumentException("A repair requires a distinct nonempty predecessor identity.", nameof(repairsSubmissionId));
         }
 
-        CandidateValidation.Text(payload, MaximumPayloadBytes, nameof(payload));
+        if (maximumPayloadBytes is < 1 or > MaximumPayloadBytes) throw new ArgumentOutOfRangeException(nameof(maximumPayloadBytes));
+        CandidateValidation.Text(payload, maximumPayloadBytes, nameof(payload));
         ExecutionId = executionId;
         SubmissionId = submissionId;
         Payload = payload;

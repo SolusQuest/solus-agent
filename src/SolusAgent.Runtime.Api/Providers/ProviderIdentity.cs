@@ -59,7 +59,7 @@ public sealed class ProviderContinuation
     {
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Origin = origin ?? throw new ArgumentNullException(nameof(origin));
-        ProviderBoundary.Require(replayBytes.Length <= ProviderLimits.ContinuationBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(replayBytes.Length <= ProviderLimits.MaximumContinuationBytes, ProviderError.LimitExceeded);
         ProviderBoundary.Require(replayBytes.Length != 0, ProviderError.ContinuationMismatch);
         bytes = replayBytes.ToArray();
     }

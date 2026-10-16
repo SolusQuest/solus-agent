@@ -87,6 +87,10 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --con
 
 These are controlled current-source and process checks, with no product identity/evidence acceptance, live service, production storage, useful production-capacity qualification or installed downstream package claim. Record nonzero local counts and exact pushed-head Linux CI separately. A new immutable package and exact consumer adoption remain separately authorized downstream work under [package consumption](../10_workflow/package-consumption.md).
 
+## Finite capacity checks
+
+The focused filter `FullyQualifiedName~SolusAgent.ContractTests.Runtime.Capacity` exercises finite opt-in capacities through actual public runtime startup, independently compiled tools/providers and the Api-only candidate Host. It covers complete 1 MiB original artifacts with distinct escaping classes, 4 MiB blocks and a 32 MiB serialized logical request, large exact replay, ordinary/combined 1 MiB candidates, the actual 128-dispatch/1024-invocation trajectory with inventory neighbors, zero-effect full-batch reservation refusal, large query-found recovery, 65-turn history restoration and 2 MiB encoded capture neighbors. Logical, envelope and serialized projection sizes are measured separately; maximum byte and count classes are separate legal workloads. Existing full context/process, adapter, usage and architecture regressions remain required. These synthetic checks establish neither downstream domain acceptance nor live transport, production storage or registry adoption.
+
 ## Clean package foundation
 
 Use Node.js 24.12 or newer for native TypeScript, the .NET SDK selected by `global.json`, and the system `unzip` command. The scripts use erasable TypeScript syntax directly; no package-manager bootstrap, transpiler or Node dependency installation is required. Native execution does not type-check TypeScript. These checks create local artifacts and run synthetic consumers; they do not publish packages or contact a model provider.

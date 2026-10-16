@@ -7,14 +7,17 @@ public sealed class CandidateExecutionBounds
 {
     /// <summary>Creates a positive total submission limit and nonnegative follow-on allowances.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A bound is invalid.</exception>
-    public CandidateExecutionBounds(int maximumSubmissions, int maximumRepairs, int maximumContinuations)
+    public CandidateExecutionBounds(int maximumSubmissions, int maximumRepairs, int maximumContinuations,
+        int maximumPayloadBytes = CandidateSubmission.DefaultPayloadBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumSubmissions);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumRepairs);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumContinuations);
+        if (maximumPayloadBytes is < 1 or > CandidateSubmission.MaximumPayloadBytes) throw new ArgumentOutOfRangeException(nameof(maximumPayloadBytes));
         MaximumSubmissions = maximumSubmissions;
         MaximumRepairs = maximumRepairs;
         MaximumContinuations = maximumContinuations;
+        MaximumPayloadBytes = maximumPayloadBytes;
     }
 
     /// <summary>Gets the maximum number of individually identified Host submissions.</summary>
@@ -23,6 +26,8 @@ public sealed class CandidateExecutionBounds
     public int MaximumRepairs { get; }
     /// <summary>Gets the maximum follow-on productions admitted after acceptance and Continue.</summary>
     public int MaximumContinuations { get; }
+    /// <summary>Gets the current Host's strict UTF-8 candidate payload bound, enforced before delivery.</summary>
+    public int MaximumPayloadBytes { get; }
 }
 
 /// <summary>Composes the outer Host execution request with candidate-specific bounds.</summary>

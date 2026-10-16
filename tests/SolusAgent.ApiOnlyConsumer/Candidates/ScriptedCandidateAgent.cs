@@ -86,7 +86,7 @@ public sealed class ScriptedCandidateAgent : ICandidateAgent
                 Interlocked.Increment(ref totalProductionStarted);
                 var payload = await productions[completed](previous, cancellationToken).AsTask().WaitAsync(cancellationToken);
                 submission = new CandidateSubmission(execution.ExecutionId, Guid.NewGuid(), payload,
-                    previous?.Decision == CandidateDecision.Reject ? previous.SubmissionId : null);
+                    previous?.Decision == CandidateDecision.Reject ? previous.SubmissionId : null, request.Bounds.MaximumPayloadBytes);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

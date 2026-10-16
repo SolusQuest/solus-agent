@@ -39,7 +39,7 @@ public sealed partial class ToolSchema
     /// <summary>Validates actual JSON against every supported constraint and the independent payload budgets.</summary>
     public ToolError Validate(string json, int maximumBytes = ToolLimits.PayloadBytes)
     {
-        if (maximumBytes is < 1 or > ToolLimits.PayloadBytes) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        if (maximumBytes is < 1 or > ToolLimits.MaximumPayloadBytes) { throw new ArgumentOutOfRangeException(nameof(maximumBytes)); }
         try
         {
             using var document = ToolBoundary.Json(json, maximumBytes);
