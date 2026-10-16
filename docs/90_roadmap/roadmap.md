@@ -1,6 +1,6 @@
 # Roadmap to the first consumable prerelease
 
-Status: M0-M4 implementation is present; M5 consumption qualification and first internal publication are in progress. The sections below retain the selected outcome/exit requirements. [Project validation](../00_project/validation.md) owns current controlled evidence and limits; [internal package consumption](../10_workflow/package-consumption.md) owns the selected five-package layout, internal version/feed and compatibility policy. No live result or publication is implied by implemented runtime behavior.
+Status: M0-M4 implementation is present; the M5 first private publication, independent registry consumption and bounded live qualification are recorded in the [release record](m5-release-record.md) and [live qualification](m5-live-qualification.md). M5 administrative closure remains pending; downstream product migration is separate. The sections below retain the selected outcome/exit requirements. [Project validation](../00_project/validation.md) owns current controlled evidence and limits; [internal package consumption](../10_workflow/package-consumption.md) owns the selected five-package layout, internal version/feed and compatibility policy. No live result or publication is implied by implemented runtime behavior.
 
 ## Target and ownership
 
@@ -19,7 +19,7 @@ Follow the selected [architecture](../20_architecture/architecture.md), [project
 | M2: Runtime execution | A complete agent/provider/tool/Host feedback path works through the public startup surface. | Implemented; controlled evidence in project validation |
 | M3: Budgets, usage, and failure semantics | Resource admission, accounting, retries, cancellation, and termination are coherent across execution paths. | Implemented; controlled evidence in project validation |
 | M4: Complete context restoration | A new process can explicitly restore supported runtime context and continue with capabilities supplied again by the Host. | Implemented; controlled evidence in project validation |
-| M5: Consumption validation and prerelease | Versioned release artifacts can be installed independently and support the verified migration-entry scenarios. | In progress; clean Foundation available, operational qualification/publication pending |
+| M5: Consumption validation and prerelease | Versioned release artifacts can be installed independently and support the verified migration-entry scenarios. | Private `0.1.0-internal.1` published; four offline consumers, both repository-token installations and bounded live qualification recorded; administrative closure pending |
 
 These milestones group outcomes, not mandatory counts of issues, pull requests, reviews, or implementation phases. Each behavior ships with its necessary tests, fixtures, and documentation. Establish ordinary CI with the first executable contracts and evolve it with the behavior; do not postpone validation infrastructure until M5.
 
