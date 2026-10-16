@@ -85,17 +85,19 @@ public sealed class CompositionFailureTests
     }
 
     [Theory]
-    [InlineData("domain-rejection")] [InlineData("capability-mismatch")]
-    public async Task LaterToolMemberAdmissionFailureRejectsWholeBatchWithoutAnyEffect(string mode)
+    [InlineData("domain-rejection", false)] [InlineData("domain-rejection", true)]
+    [InlineData("capability-mismatch", false)] [InlineData("capability-mismatch", true)]
+    public async Task LaterToolMemberAdmissionFailureRejectsWholeBatchWithoutAnyEffect(string mode, bool indexed)
     {
         var counter = new CounterTool(maximumResultBytes: 64); var counterCapability = new CounterCapability();
         var transform = mode == "domain-rejection"
             ? new TransformTool(rejectDomain: true, maximumResultBytes: 64) : new TransformTool(maximumResultBytes: 64);
         IToolCapability transformCapability = mode == "domain-rejection" ? new TransformCapability() : new ForeignTransformCapability();
         var observedCounter = new ObservedFunctionTool(counter); var observedTransform = new ObservedFunctionTool(transform);
-        using var handler = FakeHandler.Reply(AdapterFixture.Response(null, "batch-reasoning", "tool_calls",
+        var response = AdapterFixture.Response(null, "batch-reasoning", "tool_calls",
             calls: [AdapterFixture.Call("call-1a", "counter", IntegrationFixture.CounterArguments),
-                    AdapterFixture.Call("call-1b", "transform", IntegrationFixture.TransformArguments)], usage: IntegrationFixture.Usage(1)));
+                    AdapterFixture.Call("call-1b", "transform", IntegrationFixture.TransformArguments)], usage: IntegrationFixture.Usage(1));
+        using var handler = FakeHandler.Reply(indexed ? AdapterFixture.WithCallIndices(response) : response);
         using var provider = AdapterFixture.Provider(handler);
         IAgent agent = RuntimeAgentFactory.Create(new(provider,
             [new RuntimeToolRegistration(observedCounter, counterCapability), new RuntimeToolRegistration(observedTransform, transformCapability)], new RuntimeHooks()),
