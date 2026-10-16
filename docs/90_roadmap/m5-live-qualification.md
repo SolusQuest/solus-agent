@@ -45,6 +45,29 @@ After the first failure, the harness was corrected to preserve closed failure ob
 
 The adapter rejected the response before returning an admitted model response. The recorded aggregate reply-match flag was `true` because the child initializes it before any comparison; it is not evidence of an admitted or matching reply. The final diagnostic correction reports this unobserved comparison as null on adapter errors. This changes reporting only and does not retroactively alter either tested revision or justify another paid invocation.
 
-There were exactly two separately authorized live commands in total. Paid testing stopped after the diagnostic retest. The evidence narrows this failure to actual adapter response rejection, but does not identify which response-contract requirement failed. Further adapter/provider diagnosis belongs to its owner and needs a separately authorized task; raw data was not retained for reconstruction. The publication gate remains unqualified and blocks first publication. No registry upload, tag, release dispatch or downstream migration was performed.
+At that checkpoint, two separately authorized live commands had failed. Paid testing stopped pending further owner investigation and authorization. The evidence narrows this failure to actual adapter response rejection, but does not identify which response-contract requirement failed. Further adapter/provider diagnosis belongs to its owner and needs a separately authorized task; raw data was not retained for reconstruction. The publication gate remains unqualified and blocks first publication. No registry upload, tag, release dispatch or downstream migration was performed.
 
 Even a later passing macOS live run would qualify only the observed service interoperability. Linux deterministic package qualification, default owned provider transport, billing accuracy, durable storage, hostile concurrent filesystem replacement, abrupt-host cleanup, macOS release support and downstream product migration are separate evidence boundaries. Internal package and saved-context upgrade compatibility is not promised before formal release.
+
+
+## Third separately authorized diagnostic invocation: failed
+
+After an offline owner investigation, a final plan amendment authorized fixture-only scalar wire observations and one additional bounded invocation. Production parser, ModelProvider guard, endpoint/profile, schema admission and all execution limits remained unchanged. Before this invocation, 20 Node tests, all four clean consumers (APR 10 cases/23 processes, Foundation, LiveSmoke 114 cases, Scribe 16 cases/23 processes), 63 installed-adapter/source-identical-parser comparisons and four complete child/parent/verifier/wrapper confinement cases passed. Observer exceptions preserve actual outcomes, bytes, tool effects and restoration; observations cannot grant admission.
+
+| Input or observation | Actual evidence |
+| --- | --- |
+| Tested harness revision | `6ea55084f4e60dcdf34ba7bea4997cbf22095ecc` |
+| Production package provenance | Same five local `0.1.0-internal.93` archives built at `a3a0eb9436c3b783ebefacba33942dfbd420717f`; production source unchanged |
+| Start | 2026-10-16T03:36:48.905963Z (2026-10-16 Asia/Shanghai) |
+| Environment, profile, source and limits | Same selected macOS environment, explicit private credential source, official profile and finite limits recorded above; no retries |
+| Exit and stage | Nonzero `UnexpectedReply`; producer |
+| Independent counts | One physical dispatch, zero tool entries, zero acknowledged effects |
+| HTTP and actual admission | HTTP 200; actual adapter/ModelProvider `InvalidResponse` (6); request/response model-profile comparisons true; admitted reply comparison unavailable (null) |
+| Current / historical usage | Observed input 307/output 45; historical input 0/output 0, not added to current totals |
+| Wire observations | Strict JSON tree valid; usage consistency valid; selected identity checks valid; finish ToolCalls (1); content String (2); call-layer shape deviation (4); ToolCall constructor error None (0); registered ToolSchema error None (0) |
+| Timing and cleanup | Harness 1283 milliseconds; command 4.817 seconds; context removal verified true |
+| Live acceptance | Failed: no actual tool entry/effect or successful producer/restorer completion |
+
+This invocation observed a call-layer shape deviation while the examined call metadata and argument schemas passed. The shape flag describes selected comparisons, not an actual parser throw site or complete admission result. An offline extra-call-property fixture reproduces these key observations, but unknown actual field names were deliberately not retained; no particular field or unique cause is asserted, and combined failures remain possible. Neither the first nor second failure is retroactively assigned this observation.
+
+There have now been exactly three separately authorized live commands. Paid execution stopped after this invocation; a fourth call is not authorized. Further response-contract investigation belongs to the provider owner, particularly the call-shape boundary and its adapter admission tests. No production validation was relaxed and no raw provider data was retained. Issue #93 and first-publication eligibility remain blocked.
