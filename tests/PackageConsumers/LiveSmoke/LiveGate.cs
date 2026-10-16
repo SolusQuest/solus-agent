@@ -37,17 +37,10 @@ internal static class LiveGate
             var info = new FileInfo(path);
             Check.That(info.Exists && info.Length is > 0 and <= 4096 && (info.Attributes & FileAttributes.ReparsePoint) == 0, Failure.CredentialSource);
             Check.That(info.LinkTarget is null, Failure.CredentialSource);
-            Check.That((File.GetUnixFileMode(path) & ~(UnixFileMode.UserRead | UnixFileMode.UserWrite)) == 0, Failure.CredentialSource);
-            var start = new ProcessStartInfo("git") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var value in new[] { "-C", info.DirectoryName!, "check-ignore", "--quiet", "--", info.FullName }) start.ArgumentList.Add(value);
-            using var git = Process.Start(start) ?? throw new SmokeFailure(Failure.CredentialSource);
-            if (!git.WaitForExit(5000))
-            {
-                git.Kill(entireProcessTree: true); git.WaitForExit();
-                throw new SmokeFailure(Failure.CredentialSource);
-            }
-            Check.That(git.ExitCode == 0, Failure.CredentialSource);
-            // Recheck using the open handle before any allocation/read. The path must be Git-ignored regular local configuration.
+            var mode = File.GetUnixFileMode(path);
+            Check.That((mode & ~(UnixFileMode.UserRead | UnixFileMode.UserWrite)) == 0 && mode.HasFlag(UnixFileMode.UserRead), Failure.CredentialSource);
+            CredentialSource.Admit(info.FullName);
+            // Recheck using the open handle before any allocation/read. The explicitly selected source passed private-file and Git/external-source admission.
             using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             Check.That(input.Length is > 0 and <= 4096, Failure.CredentialSource);
             var bytes = new byte[input.Length]; input.ReadExactly(bytes);

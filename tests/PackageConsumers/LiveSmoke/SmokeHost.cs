@@ -16,6 +16,7 @@ internal sealed record WireReply(int Status, string Body);
 internal sealed class SmokeHost : IDisposable
 {
     private readonly Send send;
+    private readonly SafeFailureFacts? facts;
     private readonly CancellationTokenSource deadline;
     private readonly int maximumSends, maximumTools;
     private readonly HashSet<Guid> consumedSources = [];
@@ -31,10 +32,10 @@ internal sealed class SmokeHost : IDisposable
     internal int Claims { get; private set; }
     internal bool ChildTerminated { get; private set; }
 
-    internal SmokeHost(Send send, int maximumSends = 6, int maximumTools = 3, TimeSpan? duration = null)
+    internal SmokeHost(Send send, int maximumSends = 6, int maximumTools = 3, TimeSpan? duration = null, SafeFailureFacts? facts = null)
     {
         Check.That(maximumSends is > 0 and <= 6 && maximumTools is >= 0 and <= 3, Failure.Capacity);
-        this.send = send; this.maximumSends = maximumSends; this.maximumTools = maximumTools;
+        this.facts = facts; this.send = send; this.maximumSends = maximumSends; this.maximumTools = maximumTools;
         var elapsed = duration ?? TimeSpan.FromMinutes(5);
         Check.That(elapsed > TimeSpan.Zero && elapsed <= TimeSpan.FromMinutes(5), Failure.Capacity);
         deadline = new(elapsed);
@@ -45,8 +46,9 @@ internal sealed class SmokeHost : IDisposable
 
     internal async Task<Report> RunAsync(bool fresh, bool tamper = false, bool changedTarget = false,
         bool providerMismatch = false, bool replay = false, bool expectRejected = false,
-        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false)
+        int inputCharacters = 0, bool malformedFrame = false, bool crash = false, bool failTool = false, WireFault wireFault = WireFault.None, bool observerFailure = false)
     {
+        facts?.BeginRound(fresh);
         var token = deadline.Token;
         if (token.IsCancellationRequested) throw new SmokeFailure(Failure.Deadline);
         var source = fresh ? null : ReadContext();
@@ -55,7 +57,7 @@ internal sealed class SmokeHost : IDisposable
         var grant = fresh ? null : new ContextRoundGrant(Guid.NewGuid(), selected!.Checkpoint, execution, Guid.NewGuid());
         var boot = replay ? lastBootstrap! : new Bootstrap(fresh, completedSource, source, grant, execution,
             changedTarget ? Guid.NewGuid() : target, maximumTools - ToolEntries, providerMismatch ? 4095 : 4096,
-            inputCharacters, malformedFrame, crash, failTool);
+            inputCharacters, malformedFrame, crash, failTool, wireFault, observerFailure);
         Check.That(boot is not null, Failure.Authority);
         lastBootstrap = boot;
         var start = new ProcessStartInfo(Environment.ProcessPath!)
@@ -83,15 +85,17 @@ internal sealed class SmokeHost : IDisposable
                 switch (frame.Kind)
                 {
                     case "send":
+                        if (facts is not null) facts.RequestProfileMatch = null;
                         Check.That(Sends < maximumSends, Failure.DispatchLimit);
                         CheckWire(frame.Body!, boot.Fresh);
                         // Charge before entering transport. A thrown/unknown request never refunds this slot.
-                        Sends++; stageSends++;
+                        Sends++; stageSends++; facts?.BeginDispatch();
                         WireReply reply;
                         try { reply = await send(frame.Body!, boot.Fresh, token).WaitAsync(token); }
                         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                         catch (SmokeFailure) { throw; }
                         catch { throw new SmokeFailure(Failure.Transport); }
+                        facts?.ObserveStatus(reply.Status);
                         Check.That(Encoding.UTF8.GetByteCount(reply.Body) <= 65536, Failure.Capacity);
                         try { ObserveReply(reply, boot.Fresh); }
                         catch (JsonException) { throw new SmokeFailure(Failure.UnexpectedReply); }
@@ -118,7 +122,9 @@ internal sealed class SmokeHost : IDisposable
                         if (allowed) { consumedSources.Add(selected!.Checkpoint.RoundId); Claims++; }
                         response = new("reply", Allowed: allowed);
                         break;
-                    case "report": report = frame.Report ?? throw new SmokeFailure(Failure.Protocol); continue;
+                    case "report":
+                        report = frame.Report ?? throw new SmokeFailure(Failure.Protocol);
+                        facts?.ObserveReport(report); continue;
                     default: throw new SmokeFailure(Failure.Protocol);
                 }
                 await Pipe.WriteAsync(process.StandardInput, response, token);
@@ -147,6 +153,11 @@ internal sealed class SmokeHost : IDisposable
             Check.That(boot.Fresh ? report.Imports == 0 && report.Claims == 0
                 : report.Imports == 1 && report.Claims == 1 && report.HistoryTools >= 1 && report.HistoryAttempts >= 1, Failure.Authority);
             Check.That(report.Capture == ContextCaptureStatus.Delivered && report.Captured is not null, Failure.Capacity);
+            // Successful actual adapter/runtime admission establishes the wire ordinal invariant.
+            // Only normalized replay loses index; raw arguments, reasoning and call identities stay exact.
+            foreach (var message in expectedHistory!)
+                if (message?["tool_calls"] is JsonArray calls)
+                    foreach (var call in calls) call!.AsObject().Remove("index");
             Pin(report.Captured!); completedSource = !boot.Fresh;
             return report;
         }
@@ -197,9 +208,11 @@ internal sealed class SmokeHost : IDisposable
     {
         Check.That(Encoding.UTF8.GetByteCount(body) <= 65536, Failure.Capacity);
         var node = JsonNode.Parse(body)!;
-        Check.That(node["model"]!.GetValue<string>() == "deepseek-flash" && node["max_tokens"]!.GetValue<int>() == 4096
+        var profileMatches = node["model"]!.GetValue<string>() == "deepseek-flash" && node["max_tokens"]!.GetValue<int>() == 4096
             && !node["stream"]!.GetValue<bool>() && node["thinking"]!["type"]!.GetValue<string>() == "enabled"
-            && node["reasoning_effort"]!.GetValue<string>() == "high", Failure.Profile);
+            && node["reasoning_effort"]!.GetValue<string>() == "high";
+        if (facts is not null) facts.RequestProfileMatch = profileMatches;
+        Check.That(profileMatches, Failure.Profile);
         var messages = node["messages"]!.AsArray();
         Check.That(messages.Count <= 32 && messages[0]!["role"]!.GetValue<string>() == "system"
             && messages[0]!["content"]!.GetValue<string>() == Fixture.Instruction, Failure.Capacity);
@@ -216,6 +229,8 @@ internal sealed class SmokeHost : IDisposable
     {
         if (reply.Status != 200) return; // Let the actual adapter classify errors, with no retry policy.
         var root = JsonNode.Parse(reply.Body)!;
+        if (facts is not null) facts.ResponseProfileMatch = root["model"] is JsonValue model
+            && model.TryGetValue<string>(out var name) && name == "deepseek-flash";
         var choice = root["choices"]![0]!; var message = choice["message"]!.DeepClone();
         // Remove a wire-only null field which the adapter intentionally omits on replay.
         if (message["tool_calls"] is null) message.AsObject().Remove("tool_calls");

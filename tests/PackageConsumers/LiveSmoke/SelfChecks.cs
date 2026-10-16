@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace PackageConsumers.LiveSmoke;
 
-internal enum FakeMode { Normal, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage }
+internal enum FakeMode { Normal, Indexed, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage, WhitespaceArguments, NonemptyArguments, MalformedArguments, ArrayArguments, UsageConflict, UnknownRoot }
 internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
 {
     internal int Entries;
@@ -24,12 +24,28 @@ internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
                 reasoning_content = mode == FakeMode.ReplayOverflow ? new string('r', 8192) : mode == FakeMode.ReplayExact ? new string('r', 8191)
                     : mode == FakeMode.ReplayEmpty ? "" : Fixture.Replay,
                 tool_calls = tool ? new[] { new { id = "smoke-call-" + Entries, type = "function", function = new
-                { name = mode == FakeMode.WrongTool ? "uninstalled_tool" : "smoke_increment", arguments = "{}" } } } : null,
+                { name = mode == FakeMode.WrongTool ? "uninstalled_tool" : "smoke_increment", arguments = mode == FakeMode.WhitespaceArguments ? " \n{ } \t"
+                    : mode == FakeMode.NonemptyArguments ? "{\"extra\":true}" : mode == FakeMode.MalformedArguments ? "{"
+                    : mode == FakeMode.ArrayArguments ? "[]" : "{}" } } } : null,
             } } },
             usage = mode == FakeMode.UnknownUsage ? null : new
             { prompt_tokens = 10, completion_tokens = mode == FakeMode.OutputOverflow ? 4097 : mode == FakeMode.OutputExact ? 4096 : 5,
                 total_tokens = mode == FakeMode.OutputOverflow ? 4107 : mode == FakeMode.OutputExact ? 4106 : 15 },
         });
+        if (mode == FakeMode.UsageConflict || mode == FakeMode.UnknownRoot)
+        {
+            var changed = System.Text.Json.Nodes.JsonNode.Parse(response)!;
+            if (mode == FakeMode.UsageConflict) changed["usage"]!["total_tokens"] = 16;
+            else changed[Fixture.PrivateError] = Fixture.CredentialA;
+            response = changed.ToJsonString();
+        }
+        if (mode == FakeMode.Indexed && tool)
+        {
+            var indexed = System.Text.Json.Nodes.JsonNode.Parse(response)!;
+            var call = indexed["choices"]![0]!["message"]!["tool_calls"]![0]!;
+            call["index"] = 0; call["function"]!["arguments"] = " { } ";
+            response = indexed.ToJsonString();
+        }
         if (mode == FakeMode.ResponseExact) response = response.PadRight(65536);
         return Task.FromResult(new WireReply(mode == FakeMode.RateLimited ? 429 : mode == FakeMode.Unavailable ? 503 : 200, response));
     }
@@ -56,6 +72,15 @@ internal static class SelfChecks
                     && second.Sends == 1 && second.Tools == 0 && second.HistoryTools == 1 && second.HistoryAttempts == 1);
                 Check.That(first.Input == 10 && first.Output == 5 && second.Input == 10 && second.Output == 5);
                 Check.That(first.HistoryInput == 0 && first.HistoryOutput == 0 && second.HistoryInput == 10 && second.HistoryOutput == 5);
+                var safe = SafeSummary.Create(first with { Pid = 987654321 }, second, host.Sends, host.ToolEntries, host.Effects, TimeSpan.FromSeconds(1), false);
+                Check.That(Fixture.Confined(safe) && !safe.Contains("987654321", StringComparison.Ordinal));
+                using var measured = JsonDocument.Parse(safe);
+                Check.That(measured.RootElement.GetProperty("currentInputTokens").GetInt64() == 20
+                    && measured.RootElement.GetProperty("restorer").GetProperty("historicalInputTokens").GetInt64() == 10);
+                using var unknown = JsonDocument.Parse(SafeSummary.Create(first with { Input = null, Output = null }, second,
+                    host.Sends, host.ToolEntries, host.Effects, TimeSpan.FromSeconds(1), false));
+                Check.That(unknown.RootElement.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null
+                    && unknown.RootElement.GetProperty("currentOutputTokens").ValueKind == JsonValueKind.Null);
                 Check.That(host.Sends == 2 && fake.Entries == 2 && host.ToolEntries == 1 && host.Effects == 1 && host.Claims == 1);
                 Check.That(File.Exists(Path.Combine(path, "context.json")) && first.OrdinaryConfined && second.OrdinaryConfined);
                 Check.That(File.GetUnixFileMode(Path.Combine(path, "context.json")) == (UnixFileMode.UserRead | UnixFileMode.UserWrite));
@@ -77,7 +102,7 @@ internal static class SelfChecks
             await host.RunAsync(true); await host.RunAsync(false);
             Check.That(host.Sends == 2 && host.ToolEntries == 1 && host.Effects == 1);
         });
-        foreach (var mode in new[] { FakeMode.ReplayEmpty, FakeMode.ResponseExact, FakeMode.OutputExact })
+        foreach (var mode in new[] { FakeMode.ReplayEmpty, FakeMode.ResponseExact, FakeMode.OutputExact, FakeMode.WhitespaceArguments })
             await Case("positive-boundary-" + mode, async () =>
             {
                 var fake = new FakeTransport(mode); using var host = new SmokeHost(fake.SendAsync);
@@ -129,15 +154,28 @@ internal static class SelfChecks
             (FakeMode.WrongTool, Failure.UnexpectedReply), (FakeMode.Malformed, Failure.UnexpectedReply),
             (FakeMode.ReplayOverflow, Failure.Capacity), (FakeMode.ResponseOverflow, Failure.Capacity),
             (FakeMode.OutputOverflow, Failure.Capacity), (FakeMode.UnknownUsage, Failure.UnknownUsage),
+            (FakeMode.NonemptyArguments, Failure.UnexpectedReply), (FakeMode.MalformedArguments, Failure.UnexpectedReply),
+            (FakeMode.ArrayArguments, Failure.UnexpectedReply),
         })
             await Case("response-" + mode, async () =>
             {
-                var fake = new FakeTransport(mode); string path;
-                using (var host = new SmokeHost(fake.SendAsync))
+                var fake = new FakeTransport(mode); string path; var facts = new SafeFailureFacts();
+                using (var host = new SmokeHost(fake.SendAsync, facts: facts))
                 {
                     path = host.DirectoryPath;
                     await Fails(failure, () => host.RunAsync(true));
-                    Check.That(host.Sends == 1 && fake.Entries == 1); // No retries, including 429/503/unknown transport.
+                    Check.That(host.Sends == 1 && fake.Entries == 1);
+                    using var observed = JsonDocument.Parse(facts.Envelope(failure, host).Split('\n')[1]["LiveSmoke facts: ".Length..]);
+                    var value = observed.RootElement;
+                    Check.That(value.GetProperty("stage").GetString() == "producer"
+                        && value.GetProperty("dispatches").GetInt32() == 1
+                        && value.GetProperty("requestProfileMatch").GetBoolean());
+                    Check.That(Fixture.Confined(facts.Envelope(failure, host)));
+                    if (mode is FakeMode.RateLimited or FakeMode.Unavailable)
+                        Check.That(value.GetProperty("httpStatus").GetInt32() == (mode == FakeMode.RateLimited ? 429 : 503));
+                    if (mode is FakeMode.Throw or FakeMode.UnknownUsage or FakeMode.Malformed)
+                        Check.That(value.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null);
+                    // No retries, including 429/503/unknown transport.
                 }
                 Check.That(!Directory.Exists(path), Failure.Confinement);
             });
@@ -149,21 +187,27 @@ internal static class SelfChecks
         });
         await Case("whole-smoke-watchdog", async () =>
         {
-            var fake = new FakeTransport(FakeMode.Hold); string path;
-            using (var host = new SmokeHost(fake.SendAsync, duration: TimeSpan.FromSeconds(2)))
+            var fake = new FakeTransport(FakeMode.Hold); string path; var facts = new SafeFailureFacts();
+            using (var host = new SmokeHost(fake.SendAsync, duration: TimeSpan.FromSeconds(2), facts: facts))
             {
                 path = host.DirectoryPath;
                 await Fails(Failure.Deadline, () => host.RunAsync(true));
                 Check.That(fake.Entries == 1 && host.Sends == 1 && host.ChildTerminated && host.ToolEntries == 0);
+                using var observed = JsonDocument.Parse(facts.Envelope(Failure.Deadline, host).Split('\n')[1]["LiveSmoke facts: ".Length..]);
+                Check.That(observed.RootElement.GetProperty("dispatches").GetInt32() == 1
+                    && observed.RootElement.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null);
             }
             Check.That(!Directory.Exists(path), Failure.Confinement);
         });
         foreach (var malformed in new[] { true, false })
             await Case(malformed ? "private-rpc-failure" : "child-exception-confinement", async () =>
             {
-                var fake = new FakeTransport(); using var host = new SmokeHost(fake.SendAsync);
+                var fake = new FakeTransport(); var facts = new SafeFailureFacts(); using var host = new SmokeHost(fake.SendAsync, facts: facts);
                 await Fails(malformed ? Failure.Protocol : Failure.Child, () => host.RunAsync(true, malformedFrame: malformed, crash: !malformed));
                 Check.That(host.Sends == 0 && host.ToolEntries == 0);
+                using var observed = JsonDocument.Parse(facts.Envelope(Failure.Child, host).Split('\n')[1]["LiveSmoke facts: ".Length..]);
+                Check.That(observed.RootElement.GetProperty("providerError").ValueKind == JsonValueKind.Null
+                    && observed.RootElement.GetProperty("currentInputTokens").ValueKind == JsonValueKind.Null);
             });
         await Case("offline-ambient-key-poison", async () =>
         {
@@ -208,6 +252,7 @@ internal static class SelfChecks
                 LiveGate.ReadCredential, _ => { factories++; return fake.SendAsync; }, fake.SendAsync)));
             Check.That(factories == 0 && fake.Entries == 0);
         });
+        await Case("real-credential-source-admission", () => { CredentialSourceChecks.Run(); return Task.CompletedTask; });
         foreach (var bytes in new byte[][] { [], [0], [0xff], Encoding.UTF8.GetBytes("\n"), Encoding.UTF8.GetBytes("has space"), new byte[4097] })
             await Case("invalid-key-" + cases, async () =>
             {
@@ -216,6 +261,18 @@ internal static class SelfChecks
                     _ => LiveGate.ValidateCredential(bytes), _ => { factories++; return fake.SendAsync; }, fake.SendAsync)));
                 Check.That(factories == 0 && fake.Entries == 0);
             });
+        cases += await FailureChecks.RunAsync();
+        cases += await WireChecks.RunAsync();
+        cases += await WireObservationChecks.RunAsync();
+        foreach (var mode in new[] { FakeMode.Normal, FakeMode.Indexed })
+        await Case("observer-failure-preserves-real-tool-restoration-" + mode, async () =>
+        {
+            var fake = new FakeTransport(mode); using var host = new SmokeHost(fake.SendAsync);
+            var first = await host.RunAsync(true, observerFailure: true);
+            var second = await host.RunAsync(false, observerFailure: true);
+            Check.That(first.Wire == new WireObservations() && second.Wire == new WireObservations()
+                && host.Sends == 2 && host.ToolEntries == 1 && host.Effects == 1 && first.Pid != second.Pid && host.Claims == 1);
+        });
         Check.That(cases > 0);
         return cases;
     }

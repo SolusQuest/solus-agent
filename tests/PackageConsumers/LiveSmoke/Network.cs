@@ -7,7 +7,8 @@ namespace PackageConsumers.LiveSmoke;
 
 internal static class Network
 {
-    internal static Send Send(string credential) => async (body, _, token) =>
+    internal static Send Send(string credential) => Create(credential);
+    internal static Send Create(string credential, Action<int>? observedStatus = null, Func<HttpMessageHandler>? handler = null) => async (body, _, token) =>
     {
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
         attempt.CancelAfter(TimeSpan.FromSeconds(120)); token = attempt.Token;
@@ -18,7 +19,7 @@ internal static class Network
             ConnectTimeout = TimeSpan.FromSeconds(15), MaxResponseHeadersLength = 16, MaxResponseDrainSize = 0,
             ResponseDrainTimeout = TimeSpan.Zero,
         };
-        using var transport = new HttpMessageInvoker(socket, disposeHandler: false);
+        using var transport = new HttpMessageInvoker(handler?.Invoke() ?? socket, disposeHandler: true);
         using var message = new HttpRequestMessage(HttpMethod.Post, DeepSeekOptions.OfficialEndpoint)
         {
             Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionExact,
@@ -29,6 +30,7 @@ internal static class Network
         message.Headers.ExpectContinue = false; message.Headers.ConnectionClose = true;
         message.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
         using var response = await transport.SendAsync(message, token);
+        observedStatus?.Invoke((int)response.StatusCode);
         Check.That(response.Content.Headers.ContentEncoding.Count == 0
             && response.Content.Headers.ContentType?.MediaType == "application/json", Failure.UnexpectedReply);
         Check.That(response.Content.Headers.ContentLength is null or <= 65536, Failure.Capacity);

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Context;
 using SolusAgent.Api.Execution;
@@ -24,11 +25,12 @@ internal static class Child
             await Pipe.WriteAsync(Console.Out, new Frame("unrecognized", Body: Fixture.CredentialA + Fixture.Replay), CancellationToken.None);
             return 0;
         }
+        var wire = new WireObserver(boot.ObserverFailure);
         var rpc = new Rpc(); var counter = new Counter(rpc, boot.Target);
         var tool = new GuardedTool(counter, boot.ToolAllowance > 0, boot.FailTool);
         using var provider = new DeepSeekProvider(new(boot.Fresh ? Fixture.CredentialA : Fixture.CredentialB,
-            boot.MaximumTokens, maximumRequestBodyBytes: 65536, maximumResponseBodyBytes: 65536, timeout: TimeSpan.FromSeconds(120)), new RpcHandler(rpc));
-        var observed = new ObservedProvider(provider, boot.Fresh);
+            boot.MaximumTokens, maximumRequestBodyBytes: 65536, maximumResponseBodyBytes: 65536, timeout: TimeSpan.FromSeconds(120)), new RpcHandler(rpc, boot.WireFault, wire));
+        var observed = new ObservedProvider(provider, boot.Fresh, wire);
         var authority = new Authority(rpc, boot.Target);
         var agent = (IContextAgent)RuntimeAgentFactory.Create(new(observed, [new(tool, counter)], new Hooks(),
             new(maximumInputs: 32, maximumTools: 1, maximumToolCalls: 3, maximumRequestBytes: 65536,
@@ -65,7 +67,7 @@ internal static class Child
                 ? result.History.Sum(round => round.Usage.OutputTokens.ObservedTokens!.Value) : null,
             observed.ReplyMatches,
             Fixture.Confined(JsonSerializer.Serialize(result) + JsonSerializer.Serialize(progress.Items) + JsonSerializer.Serialize(observed.Diagnostics)),
-            observed.Diagnostics.LastOrDefault()?.Error, snapshot);
+            observed.Diagnostics.LastOrDefault()?.Error, snapshot, wire.Value);
         // The only stdout writer is the restricted IPC protocol; the parent never forwards it.
         await Pipe.WriteAsync(Console.Out, new Frame("report", Report: report), CancellationToken.None);
         return 0;
@@ -104,7 +106,7 @@ internal static class Child
             return allowed;
         }
     }
-    private sealed class ObservedProvider(DeepSeekProvider inner, bool fresh) : IModelProvider, IProviderContextPersistence
+    private sealed class ObservedProvider(DeepSeekProvider inner, bool fresh, WireObserver wire) : IModelProvider, IProviderContextPersistence
     {
         internal int Calls, Imports;
         internal bool ReplyMatches = true;
@@ -114,16 +116,29 @@ internal static class Child
         public async ValueTask<ProviderExchangeResult> ExchangeAsync(ProviderRequest request, CancellationToken token = default)
         {
             Calls++;
-            var value = await inner.ExchangeAsync(request, token); Diagnostics.Add(value.Diagnostic);
+            wire.Begin(request);
+            ProviderExchangeResult value;
+            try { value = await inner.ExchangeAsync(request, token); }
+            finally { wire.End(); }
+            Diagnostics.Add(value.Diagnostic);
             if (value.Response is { } response)
             {
                 var expected = fresh ? response.Finish == ProviderFinish.ToolCalls && response.Calls.Count == 1
-                    && response.Calls[0].ToolName == "smoke_increment" && response.Calls[0].ArgumentsJson == "{}"
+                    && response.Calls[0].ToolName == "smoke_increment" && IsEmptyObject(response.Calls[0].ArgumentsJson)
                     : response.Finish == ProviderFinish.Final && response.Text == Fixture.Final && response.Calls.Count == 0;
                 ReplyMatches &= expected;
                 if (!expected) throw new SmokeFailure(Failure.UnexpectedReply);
             }
             return value;
+        }
+        private static bool IsEmptyObject(string arguments)
+        {
+            try
+            {
+                using var value = JsonDocument.Parse(arguments);
+                return value.RootElement.ValueKind == JsonValueKind.Object && !value.RootElement.EnumerateObject().Any();
+            }
+            catch (JsonException) { return false; }
         }
         public ProviderSavedState? ExportContext(ProviderContextBinding binding) => inner.ExportContext(binding);
         public bool AdmitContext(ProviderContextBinding binding, ProviderSavedState state) { Imports++; return inner.AdmitContext(binding, state); }
@@ -142,12 +157,24 @@ internal static class Child
             }
         }
     }
-    private sealed class RpcHandler(Rpc rpc) : HttpMessageHandler
+    private sealed class RpcHandler(Rpc rpc, WireFault fault, WireObserver wire) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Check.That(request.RequestUri?.AbsoluteUri == DeepSeekOptions.OfficialEndpoint && request.Method == HttpMethod.Post);
-            var response = rpc.Ask(new("send", Body: await request.Content!.ReadAsStringAsync(token)), token);
+            var body = await request.Content!.ReadAsStringAsync(token);
+            // Closed fault selection exists only on the trusted fixture bootstrap, never on the local CLI.
+            if (fault == WireFault.Malformed) body = "{";
+            else if (fault != WireFault.None)
+            {
+                var node = JsonNode.Parse(body)!;
+                if (fault == WireFault.Profile) node["model"] = "synthetic-unselected-model";
+                if (fault == WireFault.Input) node["messages"]![0]!["content"] = "synthetic-instruction-mismatch";
+                if (fault == WireFault.History) node["messages"]![1]!["content"] = "synthetic-history-mismatch";
+                body = node.ToJsonString();
+            }
+            var response = rpc.Ask(new("send", Body: body), token);
+            wire.Observe(response.Body!);
             return new((HttpStatusCode)response.Status) { Content = new StringContent(response.Body!, Encoding.UTF8, "application/json") };
         }
     }
