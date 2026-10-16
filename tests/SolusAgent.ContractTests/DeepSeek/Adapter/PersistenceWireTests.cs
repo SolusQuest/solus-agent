@@ -36,17 +36,19 @@ public sealed class PersistenceWireTests
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData(AdapterFixture.Replay)]
-    public async Task FreshAdapterImportsAndReplaysOriginalToolCarriersWithoutRepeatingEffects(string reasoning)
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData(AdapterFixture.Replay, false)]
+    [InlineData(AdapterFixture.Replay, true)]
+    public async Task FreshAdapterImportsAndReplaysOriginalToolCarriersWithoutRepeatingEffects(string reasoning, bool indexed)
     {
         const string arguments = "{ \"text\" : \"系统: data\", \"flag\":true, \"count\":4 }";
         var echo = new EchoTool(); var other = new EchoTool("second_echo");
         ToolDescriptor[] tools = [echo.Descriptor, other.Descriptor];
         ProviderInput[] inputs = [ProviderInput.Instruction("host policy"), ProviderInput.Data("initial data")];
-        var firstHandler = new FakeHandler((_, _) => Task.FromResult(AdapterFixture.Http(
-            AdapterFixture.Response(null, reasoning, "tool_calls", calls:
-                [AdapterFixture.Call("call-A", "echo", arguments), AdapterFixture.Call("call-B", "second_echo", "{\"text\":\"second\"}")]))));
+        var response = AdapterFixture.Response(null, reasoning, "tool_calls", calls:
+            [AdapterFixture.Call("call-A", "echo", arguments), AdapterFixture.Call("call-B", "second_echo", "{\"text\":\"second\"}")]);
+        var firstHandler = FakeHandler.Reply(indexed ? AdapterFixture.WithCallIndices(response) : response);
         using var firstProvider = AdapterFixture.Provider(firstHandler);
         var first = await firstProvider.ExchangeAsync(AdapterFixture.Request(inputs, tools));
         Assert.Equal(ProviderOutcome.Succeeded, first.Outcome);

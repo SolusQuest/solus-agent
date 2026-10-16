@@ -97,9 +97,10 @@ internal static class RestorationChild
             if (producing)
             {
                 if (scenario == "produce-export-failure") observed!.FailExport = true;
-                return AdapterFixture.Http(AdapterFixture.Response(null, ToolReasoning, "tool_calls", calls:
+                var response = AdapterFixture.Response(null, ToolReasoning, "tool_calls", calls:
                     [AdapterFixture.Call("first", "counter", FirstArguments), AdapterFixture.Call("uncertain", "recover", FailedArguments),
-                     AdapterFixture.Call("last", "counter", LastArguments)], usage: IntegrationFixture.Usage(2)));
+                     AdapterFixture.Call("last", "counter", LastArguments)], usage: IntegrationFixture.Usage(2));
+                return AdapterFixture.Http(scenario == "produce-index" ? AdapterFixture.WithCallIndices(response) : response);
             }
             return AdapterFixture.Http(AdapterFixture.Response("restoration-repaired-candidate", "restoration-new-final-replay", usage: IntegrationFixture.Usage(3)));
         });
@@ -162,6 +163,11 @@ internal static class RestorationChild
         {
             var text = Encoding.UTF8.GetString(captured.CopyRestrictedPayload());
             Assert.DoesNotContain(AdapterFixture.Credential, text); Assert.DoesNotContain(CredentialB, text);
+            if (scenario == "produce-index")
+            {
+                using var payload = JsonDocument.Parse(text);
+                Assert.True(AssertNormalizedCalls(payload.RootElement) > 0);
+            }
             if (scenario != "produce-storage-failure" && result.Context.CaptureStatus == ContextCaptureStatus.Delivered)
                 FileContextAuthority.Save(outputDir, captured, checkpoint);
             else if (scenario == "produce-storage-failure")
@@ -200,6 +206,23 @@ internal static class RestorationChild
         producing ? [new(AgentInputSource.Repository, Data)] : [], new(producing ? 2 : 1, TimeSpan.FromSeconds(30)), AgentCapability.None,
         new(maximumLogicalCalls: producing ? 2 : 1, maximumPhysicalDispatches: producing ? 2 : 1, maximumToolInvocations: producing ? 3 : 2,
             accountingPolicy: new(new(512, 64), producing ? 700 : 512, producing ? 128 : 64)));
+
+    private static int AssertNormalizedCalls(JsonElement value)
+    {
+        var count = 0;
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            if (value.TryGetProperty("CallId", out _) && value.TryGetProperty("ToolName", out _) && value.TryGetProperty("ArgumentsJson", out _))
+            {
+                Assert.Equal(new[] { "ArgumentsJson", "CallId", "ToolName" }, value.EnumerateObject().Select(p => p.Name).OrderBy(name => name, StringComparer.Ordinal));
+                count++;
+            }
+            foreach (var property in value.EnumerateObject()) count += AssertNormalizedCalls(property.Value);
+        }
+        else if (value.ValueKind == JsonValueKind.Array)
+            foreach (var item in value.EnumerateArray()) count += AssertNormalizedCalls(item);
+        return count;
+    }
 
     private static AgentContextEnvelope Alter(AgentContextEnvelope envelope, string command)
     {
