@@ -51,9 +51,14 @@ internal static class DeepSeekResponseParser
             {
                 Require(toolCalls.ValueKind == JsonValueKind.Array);
                 if (toolCalls.GetArrayLength() > request.Bounds.MaximumToolCalls) throw new ProviderContractException(ProviderError.LimitExceeded);
+                var ordinal = 0;
                 foreach (var call in toolCalls.EnumerateArray())
                 {
-                    Shape(call, "id", "type", "function"); Require(Text(call.GetProperty("type")) == "function");
+                    Shape(call, "id", "type", "function", "index");
+                    if (call.TryGetProperty("index", out var callIndex))
+                        Require(callIndex.ValueKind == JsonValueKind.Number && callIndex.TryGetInt32(out var position) && position == ordinal);
+                    ordinal++;
+                    Require(Text(call.GetProperty("type")) == "function");
                     var function = call.GetProperty("function"); Shape(function, "name", "arguments");
                     calls.Add(new(Text(call.GetProperty("id"), ToolLimits.CallIdBytes), Text(function.GetProperty("name"), ToolLimits.IdentifierCharacters),
                         Text(function.GetProperty("arguments"), ToolLimits.PayloadBytes)));

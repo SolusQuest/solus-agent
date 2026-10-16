@@ -12,6 +12,7 @@ public sealed class RestorationProcessTests
 {
     [Theory]
     [InlineData("produce-query", 1, 0)]
+    [InlineData("produce-index", 1, 0)]
     [InlineData("produce-repeat", 0, 1)]
     public async Task FreshProcessesRestoreOneMixedCandidateExecutionWithExactWireAndIndependentEffects(string command, int queries, int operations)
     {

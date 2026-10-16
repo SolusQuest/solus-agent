@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SolusAgent.Providers.DeepSeek;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Tools.Api;
@@ -32,6 +33,13 @@ internal static class AdapterFixture
         });
     internal static object Call(string id = "call-1", string tool = "echo", string args = "{\"text\":\"data\"}") =>
         new { id, type = "function", function = new { name = tool, arguments = args } };
+    internal static string WithCallIndices(string body)
+    {
+        var root = JsonNode.Parse(body)!;
+        var calls = root["choices"]![0]!["message"]!["tool_calls"]!.AsArray();
+        for (var ordinal = 0; ordinal < calls.Count; ordinal++) calls[ordinal]!["index"] = ordinal;
+        return root.ToJsonString();
+    }
     internal static HttpResponseMessage Http(string body, HttpStatusCode status = HttpStatusCode.OK) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 }
