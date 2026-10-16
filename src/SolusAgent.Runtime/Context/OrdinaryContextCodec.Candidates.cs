@@ -98,6 +98,9 @@ internal static partial class OrdinaryContextCodec
                 || !submission.Invoked && index != ledger.Submissions.Length - 1) throw new JsonException();
             var finalFact = facts.Single(f => f.Attempt.Matches(final.Attempt));
             if (submission.Invoked && !PermitsCandidateSubmission(finalFact)) throw new JsonException();
+            if (submission.Invoked)
+                _ = new CandidateSubmission(submission.ExecutionId, submission.SubmissionId, final.Text,
+                    maximumPayloadBytes: CandidateSubmission.MaximumPayloadBytes);
             var firstIndex = Array.FindIndex(facts, f => f.Attempt.Matches(episode.FirstAttempt));
             var finalIndex = Array.FindIndex(facts, f => f.Attempt.Matches(final.Attempt));
             var nextEpisode = Array.FindIndex(ledger.Episodes, e => e.Id == episode.Id) + 1;

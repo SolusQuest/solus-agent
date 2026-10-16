@@ -15,7 +15,7 @@ public sealed class CandidateContractTests
     [Fact]
     public void HostTextBoundsUseActualUtf8BytesWithoutDomainValidationOrDiagnosticEcho()
     {
-        var payload = string.Concat(Enumerable.Repeat("😀", CandidateSubmission.MaximumPayloadBytes / 4));
+        var payload = string.Concat(Enumerable.Repeat("😀", CandidateSubmission.DefaultPayloadBytes / 4));
         Assert.Equal(payload, new CandidateSubmission(ExecutionId, SubmissionId, payload).Payload);
         Assert.Equal(string.Empty, new CandidateSubmission(ExecutionId, SubmissionId, string.Empty).Payload);
         var correction = new string('x', CandidateFeedback.MaximumCorrectionBytes);

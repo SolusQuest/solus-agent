@@ -9,13 +9,17 @@ public static class ToolLimits
     /// <summary>Maximum canonical tool, capability, or property identifier characters.</summary>
     public const int IdentifierCharacters = 64;
     /// <summary>Maximum opaque call identifier UTF-8 bytes.</summary>
-    public const int CallIdBytes = 128;
+    public const int CallIdBytes = 1024;
+    /// <summary>Independent opaque recovery target snapshot ceiling.</summary>
+    public const int RecoveryTargetBytes = 128;
     /// <summary>Maximum normalized description UTF-8 bytes.</summary>
     public const int DescriptionBytes = 1024;
     /// <summary>Maximum source schema UTF-8 bytes.</summary>
     public const int SchemaBytes = 8192;
-    /// <summary>Maximum argument or result UTF-8 bytes.</summary>
+    /// <summary>Default descriptor and schema-validation argument/result UTF-8 bytes.</summary>
     public const int PayloadBytes = 16384;
+    /// <summary>Finite construction ceiling; actual preparation and results obey the Host descriptor's smaller limits.</summary>
+    public const int MaximumPayloadBytes = 8 * 1024 * 1024;
     /// <summary>Maximum declared properties in each closed object.</summary>
     public const int Properties = 32;
     /// <summary>Maximum aggregate property declarations in a schema.</summary>
@@ -104,9 +108,9 @@ internal static class ToolBoundary
         return value;
     }
 
-    internal static string CallId(string value)
+    internal static string CallId(string value, int maximumBytes = ToolLimits.CallIdBytes)
     {
-        Text(value, ToolLimits.CallIdBytes);
+        Text(value, maximumBytes);
         if (value.Length == 0 || value.Any(char.IsControl))
         {
             throw new ToolContractException(ToolError.InvalidMetadata);

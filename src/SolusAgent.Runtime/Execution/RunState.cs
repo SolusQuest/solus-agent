@@ -100,7 +100,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         if (available <= 0) { Close(RuntimeStop.ResourceLimit); return null; }
         var b = Configuration.Bounds;
         var bounded = new ProviderExchangeBounds(b.MaximumInputs, b.MaximumTools, b.MaximumToolCalls, b.MaximumRequestBytes,
-            Math.Min(original.Bounds.MaximumResponseBytes, available), b.MaximumContinuationBytes);
+            Math.Min(original.Bounds.MaximumResponseBytes, available), b.MaximumContinuationBytes, b.MaximumTextBytes);
         var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory(attempt));
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);

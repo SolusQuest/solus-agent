@@ -46,7 +46,7 @@ public sealed class ToolRecoveryContractTests
             receipt.Error!.Value, receipt.InvocationStarted!.Value, receipt.Json);
         Assert.True(historical.IsHistorical); Assert.True(historical.InvocationStarted);
         Assert.Null(ToolRecoveryReceipt.Unresolved(operation).RecordedCall);
-        Assert.Throws<ToolContractException>(() => ToolRecoveryReceipt.Found(operation, call, ToolOutcome.Succeeded, ToolError.None, true, new string('x', ToolLimits.PayloadBytes + 1)));
+        Assert.Throws<ToolContractException>(() => ToolRecoveryReceipt.Found(operation, call, ToolOutcome.Succeeded, ToolError.None, true, new string('x', ToolLimits.MaximumPayloadBytes + 1)));
     }
     [Fact]
     public async Task OperationAwareProducerPreservesConcurrentSingleUseAndFreshKeyedAttempt()

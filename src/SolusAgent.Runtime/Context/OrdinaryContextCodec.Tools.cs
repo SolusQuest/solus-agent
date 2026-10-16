@@ -41,6 +41,7 @@ internal static partial class OrdinaryContextCodec
                 if (entry.Text is null || entry.Final is not null || entry.ToolModel is not null || entry.ToolMember is not null
                     || pending is not null && !completed[pending.Attempt.PhysicalAttemptId]) throw new JsonException();
                 _ = entry.Kind == ProviderInputKind.HostInstruction ? ProviderInput.Instruction(entry.Text) : ProviderInput.Data(entry.Text);
+                if (Bytes(entry.Text) > config.Bounds.MaximumTextBytes) throw new JsonException();
             }
             else if (entry.Kind == ProviderInputKind.ModelData)
             {
@@ -49,6 +50,7 @@ internal static partial class OrdinaryContextCodec
                 var candidate = Candidate(entry);
                 var bounds = entry.Final?.Bounds ?? entry.ToolModel!.Bounds;
                 if (!candidate.Scope.Matches(saved.Scope) || candidate.PayloadByteCount > bounds.MaximumResponseBytes
+                    || candidate.Text is { } text && Bytes(text) > bounds.MaximumTextBytes
                     || candidate.Calls.Count > bounds.MaximumToolCalls
                     || candidate.Continuation?.ByteCount > bounds.MaximumContinuationBytes) throw new JsonException();
                 pending = entry.ToolModel;
@@ -149,6 +151,8 @@ internal static partial class OrdinaryContextCodec
         // Validate added Host data before its bytes participate in admission.
         _ = ProviderInput.Instruction(request.Request.Instructions);
         foreach (var data in request.Request.Data) _ = ProviderInput.Data(data.Text);
+        if (Bytes(request.Request.Instructions) > bounds.MaximumTextBytes
+            || request.Request.Data.Any(d => Bytes(d.Text) > bounds.MaximumTextBytes)) throw new JsonException();
         var payload = ProspectivePayload(request, saved, config, options);
         var retained = Math.Max(payload, checked(encodedBytes + DefinitionBytes(config)
             + (continuing ? 0 : Bytes(request.Request.Instructions) + request.Request.Data.Sum(d => Bytes(d.Text)))));

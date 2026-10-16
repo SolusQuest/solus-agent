@@ -18,11 +18,13 @@ public sealed class ProviderBoundsTests
         _ = new ProviderRequest(scope, ProviderExchangeTests.Attempt(), Enumerable.Repeat(ProviderInput.Data(""), ProviderLimits.Inputs).ToArray());
         Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() =>
             new ProviderRequest(scope, ProviderExchangeTests.Attempt(), new OversizedInputs())).Error);
-        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => ProviderInput.Data(new('é', ProviderLimits.TextBytes / 2 + 1))).Error);
+        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderRequest(scope, ProviderExchangeTests.Attempt(),
+            [ProviderInput.Data(new('é', ProviderLimits.TextBytes / 2 + 1))])).Error);
         Assert.Equal(ProviderLimits.TextBytes, Encoding.UTF8.GetByteCount(ProviderInput.Data(new('é', ProviderLimits.TextBytes / 2)).Text!));
         Assert.Equal(ProviderError.InvalidEncoding, Assert.Throws<ProviderContractException>(() => ProviderInput.Data("\uD800")).Error);
         Assert.Equal(ProviderError.InvalidEncoding, Assert.Throws<ProviderContractException>(() => ProviderInput.DataFromUtf8([0xFF])).Error);
-        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => ProviderInput.DataFromUtf8(new byte[ProviderLimits.TextBytes + 1])).Error);
+        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderRequest(scope, ProviderExchangeTests.Attempt(),
+            [ProviderInput.DataFromUtf8(new byte[ProviderLimits.TextBytes + 1])])).Error);
     }
 
     [Fact]
@@ -58,9 +60,10 @@ public sealed class ProviderBoundsTests
         var attempt = ProviderExchangeTests.Attempt();
         static ToolCall Call(string id, int bytes) => new(id, "echo_a", "{\"text\":\"" + new string('x', bytes - 11) + "\"}");
         ToolCall[] calls = [Call("a", 16384), Call("b", 16384), Call("c", 16384), Call("d", 16354)];
-        _ = new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null, calls);
+        var request = new ProviderRequest(scope, attempt, [], [new ProbeTool("echo_a").Descriptor]);
+        new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null, calls).ValidateFor(request);
         calls[^1] = Call("d", 16355);
-        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null, calls)).Error);
+        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null, calls).ValidateFor(request)).Error);
         Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderResponse(scope, attempt, ProviderFinish.ToolCalls, null,
             Enumerable.Range(0, ProviderLimits.Tools + 1).Select(i => new ToolCall("id" + i, "echo_a", "{}")).ToArray())).Error);
     }
@@ -105,8 +108,8 @@ public sealed class ProviderBoundsTests
         Assert.Equal(new byte[] { 0, 0xFF, 0x20, 1 }, continuation.CopyReplayBytes());
         Assert.True(continuation.Matches(new(scope, attempt, [0, 0xFF, 0x20, 1])));
         Assert.False(scope.Matches(new("scope_canary", "MODEL_SCOPE_CANARY")));
-        _ = new ProviderContinuation(scope, attempt, new byte[ProviderLimits.ContinuationBytes]);
-        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderContinuation(scope, attempt, new byte[ProviderLimits.ContinuationBytes + 1])).Error);
+        _ = new ProviderContinuation(scope, attempt, new byte[ProviderLimits.MaximumContinuationBytes]);
+        Assert.Equal(ProviderError.LimitExceeded, Assert.Throws<ProviderContractException>(() => new ProviderContinuation(scope, attempt, new byte[ProviderLimits.MaximumContinuationBytes + 1])).Error);
         Assert.Equal(ProviderError.ContinuationMismatch, Assert.Throws<ProviderContractException>(() => new ProviderContinuation(scope, attempt, [])).Error);
         Assert.DoesNotContain("CANARY", scope + continuation.ToString());
     }
@@ -132,7 +135,7 @@ public sealed class ProviderBoundsTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    [InlineData(33)]
+    [InlineData(2049)]
     public void InvalidBoundsRejectExplicitly(int count) => Assert.Throws<ArgumentOutOfRangeException>(() => new ProviderExchangeBounds(maximumInputs: count));
 
     [Fact]

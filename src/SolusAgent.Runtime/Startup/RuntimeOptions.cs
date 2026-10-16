@@ -5,14 +5,20 @@ namespace SolusAgent.Runtime.Startup;
 /// <summary>Finite memory and closure policy for the managed runtime; AgentRequest remains the run-limit authority.</summary>
 public sealed class RuntimeOptions
 {
+    /// <summary>Finite retained physical-attempt ceiling; the default remains 64.</summary>
+    public const int MaximumAttemptCapacity = 128;
+    /// <summary>Finite cumulative record ceiling; the default remains 64.</summary>
+    public const int MaximumRecordCapacity = 2048;
+    /// <summary>Finite variable-payload retention ceiling, independent of the encoded checkpoint limit.</summary>
+    public const int MaximumRetainedCapacityBytes = 256 * 1024 * 1024;
     /// <summary>Creates finite implementation capacities and an explicit post-cut closure allowance.</summary>
     public RuntimeOptions(TimeProvider? timeProvider = null, int maximumAttempts = 64, int maximumRecords = 64,
         int maximumRetainedBytes = ProviderLimits.RequestBytes + ProviderLimits.ResponseBytes,
         TimeSpan? settlementGrace = null, bool requireContinuation = false)
     {
-        if (maximumAttempts is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(maximumAttempts));
-        if (maximumRecords is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(maximumRecords));
-        if (maximumRetainedBytes is < 1 or > ProviderLimits.RequestBytes + ProviderLimits.ResponseBytes)
+        if (maximumAttempts is < 1 or > MaximumAttemptCapacity) throw new ArgumentOutOfRangeException(nameof(maximumAttempts));
+        if (maximumRecords is < 1 or > MaximumRecordCapacity) throw new ArgumentOutOfRangeException(nameof(maximumRecords));
+        if (maximumRetainedBytes is < 1 or > MaximumRetainedCapacityBytes)
             throw new ArgumentOutOfRangeException(nameof(maximumRetainedBytes));
         var grace = settlementGrace ?? TimeSpan.FromSeconds(1);
         if (grace <= TimeSpan.Zero || grace > TimeSpan.FromSeconds(30)) throw new ArgumentOutOfRangeException(nameof(settlementGrace));

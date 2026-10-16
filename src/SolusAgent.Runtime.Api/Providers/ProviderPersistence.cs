@@ -46,8 +46,11 @@ public sealed class ProviderHistory
     public ProviderHistory(IReadOnlyList<ProviderAttempt> acceptedOrigins, ProviderAttempt? operationOrigin = null)
     {
         ArgumentNullException.ThrowIfNull(acceptedOrigins);
-        var copy = acceptedOrigins.ToArray();
-        if (copy.Length > 64 || copy.Any(a => a is null) || copy.Select(a => a.PhysicalAttemptId).Distinct().Count() != copy.Length
+        var count = acceptedOrigins.Count;
+        if (count is < 0 or > ProviderLimits.MaximumHistoryOrigins) throw new ArgumentException("Invalid history origins.");
+        var copy = new ProviderAttempt[count];
+        for (var i = 0; i < count; i++) copy[i] = acceptedOrigins[i] ?? throw new ArgumentException("Invalid history origins.");
+        if (copy.Select(a => a.PhysicalAttemptId).Distinct().Count() != copy.Length
             || copy.Select(a => a.LogicalCallId).Distinct().Count() != copy.Length) throw new ArgumentException("Invalid history origins.");
         AcceptedOrigins = Array.AsReadOnly(copy); OperationOrigin = operationOrigin;
     }

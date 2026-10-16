@@ -26,8 +26,8 @@ public sealed class ToolDescriptor
         ResultSchema = resultSchema ?? throw new ArgumentNullException(nameof(resultSchema));
         CapabilityId = ToolBoundary.Identifier(capabilityId);
         if (!Enum.IsDefined(effect)) { throw new ToolContractException(ToolError.UnsupportedCapability); }
-        if (maximumArgumentBytes is < 1 or > ToolLimits.PayloadBytes) { throw new ArgumentOutOfRangeException(nameof(maximumArgumentBytes)); }
-        if (maximumResultBytes is < 1 or > ToolLimits.PayloadBytes) { throw new ArgumentOutOfRangeException(nameof(maximumResultBytes)); }
+        if (maximumArgumentBytes is < 1 or > ToolLimits.MaximumPayloadBytes) { throw new ArgumentOutOfRangeException(nameof(maximumArgumentBytes)); }
+        if (maximumResultBytes is < 1 or > ToolLimits.MaximumPayloadBytes) { throw new ArgumentOutOfRangeException(nameof(maximumResultBytes)); }
         Effect = effect;
         MaximumArgumentBytes = maximumArgumentBytes;
         MaximumResultBytes = maximumResultBytes;
@@ -60,11 +60,11 @@ public sealed class ToolCall
     {
         CallId = ToolBoundary.CallId(callId);
         ToolName = ToolBoundary.Identifier(toolName);
-        ArgumentsJson = ToolBoundary.Text(argumentsJson, ToolLimits.PayloadBytes);
+        ArgumentsJson = ToolBoundary.Text(argumentsJson, ToolLimits.MaximumPayloadBytes);
     }
     /// <summary>Creates a call from admitted strict UTF-8 bytes, owning an immutable copy.</summary>
     public static ToolCall FromUtf8(string callId, string toolName, ReadOnlySpan<byte> argumentsUtf8) =>
-        new(callId, toolName, ToolBoundary.Decode(argumentsUtf8, ToolLimits.PayloadBytes));
+        new(callId, toolName, ToolBoundary.Decode(argumentsUtf8, ToolLimits.MaximumPayloadBytes));
     /// <summary>Opaque exact, bounded call identifier; comparison never folds case or trims.</summary>
     public string CallId { get; }
     /// <summary>Canonical tool identifier.</summary>
@@ -132,10 +132,10 @@ public sealed class ToolOutput
     private ToolOutput(ToolCall call, string? json, ToolError error) { Call = call; Json = json; Error = error; }
     /// <summary>Creates a byte-bounded success candidate. The guard still checks association, per-tool size and schema.</summary>
     public static ToolOutput Success(ToolCall call, string json) =>
-        new(call ?? throw new ArgumentNullException(nameof(call)), ToolBoundary.Text(json, ToolLimits.PayloadBytes), ToolError.None);
+        new(call ?? throw new ArgumentNullException(nameof(call)), ToolBoundary.Text(json, ToolLimits.MaximumPayloadBytes), ToolError.None);
     /// <summary>Admits output bytes before decoding; association and result-schema acceptance still belong to the guard.</summary>
     public static ToolOutput FromUtf8(ToolCall call, ReadOnlySpan<byte> utf8Json) =>
-        Success(call, ToolBoundary.Decode(utf8Json, ToolLimits.PayloadBytes));
+        Success(call, ToolBoundary.Decode(utf8Json, ToolLimits.MaximumPayloadBytes));
     /// <summary>Creates a fixed implementation failure; arbitrary failure codes and None reject.</summary>
     public static ToolOutput Failure(ToolCall call, ToolError error = ToolError.InvocationFailed)
     {

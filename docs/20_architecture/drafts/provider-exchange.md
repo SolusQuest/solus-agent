@@ -54,17 +54,19 @@ The production runtime requires observation visibility independently of pending 
 
 `ProviderResponse.PayloadByteCount` exposes numeric variable payload accounting. `ValidateFor(ProviderRequest)` reuses the complete request-relative validator without making a candidate accepted. Consumers must validate against their actual request rather than assuming `Accepted` proves its original bounds or continuation requirements. This protects same-attempt guarded results returned by a forwarding interface under a substituted request, while retained current-attempt observations remain independent of payload rejection.
 
-| Dimension | Draft ceiling |
-| --- | --- |
-| Exact provider/model label | 128 UTF-8 bytes each, nonempty, no control characters |
-| Classified inputs | 32 |
-| Host definitions / calls per turn | 16 each |
-| One instruction/input/model text | 16384 strict UTF-8 bytes |
-| Opaque continuation | 8192 bytes, nonempty |
-| Aggregate request payload | 131072 bytes |
-| Aggregate response payload | 65536 bytes |
+| Dimension | Default exchange bound | Finite construction / selectable ceiling |
+| --- | --- | --- |
+| Exact provider/model label | 128 UTF-8 bytes each, nonempty, no control characters | 128 each |
+| Classified inputs | 32 | 2048 |
+| Host definitions / calls per turn | 16 each | 16 each |
+| One instruction/input/model text | 16,384 strict UTF-8 bytes | 33,554,432 bytes |
+| Opaque continuation | 8192 bytes, nonempty | 2,097,152 bytes |
+| Aggregate request payload | 131,072 bytes | 134,217,728 bytes |
+| Aggregate response payload | 65,536 bytes | 8,388,608 bytes |
 
-`ProviderExchangeBounds` can lower its exposed exchange ceilings. Counts are checked before defensive copies; text is admitted before encoding/retention and byte input before strict decoding. Checked aggregate accounting includes variable scope labels, text, historical responses/calls/results, descriptor names/descriptions/capability IDs/schemas, and retained replay bytes/scope labels. Fixed-size GUID, enum and count metadata is separately bounded by finite collection counts; these totals are in-memory payload measures, not wire-size or token estimates. Tools.Api still owns its own leaf limits. Producers must also bound allocations before constructing values; the contract is not hostile-code isolation.
+`ProviderExchangeBounds` selects positive bounds under these finite ceilings, including `MaximumTextBytes` for classified text and represented model text. Input/response/replay construction uses the hard ceilings; the actual request and response guards enforce the Host's selected smaller limits. Counts are checked before defensive copies; text is admitted before encoding/retention and byte input before strict decoding. Checked aggregate accounting includes variable scope labels, text, historical responses/calls/results, descriptor names/descriptions/capability IDs/schemas, and retained replay bytes/scope labels. A continuation contributes through its accepted model history and again as current replay. Fixed-size GUID, enum and count metadata is separately bounded by finite collection counts; these totals are in-memory payload measures, not wire-size or token estimates. Tools.Api still owns its own leaf limits, and provider-owned saved state remains independently capped at 8192 bytes. Accepted-origin history is bounded at 128 entries. Producers must also bound allocations before constructing values; the contract is not hostile-code isolation.
+
+The larger profile supports complete documentation-sized data without changing product serialization budgets. A 1 MiB original JSON artifact placed in a scalar JSON string needs its actual escaping and envelope bytes: ordinary ASCII, backslash-rich and raw HTML-sensitive fixtures occupy 1,048,610, 2,097,174 and 6,291,430 bytes. Sixfold expansion is a worst-case bound, not every artifact's size. A 32 MiB serialized consumer request and a generic request's payload accounting are distinct; repeated call association and retained/current continuation require measured headroom. The bounded runtime tests compare both representations, preserve exact data and separately exercise the 128-dispatch/1024-tool trajectory. A scalar artifact envelope demonstrates capacity, not structural schema support or downstream domain acceptance. These experimental constructor/field changes imply no upgrade guarantee; existing published package identities remain immutable.
 
 Payload-bearing `ToString()` methods return type names. `ProviderDiagnostic` is the explicitly ordinary, serializable diagnostic surface: correlation GUIDs, positive ordinal, closed outcome/error/exposure/completeness, accepted-call count and optional closed retry kind/bounded delay. It contains no provider/model labels, input/output, call IDs/arguments/results, continuation or exception details. Request, response, continuation and `ProviderExchangeResult.Response` are restricted payloads; arbitrary serialization or logging of those objects is not an ordinary diagnostic route. The Host owns visibility, storage and protection.
 
