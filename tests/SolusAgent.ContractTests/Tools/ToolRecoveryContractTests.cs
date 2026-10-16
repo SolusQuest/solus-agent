@@ -7,6 +7,23 @@ namespace SolusAgent.ContractTests.Tools;
 
 public sealed class ToolRecoveryContractTests
 {
+    [Theory]
+    [InlineData("5.00")] [InlineData("5e0")] [InlineData("0.5e1")]
+    public async Task ActualKeyedProducerReadsExactIntegralSpellingWithoutChangingOperationOrReceipt(string token)
+    {
+        var tool = new RecoverableCounterTool(); var cap = new RecoveryCounterCapability("target", ToolRecoveryGuarantee.QueryOutcome);
+        var call = new ToolCall("exact", "recover", "{\"amount\":" + token + "}");
+        var operation = new ToolOperation(Guid.NewGuid(), call, new("keyed_recovery", "target", cap.Guarantee));
+        var prepared = tool.Prepare(call); Assert.True(prepared.Accepted); Assert.Equal(0, cap.Invocations);
+        var actual = await tool.InvokeOperationAsync(prepared.Prepared!, operation, cap);
+        Assert.Equal(ToolOutcome.Succeeded, actual.Outcome); Assert.Equal("{\"total\":5}", actual.Json);
+        var receipt = await tool.QueryOutcomeAsync(operation, cap);
+        Assert.Equal(call.ArgumentsJson, receipt.RecordedCall!.ArgumentsJson); Assert.Equal(actual.Json, receipt.Json);
+        var historical = ToolResult.RestoreHistorical(tool.Descriptor, call, receipt.RecordedCall, receipt.Outcome!.Value,
+            receipt.Error!.Value, receipt.InvocationStarted!.Value, receipt.Json);
+        Assert.True(historical.IsHistorical); Assert.Equal(1, cap.Invocations); Assert.Equal(1, cap.Effects);
+    }
+
     [Fact]
     public void OriginalIdentityAndBindingAreBoundedAndDiagnosticsRestricted()
     {

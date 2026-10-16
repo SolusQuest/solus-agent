@@ -61,7 +61,10 @@ public sealed class RecoveryCounterCapability(string targetSnapshot, ToolRecover
                 return (store, prior.Json);
             }
             using var arguments = JsonDocument.Parse(operation.Call.ArgumentsJson);
-            var total = mutates ? checked(store.Total + arguments.RootElement.GetProperty("amount").GetInt64()) : store.Total;
+            long amount = 0;
+            if (mutates && !ToolInteger.TryParse(arguments.RootElement.GetProperty("amount").GetRawText(), out amount))
+                throw new ToolContractException(ToolError.InvalidArguments);
+            var total = mutates ? checked(store.Total + amount) : store.Total;
             var result = fixedResultJson ?? JsonSerializer.Serialize(new { total });
             var entries = new Dictionary<Guid, Entry>(store.Entries) { [operation.OperationId] = new(operation.Call.CallId,
                 operation.Call.ToolName, operation.Call.ArgumentsJson, result) };

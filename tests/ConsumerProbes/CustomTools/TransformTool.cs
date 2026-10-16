@@ -24,7 +24,7 @@ public sealed class TransformTool : IFunctionTool
     public TransformTool(bool rejectDomain = false, int maximumResultBytes = 128,
         Func<ToolCall, TransformCapability, CancellationToken, ValueTask<ToolOutput>>? effect = null)
         => inner = new(rejectDomain, maximumResultBytes, effect);
-    /// <summary>Gets the closed scalar string profile.</summary>
+    /// <summary>Gets the closed object schema with a string property.</summary>
     public const string Schema = "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"],\"additionalProperties\":false}";
     /// <inheritdoc />
     public ToolDescriptor Descriptor => inner.Descriptor;

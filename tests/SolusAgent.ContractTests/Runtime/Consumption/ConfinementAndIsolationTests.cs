@@ -112,7 +112,7 @@ public sealed class ConfinementAndIsolationTests
             Assert.Equal(ConsumptionFixture.Instructions, r.Inputs[0].Text);
             Assert.Equal(new[] { "counter", "transform" }, r.Tools.Select(t => t.Name));
             Assert.Equal(new[] { "counter_increment", "text_transform" }, r.Tools.Select(t => t.CapabilityId));
-            Assert.All(r.Tools, t => Assert.Equal("closed_scalar_object", t.InputSchema.Profile));
+            Assert.All(r.Tools, t => Assert.Equal("bounded_closed_object", t.InputSchema.Profile));
         });
         Assert.Equal(ScribePayloadValidation.UnselectedMember, host.Exchanges[0].Validation);
         Assert.Equal(ScribePayloadValidation.Valid, host.Exchanges[1].Validation);

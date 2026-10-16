@@ -72,6 +72,21 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --con
 
 The original `M4ScribeFreshProcessTests` delivery adds 17 checks, including actual independent child execution. Record actual nonzero counts for the current tree, distinct local Windows and exact-head Linux evidence, and real child exit/PID observations. A test-only business JSON carrier and acceptance journal do not establish durable product checkpointing, campaign accounting, Runtime continuation, safe replay of unknown mutating effects, live-provider certification or downstream migration. See the [Scribe consumption draft](../20_architecture/drafts/scribe-consumption.md#m4-fresh-reconstruction-across-processes).
 
+## Bounded structured tool schema checks
+
+After the normal restore and Release build, run the owning tool/provider/runtime suites and architecture checks, then the complete existing runner:
+
+```text
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Tools|FullyQualifiedName~SolusAgent.ContractTests.Providers|FullyQualifiedName~SolusAgent.ContractTests.DeepSeek|FullyQualifiedName~SolusAgent.ContractTests.Runtime.Tools|FullyQualifiedName~SolusAgent.ContractTests.Runtime.Context|FullyQualifiedName~SolusAgent.ContractTests.Architecture"
+dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj --configuration Release --no-build
+```
+
+`StructuredSchemaTests`, `StructuredSchemaBoundaryTests`, `ToolIntegerTests` and the independent CustomTools producers exercise all five nonterminal input/result shapes, exact integral decimal/exponent reading, native constraints, strict nested JSON and separate schema/payload byte/count/depth boundaries. The complete 100-line result includes metadata and exceeds 128 members while fitting a 4096-byte descriptor limit; the nested diff includes the actual 13 root fields and five payload containers. The 256-node guard witness is independently masked by normalized schema bytes; its test distinguishes that rejection from the first node-overflow refusal rather than claiming simultaneous maximum admission.
+
+`StructuredProjectionTests` inspects actual DeepSeek serialization over a fake transport, complete five-descriptor request accounting under 65536 bytes, input constraints, exact raw arguments, result content and restricted replay. `StructuredToolRuntimeTests` executes two complete batches, verifies schema and domain rejection both have zero member invocations, and preserves truthful entry on invalid output or historical-result misuse. `StructuredToolContextTests` captures/restores all five actual guarded results through production Runtime, separates preclaim rejection from postclaim materialization/import, and rejects changed descriptor semantics. `StructuredContextProcessTests` uses the existing child dispatcher and fresh provider/tool instances, distinct PIDs and a synthetic entry journal to prove exact historical arguments/results and zero repeated completed entries. Partial-recovery and scalar consumer paths remain required adjacent regressions because they share the same validation and historical factory.
+
+These are controlled current-source and process checks, with no product identity/evidence acceptance, live service, production storage, useful production-capacity qualification or installed downstream package claim. Record nonzero local counts and exact pushed-head Linux CI separately. A new immutable package and exact consumer adoption remain separately authorized downstream work under [package consumption](../10_workflow/package-consumption.md).
+
 ## Clean package foundation
 
 Use Node.js 24.12 or newer for native TypeScript, the .NET SDK selected by `global.json`, and the system `unzip` command. The scripts use erasable TypeScript syntax directly; no package-manager bootstrap, transpiler or Node dependency installation is required. Native execution does not type-check TypeScript. These checks create local artifacts and run synthetic consumers; they do not publish packages or contact a model provider.

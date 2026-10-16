@@ -16,10 +16,30 @@ public static class ToolLimits
     public const int SchemaBytes = 8192;
     /// <summary>Maximum argument or result UTF-8 bytes.</summary>
     public const int PayloadBytes = 16384;
-    /// <summary>Maximum supported schema property count.</summary>
+    /// <summary>Maximum declared properties in each closed object.</summary>
     public const int Properties = 32;
-    /// <summary>Maximum JSON container depth before semantic validation.</summary>
-    public const int JsonDepth = 4;
+    /// <summary>Maximum aggregate property declarations in a schema.</summary>
+    public const int SchemaProperties = 128;
+    /// <summary>Maximum semantic schema nodes, including the root and array item schemas.</summary>
+    public const int SchemaNodes = 256;
+    /// <summary>Maximum semantic object/array container nesting in a schema.</summary>
+    public const int SchemaDepth = 6;
+    /// <summary>Maximum JSON container depth for schema syntax.</summary>
+    public const int SchemaJsonDepth = 18;
+    /// <summary>Maximum decoded member occurrences in schema syntax.</summary>
+    public const int SchemaJsonProperties = 1024;
+    /// <summary>Maximum aggregate array elements in schema syntax.</summary>
+    public const int SchemaJsonElements = 256;
+    /// <summary>Maximum distinct values in a string enum.</summary>
+    public const int EnumValues = 32;
+    /// <summary>Maximum payload JSON container depth before semantic validation.</summary>
+    public const int JsonDepth = 6;
+    /// <summary>Maximum aggregate decoded member occurrences in a payload.</summary>
+    public const int JsonProperties = 2048;
+    /// <summary>Maximum elements in each payload array.</summary>
+    public const int ArrayElements = 1000;
+    /// <summary>Maximum aggregate payload array elements, including container and null elements.</summary>
+    public const int TotalArrayElements = 1024;
 }
 
 /// <summary>Fixed rejection or failure classifications; these never carry exception text.</summary>
@@ -122,17 +142,32 @@ internal static class ToolBoundary
         catch (DecoderFallbackException) { throw new ToolContractException(ToolError.InvalidEncoding); }
     }
 
-    internal static JsonDocument Json(string value, int maximumBytes)
+    internal static JsonDocument Json(string value, int maximumBytes, bool schema = false)
     {
         Text(value, maximumBytes);
         try
         {
             var bytes = StrictUtf8.GetBytes(value);
-            var reader = new Utf8JsonReader(bytes, new JsonReaderOptions { MaxDepth = ToolLimits.JsonDepth });
+            var depth = schema ? ToolLimits.SchemaJsonDepth : ToolLimits.JsonDepth;
+            var reader = new Utf8JsonReader(bytes, new JsonReaderOptions { MaxDepth = depth });
             var objects = new Stack<HashSet<string>>();
+            var containers = new Stack<(bool Array, int Count)>();
             var totalProperties = 0;
+            var totalElements = 0;
             while (reader.Read())
             {
+                if (reader.TokenType is not (JsonTokenType.PropertyName or JsonTokenType.EndObject or JsonTokenType.EndArray)
+                    && containers.TryPeek(out var parent) && parent.Array)
+                {
+                    containers.Pop();
+                    containers.Push((true, parent.Count + 1));
+                    if (++totalElements > (schema ? ToolLimits.SchemaJsonElements : ToolLimits.TotalArrayElements)
+                        || parent.Count + 1 > (schema ? ToolLimits.SchemaJsonElements : ToolLimits.ArrayElements))
+                        throw new ToolContractException(ToolError.LimitExceeded);
+                }
+                if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+                    containers.Push((reader.TokenType == JsonTokenType.StartArray, 0));
+                if (reader.TokenType is JsonTokenType.EndObject or JsonTokenType.EndArray) containers.Pop();
                 if (reader.TokenType == JsonTokenType.StartObject) { objects.Push(new(StringComparer.Ordinal)); }
                 if (reader.TokenType == JsonTokenType.EndObject) { objects.Pop(); }
                 if (reader.TokenType is JsonTokenType.String or JsonTokenType.PropertyName)
@@ -140,13 +175,14 @@ internal static class ToolBoundary
                     CheckEscapedUnicode(reader.ValueSpan);
                     Text(reader.GetString()!, maximumBytes);
                 }
-                if (reader.TokenType == JsonTokenType.PropertyName
-                    && (!objects.Peek().Add(reader.GetString()!) || ++totalProperties > 128))
+                if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    throw new ToolContractException(ToolError.InvalidJson);
+                    if (!objects.Peek().Add(reader.GetString()!)) throw new ToolContractException(ToolError.InvalidJson);
+                    if (++totalProperties > (schema ? ToolLimits.SchemaJsonProperties : ToolLimits.JsonProperties))
+                        throw new ToolContractException(ToolError.LimitExceeded);
                 }
             }
-            return JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = ToolLimits.JsonDepth });
+            return JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = depth });
         }
         catch (JsonException) { throw new ToolContractException(ToolError.InvalidJson); }
         catch (InvalidOperationException) { throw new ToolContractException(ToolError.InvalidJson); }

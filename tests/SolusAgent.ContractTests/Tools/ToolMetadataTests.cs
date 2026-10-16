@@ -88,7 +88,7 @@ public sealed class ToolMetadataTests
         var first = ToolSchema.Parse("{\"type\":\"object\",\"properties\":{\"b\":{\"type\":\"boolean\"},\"a\":{\"type\":\"string\"}},\"required\":[\"b\",\"a\"],\"additionalProperties\":false}");
         var second = ToolSchema.Parse("{\"additionalProperties\":false,\"required\":[\"a\",\"b\"],\"properties\":{\"a\":{\"type\":\"string\"},\"b\":{\"type\":\"boolean\"}},\"type\":\"object\"}");
         Assert.Equal(first.NormalizedJson, second.NormalizedJson);
-        Assert.Equal("closed_scalar_object", first.Profile);
+        Assert.Equal("bounded_closed_object", first.Profile);
         Assert.Equal(ToolError.None, first.Validate("{\"b\":true,\"a\":\"text\"}"));
         Assert.Equal(ToolError.None, first.Validate("{\"b\":false,\"a\":\"\\ud83d\\ude00\"}"));
         Assert.Equal(ToolError.None, first.Validate("{\"b\":true,\"a\":\"\\\\ud800\"}"));
@@ -106,10 +106,9 @@ public sealed class ToolMetadataTests
     [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"number\"}},\"required\":[],\"additionalProperties\":false}")]
     [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"array\"}},\"required\":[],\"additionalProperties\":false}")]
     [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"object\"}},\"required\":[],\"additionalProperties\":false}")]
-    [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":[\"string\",\"null\"]}},\"required\":[],\"additionalProperties\":false}")]
+    [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":[\"string\",\"integer\"]}},\"required\":[],\"additionalProperties\":false}")]
     [InlineData("{\"type\":\"object\",\"properties\":{},\"required\":[\"missing\"],\"additionalProperties\":false}")]
     [InlineData("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"string\"}},\"required\":[\"x\",\"x\"],\"additionalProperties\":false}")]
-    [InlineData("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")]
     [InlineData("{\"$ref\":\"external\"}")]
     public void UnsupportedSchemaSemanticsNeverDisappearDuringNormalization(string json) =>
         AssertError(ToolError.UnsupportedSchema, () => ToolSchema.Parse(json));
@@ -129,10 +128,12 @@ public sealed class ToolMetadataTests
     [InlineData("-0", ToolError.None)]
     [InlineData("9223372036854775808", ToolError.InvalidArguments)]
     [InlineData("-9223372036854775809", ToolError.InvalidArguments)]
-    [InlineData("1.00", ToolError.InvalidArguments)]
-    [InlineData("1e0", ToolError.InvalidArguments)]
+    [InlineData("1.00", ToolError.None)]
+    [InlineData("1e0", ToolError.None)]
+    [InlineData("1.5e1", ToolError.None)]
+    [InlineData("1.00000000000000000001", ToolError.InvalidArguments)]
     [InlineData("1e999999999999", ToolError.InvalidArguments)]
-    public void IntegerSemanticsAreLexicalInt64WithoutCoercion(string number, ToolError expected) =>
+    public void IntegerSemanticsAreExactInt64WithoutRounding(string number, ToolError expected) =>
         Assert.Equal(expected, ToolSchema.Parse(CounterTool.InputSchema).Validate("{\"amount\":" + number + "}"));
 
     [Fact]

@@ -181,7 +181,7 @@ public sealed class ToolResult
         ArgumentNullException.ThrowIfNull(recordedCall);
         if (!originalCall.Matches(recordedCall) || originalCall.ToolName != descriptor.Name)
             throw new ToolContractException(ToolError.ResultMismatch);
-        if (descriptor.InputSchema.Profile != "closed_scalar_object" || descriptor.ResultSchema.Profile != "closed_scalar_object")
+        if (descriptor.InputSchema.Profile != "bounded_closed_object" || descriptor.ResultSchema.Profile != "bounded_closed_object")
             throw new ToolContractException(ToolError.UnsupportedSchema);
         var arguments = descriptor.InputSchema.Validate(originalCall.ArgumentsJson, descriptor.MaximumArgumentBytes);
         if (arguments != ToolError.None) throw new ToolContractException(arguments);

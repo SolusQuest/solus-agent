@@ -74,7 +74,7 @@ public sealed class ResponseAdmissionTests
                     if (mutation == "duplicate-call") message["tool_calls"]!.AsArray().Add(call.DeepClone());
                     if (mutation == "duplicate-argument") call["function"]!["arguments"] = "{\"text\":\"a\",\"text\":\"b\"}";
                     if (mutation == "bad-schema") call["function"]!["arguments"] = "{\"text\":4}";
-                    if (mutation == "fractional-integer") call["function"]!["arguments"] = "{\"text\":\"a\",\"count\":1.0}";
+                    if (mutation == "fractional-integer") call["function"]!["arguments"] = "{\"text\":\"a\",\"count\":1.5}";
                     if (mutation == "extra-argument") call["function"]!["arguments"] = "{\"text\":\"a\",\"endpoint\":\"https://untrusted.invalid\"}";
                     break;
             }
