@@ -70,4 +70,29 @@ After an offline owner investigation, a final plan amendment authorized fixture-
 
 This invocation observed a call-layer shape deviation while the examined call metadata and argument schemas passed. The shape flag describes selected comparisons, not an actual parser throw site or complete admission result. An offline extra-call-property fixture reproduces these key observations, but unknown actual field names were deliberately not retained; no particular field or unique cause is asserted, and combined failures remain possible. Neither the first nor second failure is retroactively assigned this observation.
 
-There have now been exactly three separately authorized live commands. Paid execution stopped after this invocation; a fourth call is not authorized. Further response-contract investigation belongs to the provider owner, particularly the call-shape boundary and its adapter admission tests. No production validation was relaxed and no raw provider data was retained. Issue #93 and first-publication eligibility remain blocked.
+At that checkpoint, three separately authorized live commands had failed and paid execution stopped pending provider-owner investigation and new authorization. No fourth invocation was authorized at that checkpoint. No production validation was relaxed and no raw provider data was retained; issue #93 and first-publication eligibility remained blocked.
+
+## Fourth separately authorized invocation after the provider correction: passed
+
+The provider owner independently corrected optional tool-call indices in [PR #104](https://github.com/SolusQuest/solus-agent/pull/104), merged at `b49a343a838a3ec832726abffb9b9232586b7617`. This is an independently established contract correction: the unknown field names from the three failed invocations were not retained, and none of their failures is retroactively attributed to `index`.
+
+A fresh, unused local five-package version was packed with Git HEAD exactly at that merged production revision. All five archives identify that revision in their repository metadata. The smoke fixture then incorporated that main revision, synchronized its closed scalar observer with the admitted optional ordinal, and normalized expected replay only after actual adapter/runtime success by removing wire-only `index`. Raw argument strings, reasoning, call IDs, schemas, permissions and actual adapter admission remain unchanged. Observations cannot confer admission or restoration authority.
+
+| Input or observation | Actual evidence |
+| --- | --- |
+| Tested harness revision | `c6aeac5579169c762358de51868c524e6dee959c` |
+| Production package build revision | `b49a343a838a3ec832726abffb9b9232586b7617` |
+| Local five-package version | `0.1.0-internal.934`; previous `.93` and provider-investigation archives were not overwritten |
+| Start | 2026-10-16T05:01:20.124265Z (2026-10-16 Asia/Shanghai) |
+| Environment and selection | macOS 27.0.1 arm64, .NET SDK 10.0.109, Node 24.21.0; official `deepseek-flash-thinking-high` profile; the existing explicitly authorized private credential source |
+| Unchanged finite limits | At most six physical requests, three tool entries, 4096 output tokens per request, bounded input/replay and five minutes for live execution; no retry |
+| Result | Exit 0; actual producer tool exchange and independent fresh-process restoration passed |
+| Independent counts | Two physical dispatches, one tool entry, one acknowledged effect; distinct producer/restorer processes verified |
+| Producer current usage | Input 307/output 45, one runtime attempt and one tool |
+| Restorer current usage | Input 368/output 5, one runtime attempt and zero new tools |
+| Restorer historical usage | Input 307/output 45, one historical attempt and one historical tool; retained separately from current accounting |
+| Aggregate current usage | Input 675/output 50; observed typed measurements, without a billing guarantee |
+| Timing and cleanup | Harness 1922.098 milliseconds; full command 5.465 seconds; restricted context removal verified true |
+| Offline preparation | 3295 source tests, 128 installed-package smoke checks, 20 Node checks, 77 installed-adapter/source-identical-parser/observer comparisons, four complete child/parent/verifier/wrapper confinement cases; all four clean package consumers passed |
+
+This passing result qualifies the observed bounded service tool exchange and fresh-process restoration at the exact tested inputs above. The three historical failures remain part of the evidence. Exactly four separately authorized live commands have run; paid execution stopped with no fifth invocation authorized. Current-head Linux CI and the remaining original-session PR review are separate handoff gates. Registry publication, tags, release dispatch, downstream migration and issue closure were not performed by this worker. The platform, billing, storage and compatibility evidence limits recorded above still apply.
