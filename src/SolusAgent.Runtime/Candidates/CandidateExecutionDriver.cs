@@ -25,11 +25,11 @@ internal static class CandidateExecutionDriver
         var unsupported = execution.RequiredCapabilities & ~RuntimeAgentFactory.Support.SupportedCapabilities;
         if (unsupported != AgentCapability.None)
             return new(new(execution.ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, unsupported,
-                usage: new AgentRunUsage(execution.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new())),
+                usage: new AgentRunUsage(execution.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new(), toolCallAdmissions: new())),
                 CandidateStopReason.UnsupportedCapability, []);
 
         using var cut = new RunCut(options.TimeProvider, execution.Bounds.MaximumDuration, cancellationToken);
-        var state = new RunState(execution, configuration, options, cut, restored);
+        var state = new RunState(execution, configuration, options, cut, restored, terminal is not null);
         var saved = restored?.Checkpoint.Candidates;
         var episodes = saved?.Episodes.ToList() ?? [];
         var submissions = saved?.Submissions.ToList() ?? [];
@@ -120,10 +120,14 @@ internal static class CandidateExecutionDriver
                     if (attempt.ProviderOutcome != ProviderOutcome.Succeeded || attempt.Response is null)
                         return Stop(attempt.ProviderError == ProviderError.LimitExceeded ? CandidateStopReason.RuntimeLimit : CandidateStopReason.ProductionFailed);
                     if (!state.CanContinue) return StateStop();
-                    if (attempt.Response.Finish == ProviderFinish.ToolCalls)
+                    if (attempt.Response.Finish is ProviderFinish.ToolCalls or ProviderFinish.ToolCorrection)
                     {
-                        if (!Reserve(additionalRecords: attempt.Response.Calls.Count)) return StateStop();
-                        var batch = await ToolBatchOperation.ExecuteAsync(state, providerRequest, attempt.Response).ConfigureAwait(false);
+                        if (!Reserve(additionalRecords: (attempt.Response.Correction?.Members.Count ?? attempt.Response.Calls.Count)
+                            + (configuration.ToolArgumentCorrection is null ? 0 : 1))) return StateStop();
+                        var batch = await ToolBatchOperation.ExecuteAsync(state, providerRequest, attempt.Response, terminal is null ? null : Snapshot()).ConfigureAwait(false);
+                        // Release the original transient proposal before progress or another provider await.
+                        attempt = attempt with { Response = null };
+                        call = call with { Attempt = attempt };
                         if (cut.Check() != RuntimeStop.None) return CutStop();
                         if (batch.Stop != RuntimeStop.None || batch.Error != SolusAgent.Tools.Api.ToolError.None) return StateStop();
                         if (!Report()) return cut.Check() != RuntimeStop.None ? CutStop() : Stop(CandidateStopReason.ProgressObserverFailed);

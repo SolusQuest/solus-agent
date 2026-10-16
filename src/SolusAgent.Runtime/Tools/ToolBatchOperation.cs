@@ -2,6 +2,7 @@ using SolusAgent.Runtime.Api.Configuration;
 using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Runtime.Execution;
+using SolusAgent.Runtime.Context;
 using SolusAgent.Tools.Api;
 
 namespace SolusAgent.Runtime.Tools;
@@ -11,7 +12,7 @@ internal sealed record ToolBatchExecution(ToolError Error, RuntimeStop Stop);
 // One metadata-driven adapter for all compatible interfaces; no tool name grants authority.
 internal static class ToolBatchOperation
 {
-    public static async ValueTask<ToolBatchExecution> ExecuteAsync(RunState state, ProviderRequest request, ProviderResponse response)
+    public static async ValueTask<ToolBatchExecution> ExecuteAsync(RunState state, ProviderRequest request, ProviderResponse response, SavedCandidates? candidates = null)
     {
         var cut = state.Cut;
         if (!state.CanContinue) return Stopped();
@@ -29,36 +30,75 @@ internal static class ToolBatchOperation
         var bindings = new List<RuntimeToolRegistration>();
         var prepared = new List<PreparedToolInvocation>();
         var operations = new List<ToolOperation>();
+        var denials = new List<ToolArgumentDenial>();
         try
         {
-            foreach (var call in response.Calls)
+            var selected = state.Configuration.ToolArgumentCorrection is not null;
+            IReadOnlyList<ToolCall> calls = response.Correction is { } correction ? correction.Members.Select(m => m.Call).ToArray() : response.Calls;
+            // Capability/binding checks need no arguments or operation, including schema-rejected members.
+            foreach (var call in calls)
             {
                 if (!state.CanContinue) return Stopped();
                 if (!registry.TryGetValue(call.ToolName, out var binding)) return Fail(ToolError.CallMismatch);
-                var descriptor = binding.Descriptor;
-                if (!SameDescriptor(descriptor, binding.Tool.Descriptor)) return Fail(ToolError.InvalidMetadata);
-                if (descriptor.InputSchema.Profile != "bounded_closed_object" || descriptor.ResultSchema.Profile != "bounded_closed_object")
+                if (!SameDescriptor(binding.Descriptor, binding.Tool.Descriptor)) return Fail(ToolError.InvalidMetadata);
+                if (binding.Descriptor.InputSchema.Profile != "bounded_closed_object" || binding.Descriptor.ResultSchema.Profile != "bounded_closed_object")
                     return Fail(ToolError.UnsupportedSchema);
+                if (selected)
+                {
+                    var capability = binding.Tool.ValidateCapability(binding.Capability);
+                    if (capability != ToolError.None) return Fail(capability);
+                    if (binding.Recovery is not null && ((IRecoverableFunctionTool)binding.Tool).ValidateRecoveryBinding(binding.Recovery, binding.Capability) is var recoveryError
+                        && recoveryError != ToolError.None) return Fail(recoveryError);
+                }
+                bindings.Add(binding);
+            }
+            if (response.Finish == ProviderFinish.ToolCorrection) return Correct(response);
+            for (var i = 0; i < calls.Count; i++)
+            {
+                if (!state.CanContinue) return Stopped();
+                var call = calls[i]; var binding = bindings[i]; var descriptor = binding.Descriptor;
                 var argumentError = descriptor.InputSchema.Validate(call.ArgumentsJson, descriptor.MaximumArgumentBytes);
                 if (argumentError != ToolError.None) return Fail(argumentError);
+                if (selected && binding.ArgumentCorrection is { } classifier)
+                {
+                    var disposition = classifier.Classify(call, binding.Capability);
+                    if (!state.CanContinue) return Stopped();
+                    if (disposition.Kind == ToolArgumentDispositionKind.Fatal) return Fail(disposition.Error);
+                    if (disposition.Kind == ToolArgumentDispositionKind.Correctable)
+                    {
+                        if (!state.Configuration.ToolArgumentCorrection!.ContainsError(disposition.ErrorCode!)) return Fail(ToolError.DomainRejected);
+                        denials.Add(new(call.CallId, disposition.ErrorCode!));
+                        continue;
+                    }
+                }
                 var preparation = binding.Tool.Prepare(call);
                 if (preparation?.Prepared is not { } handle) return Fail(preparation?.Error ?? ToolError.DomainRejected);
                 if (preparation.Error != ToolError.None || !handle.Call.Matches(call)) return Fail(ToolError.CallMismatch);
                 var admission = binding.Tool.ValidateInvocation(handle, call, binding.Capability);
                 if (admission != ToolError.None) return Fail(admission);
-                var operation = new ToolOperation(Guid.NewGuid(), call, binding.Recovery);
+                prepared.Add(handle);
+            }
+            if (denials.Count != 0) return Correct(ProviderResponse.WithholdToolArguments(request, response, denials));
+            // Operations belong only to a fully admitted ordinary batch, never to withheld correction members.
+            for (var i = 0; i < calls.Count; i++)
+            {
+                if (!state.CanContinue) return Stopped();
+                var binding = bindings[i]; var operation = new ToolOperation(Guid.NewGuid(), calls[i], binding.Recovery);
                 if (binding.Recovery is not null && ((IRecoverableFunctionTool)binding.Tool).ValidateOperation(operation, binding.Capability) is var error
                     && error != ToolError.None) return Fail(error);
-                bindings.Add(binding); prepared.Add(handle);
                 operations.Add(operation);
             }
         }
+        catch (ProviderContractException exception) { return Fail(exception.Error == ProviderError.LimitExceeded ? ToolError.LimitExceeded : ToolError.CallMismatch); }
         catch (ToolContractException exception) { return Fail(exception.Error); }
         catch (Exception exception) when (Recoverable(exception)) { return Fail(ToolError.InvocationFailed); }
 
-        var first = -1;
-        if (!cut.TryCommit(() => first = state.ReserveToolBatch(response, bindings, operations))) return Stopped();
-        if (first < 0) return Fail(ToolError.LimitExceeded);
+        var reservation = state.PrepareToolBatch(response, bindings, operations);
+        if (reservation is null) return Fail(state.AdmissionStop == RuntimeStop.ResourceLimit ? ToolError.LimitExceeded : ToolError.CallMismatch);
+        var committed = false;
+        if (!cut.TryCommit(() => committed = state.CommitToolBatch(reservation))) return Stopped();
+        if (!committed) return Fail(ToolError.CallMismatch);
+        var first = reservation.First;
         try
         {
             for (var i = 0; i < prepared.Count; i++)
@@ -103,6 +143,14 @@ internal static class ToolBatchOperation
         }
         finally { state.ReleaseToolBatch(first, prepared.Count); }
 
+        ToolBatchExecution Correct(ProviderResponse corrected)
+        {
+            var transaction = state.PrepareToolCorrection(request, corrected, candidates);
+            if (transaction is null) return Stopped();
+            var committed = false;
+            if (!cut.TryCommit(() => committed = state.CommitToolCorrection(transaction))) return Stopped();
+            return committed ? new(ToolError.None, RuntimeStop.None) : Fail(ToolError.CallMismatch);
+        }
         ToolBatchExecution Fail(ToolError error)
         {
             if (!Enum.IsDefined(error) || error == ToolError.None) error = ToolError.InvocationFailed;

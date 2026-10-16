@@ -128,7 +128,7 @@ public sealed class CompletedToolContextTests
             case "original-bounds": records[1]!["ToolModel"]!["Bounds"]!["MaximumResponseBytes"] = 1; break;
             case "closure": round["Facts"]![0]!["ClosureAcknowledged"] = false; break;
         }
-        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, source.Envelope.FormatVersion, source.Envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
         var authority = new SelectedAuthority(envelope, source.Result.Checkpoint!); var provider = new PersistentProvider(tools: true); var hooks = new RuntimeHooks();
         var request = ToolContextFixture.Request();
         var result = await ToolContextFixture.Agent(provider, source.Tools, authority, hooks: hooks).ExecuteWithContextAsync(

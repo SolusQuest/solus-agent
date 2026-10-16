@@ -16,6 +16,10 @@ internal sealed record SavedContinuation(ProviderScope Scope, ProviderAttempt Or
 internal sealed record SavedFinal(ProviderScope Scope, ProviderAttempt Attempt, string Text, SavedContinuation? Continuation, ProviderExchangeBounds Bounds);
 internal sealed record SavedToolModel(ProviderScope Scope, ProviderAttempt Attempt, string? Text, ToolCall[] Calls,
     SavedContinuation? Continuation, ProviderExchangeBounds Bounds);
+internal sealed record SavedCorrectionMember(int Ordinal, ToolCall Call, int OriginalArgumentBytes, string ErrorCode, ToolError SchemaError);
+internal sealed record SavedCorrectionModel(ProviderScope Scope, ProviderAttempt Attempt, string? Text, SavedContinuation? Continuation,
+    ProviderExchangeBounds Bounds, ToolCorrectionOrigin Origin, SavedCorrectionMember[] Members, int OriginalResponseBytes, string DefinitionFingerprint);
+internal sealed record SavedCorrectionFeedback(ProviderAttempt ModelAttempt, int Ordinal);
 internal sealed record SavedDescriptor(string Name, string Description, string InputSchema, string ResultSchema,
     string CapabilityId, ToolEffect Effect, int MaximumArgumentBytes, int MaximumResultBytes)
 {
@@ -34,11 +38,11 @@ internal sealed record SavedMember(ProviderAttempt ModelAttempt, int Ordinal, To
 internal sealed record SavedRecoveryAction(Guid ActionId, int MemberIndex, RecoveryActionKind Kind,
     RecoveryActionState State, SavedResult? Result, ToolError Error);
 internal sealed record SavedInput(ProviderInputKind Kind, string? Text, SavedFinal? Final,
-    SavedToolModel? ToolModel = null, int? ToolMember = null);
+    SavedToolModel? ToolModel = null, int? ToolMember = null, SavedCorrectionModel? CorrectionModel = null, SavedCorrectionFeedback? CorrectionFeedback = null);
 internal sealed record SavedProvider(ProviderScope Scope, ProviderAttempt Origin, int FormatVersion, byte[] Bytes);
 internal sealed record SavedAttempt(ProviderAttempt Attempt, RuntimeStop Stop, RuntimeStop SettlementStop,
     ProviderOutcome? Outcome, ProviderError? Error, ProviderRetry? Retry, bool AcceptedFinal, bool ClosureAcknowledged,
-    ProviderExchangeBounds Bounds, bool AcceptedTools = false);
+    ProviderExchangeBounds Bounds, bool AcceptedTools = false, bool AcceptedCorrection = false, ProviderFinish? ProducedFinish = null);
 internal sealed record SavedRound(Guid LogicalWorkId, Guid RoundId, AgentRunUsage Usage, AgentTerminationReason Reason,
     int Completed, RuntimeStop Stop, SavedAttempt[] Facts, ProviderAttempt? ToolCursor = null,
     SavedRecoveryAction[]? RecoveryActions = null, int[]? RecoveryReleased = null, SavedCandidateRound? Candidates = null)

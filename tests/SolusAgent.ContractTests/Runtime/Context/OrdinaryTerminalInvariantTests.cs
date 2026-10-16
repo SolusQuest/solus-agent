@@ -221,7 +221,7 @@ public sealed class OrdinaryTerminalInvariantTests
         if (mode == "exact") Assert.Equal(old.Bounds.MaximumResponseBytes, provider.LastRequest!.Bounds.MaximumResponseBytes);
     }
 
-    private static AgentContextEnvelope Envelope(AgentContextEnvelope original, JsonNode node) => new(original.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+    private static AgentContextEnvelope Envelope(AgentContextEnvelope original, JsonNode node) => new(original.ImplementationId, original.FormatVersion, original.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
     private static async Task RejectTrusted(ContextCheckpointInfo checkpoint, AgentContextEnvelope original, JsonNode node, ContextExecutionIntent intent)
     {
         var bytes = Envelope(original, node); var authority = new SelectedAuthority(bytes, checkpoint); var provider = new PersistentProvider();

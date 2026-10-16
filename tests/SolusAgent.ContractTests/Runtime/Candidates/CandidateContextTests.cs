@@ -158,7 +158,7 @@ public sealed class CandidateContextTests
             case "round-counter": document["Rounds"]![0]!["Candidates"]!["Submissions"] = 0; break;
             case "episode-work": document["Candidates"]!["Episodes"]![0]!["WorkId"] = Guid.NewGuid(); break;
         }
-        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(document));
+        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, source.Envelope.FormatVersion, source.Envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(document));
         var authority = new SelectedAuthority(envelope, source.Result.Context.Checkpoint!); var provider = new PersistentProvider(); var host = CandidateContextFixture.Host();
         var result = await CandidateConsumer.RunWithContextAsync(CandidateContextFixture.Agent(provider, authority),
             CandidateContextFixture.Resume(source.Result, envelope, CandidateContextFixture.Request()), new(1, 0, 0), host);

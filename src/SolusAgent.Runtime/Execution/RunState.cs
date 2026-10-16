@@ -12,7 +12,7 @@ using SolusAgent.Runtime.Context;
 namespace SolusAgent.Runtime.Execution;
 
 internal sealed partial class RunState(AgentRequest request, RuntimeConfiguration configuration, RuntimeOptions options, RunCut cut,
-    RestoredOrdinary? restored = null)
+    RestoredOrdinary? restored = null, bool contextMode = false)
 {
     private readonly List<ProviderInput> records = [];
     private readonly List<UsageAttemptObservation> attempts = [];
@@ -34,10 +34,13 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
     private int invokedTools;
     private int reservedTools;
     private int releasedTools;
+    private int admittedToolCalls;
+    private readonly Dictionary<Guid, ProviderFinish> producedResponses = [];
     public AgentRequest Request { get; } = request;
     public RuntimeConfiguration Configuration { get; } = configuration;
     public RuntimeOptions Options { get; } = options;
     public RunCut Cut { get; } = cut;
+    internal bool ContextMode { get; } = contextMode;
     public int Completed { get; private set; }
     public RuntimeStop AdmissionStop { get; private set; }
     public bool UsageAccountingUnavailable { get; private set; }
@@ -94,16 +97,24 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             origin is null ? 1 : checked(origin.AttemptNumber + 1));
         var required = Options.RequireContinuation ? ProviderCapabilities.Continuation : ProviderCapabilities.None;
         var original = new ProviderRequest(Configuration.Scope, attempt, records, Configuration.Tools.Select(t => t.Descriptor).ToArray(),
-            continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory(attempt));
+            continuation, required, origin is null ? Configuration.Bounds : restored!.OriginalBounds, RequestHistory(attempt), Configuration.ToolArgumentCorrection);
         if (attempts.Count == 0 && restored is null) retainedBytes = checked(original.PayloadByteCount + candidateMetadataBytes);
         var available = Options.MaximumRetainedBytes - retainedBytes;
         if (available <= 0) { Close(RuntimeStop.ResourceLimit); return null; }
+        if (Configuration.ToolArgumentCorrection is not null && available < original.Bounds.MaximumResponseBytes)
+        { Close(RuntimeStop.ResourceLimit); return null; }
         var b = Configuration.Bounds;
         var bounded = new ProviderExchangeBounds(b.MaximumInputs, b.MaximumTools, b.MaximumToolCalls, b.MaximumRequestBytes,
             Math.Min(original.Bounds.MaximumResponseBytes, available), b.MaximumContinuationBytes);
-        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory(attempt));
+        var admitted = new ProviderRequest(original.Scope, attempt, records, original.Tools, continuation, required, bounded, RequestHistory(attempt), Configuration.ToolArgumentCorrection);
         if ((admitted.RequiredCapabilities & ~Configuration.Provider.Capabilities) != 0)
             throw new ProviderContractException(ProviderError.UnsupportedCapability);
+        if (Configuration.ToolArgumentCorrection is not null)
+        {
+            var error = ((IProviderRequestValidation)Configuration.Provider).ValidateRequest(admitted);
+            if (!Enum.IsDefined(error)) error = ProviderError.InvalidInput;
+            if (error != ProviderError.None) throw new ProviderContractException(error);
+        }
         return Reserve(admitted);
     }
     internal ProviderRequest? AdmitRetry(ProviderRequest previous)
@@ -116,7 +127,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         if (!PreflightRetry()) return null;
         var attempt = new ProviderAttempt(Request.ExecutionId, previous.Attempt.LogicalCallId, Guid.NewGuid(), previous.Attempt.AttemptNumber + 1);
         return Reserve(new(previous.Scope, attempt, previous.Inputs, previous.Tools, previous.Continuation,
-            previous.RequiredCapabilities, previous.Bounds, previous.History));
+            previous.RequiredCapabilities, previous.Bounds, previous.History, previous.ToolArgumentCorrection));
     }
     private ProviderRequest? Reserve(ProviderRequest admitted)
     {
@@ -129,7 +140,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
             physicalDispatches.Add(attempt.PhysicalAttemptId);
             attempts.Add(new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId,
                 attempt.AttemptNumber, DispatchExposure.NotDispatched, new()));
-            latestRequest = admitted;
+            latestRequest = admitted; toolBatchClaimed = false;
         }))
         { Close(Cut.Check()); return null; }
         return admitted;
@@ -168,42 +179,19 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
         response.ValidateFor(providerRequest);
         if (records.Count >= Options.MaximumRecords || response.PayloadByteCount > Options.MaximumRetainedBytes - retainedBytes)
             throw new ProviderContractException(ProviderError.LimitExceeded);
+        RecordProduction(providerRequest, response);
         records.Add(ProviderInput.FromModel(response));
-        retainedBytes += response.PayloadByteCount; continuation = response.Continuation; Completed++;
+        retainedBytes += response.PayloadByteCount; continuation = response.Continuation;
         latestResponse = response; toolBatchClaimed = false;
     }
     public bool ClaimToolBatch(ProviderResponse response)
     {
-        if (!ReferenceEquals(latestResponse, response) || toolBatchClaimed || response.Finish != ProviderFinish.ToolCalls) return false;
+        var deferred = Configuration.ToolArgumentCorrection is not null && latestRequest?.Attempt.Matches(response.Attempt) == true
+            && producedResponses.ContainsKey(response.Attempt.PhysicalAttemptId);
+        if ((!ReferenceEquals(latestResponse, response) && !deferred) || toolBatchClaimed
+            || response.Finish is not (ProviderFinish.ToolCalls or ProviderFinish.ToolCorrection)) return false;
         toolBatchClaimed = true;
         return true;
-    }
-    public int ReserveToolBatch(ProviderResponse response, IReadOnlyList<RuntimeToolRegistration> bindings,
-        IReadOnlyList<ToolOperation> operations)
-    {
-        var count = response.Calls.Count;
-        var recoveryCount = recoveryActions.Count + (restored?.Checkpoint.Rounds.Sum(r => r.RecoveryActions?.Length ?? 0) ?? 0);
-        if (count == 0 || count != bindings.Count || count > Configuration.Bounds.MaximumToolCalls
-            || records.Count + recoveryCount > Options.MaximumRecords - count || toolRecords.Count + recoveryCount > Options.MaximumRecords - count)
-        { Close(RuntimeStop.ResourceLimit); return -1; }
-        long reservation = 0;
-        for (var i = 0; i < count; i++) reservation += ToolCallBytes(response.Calls[i]) + bindings[i].Descriptor.MaximumResultBytes;
-        if (reservation > Options.MaximumRetainedBytes - retainedBytes)
-        { Close(RuntimeStop.ResourceLimit); return -1; }
-        lock (toolUsageGate)
-        {
-            if (Request.UsageLimits?.MaximumToolInvocations is { } limit && count > limit - invokedTools - reservedTools)
-            { Close(RuntimeStop.ResourceLimit); return -1; }
-            var first = toolRecords.Count;
-            for (var i = 0; i < count; i++)
-            {
-                var member = new ToolExecutionRecord(response.Attempt, i + 1, response.Calls[i], ToolMemberState.Unstarted,
-                    ReservationHeld: true, Operation: operations[i]);
-                toolRecords.Add(member); originalToolRecords.Add(member);
-            }
-            reservedTools += count;
-            return first;
-        }
     }
     public void EnterTool(int index)
     {
@@ -262,7 +250,7 @@ internal sealed partial class RunState(AgentRequest request, RuntimeConfiguratio
     public void Close(RuntimeStop reason) { if (AdmissionStop == RuntimeStop.None) AdmissionStop = reason; }
     public RunAccountingSnapshot? Accounting() => accounting?.Snapshot();
     public AgentRunUsage Usage() => new(Request.ExecutionId, UsageInventoryCoverage.Complete, attempts, toolInvocations: ToolUsage(),
-        accounting: Accounting(), continuedCalls: restored?.Seeds);
+        accounting: Accounting(), continuedCalls: restored?.Seeds, toolCallAdmissions: new(admittedToolCalls));
     public AgentOutcome Outcome(AgentTerminationReason reason, AgentFailureCode failure = AgentFailureCode.None) =>
         new(Request.ExecutionId, reason, Completed, failureCode: failure, usage: Usage());
     public static bool Matches(ProviderAttempt attempt, UsageAttemptObservation value) => attempt.ExecutionId == value.ExecutionId

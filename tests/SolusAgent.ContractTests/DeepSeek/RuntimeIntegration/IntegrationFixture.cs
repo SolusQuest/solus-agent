@@ -100,6 +100,7 @@ internal sealed class ObservedFunctionTool(IFunctionTool inner) : IFunctionTool
         Volatile.Write(ref lastPrepareError, (int)preparation.Error);
         return preparation;
     }
+    public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
     public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability)
     {
         Interlocked.Increment(ref admissions);

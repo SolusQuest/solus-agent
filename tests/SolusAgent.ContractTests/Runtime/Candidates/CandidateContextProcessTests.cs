@@ -140,6 +140,7 @@ internal static class CandidateContextChild
         internal List<ToolResult> Results { get; } = [];
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability) => inner.ValidateInvocation(prepared, call, capability);
         public async ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability, CancellationToken token = default)
         { var result = await inner.InvokeAsync(prepared, call, capability, token); Results.Add(result); return result; }

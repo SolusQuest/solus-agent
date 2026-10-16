@@ -15,6 +15,8 @@ public enum RuntimeGuarantee
     OrderedExposure = 1,
     /// <summary>Validates configured provider payload/count ceilings before accepting exchange data.</summary>
     ProviderBounds = 2,
+    /// <summary>Implements explicitly selected complete-batch non-invocation argument correction.</summary>
+    ToolArgumentCorrection = 4,
 }
 
 /// <summary>An implementation's disclosure, not Host policy or proof that an implementation enforces it.</summary>
@@ -24,7 +26,7 @@ public sealed class RuntimeSupport
     public RuntimeSupport(AgentCapability supportedCapabilities, RuntimeGuarantee guarantees)
     {
         const AgentCapability all = AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation
-            | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting;
+            | AgentCapability.UsageReporting | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting | AgentCapability.ToolCallAdmissionLimit;
         if ((supportedCapabilities & ~all) != 0) throw new ArgumentOutOfRangeException(nameof(supportedCapabilities));
         Validate(guarantees);
         SupportedCapabilities = supportedCapabilities; Guarantees = guarantees;
@@ -34,7 +36,7 @@ public sealed class RuntimeSupport
     /// <summary>Gets this implementation's new runtime-specific guarantees.</summary>
     public RuntimeGuarantee Guarantees { get; }
     internal static void Validate(RuntimeGuarantee value)
-    { if ((value & ~(RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds)) != 0) throw new ArgumentOutOfRangeException(nameof(value)); }
+    { if ((value & ~(RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds | RuntimeGuarantee.ToolArgumentCorrection)) != 0) throw new ArgumentOutOfRangeException(nameof(value)); }
 }
 
 /// <summary>A live Host binding through the reusable interface, independent of how a tool was authored.</summary>
@@ -42,7 +44,7 @@ public sealed class RuntimeSupport
 public sealed class RuntimeToolRegistration
 {
     /// <summary>Snapshots descriptor association with an explicitly injected narrow capability.</summary>
-    public RuntimeToolRegistration(IFunctionTool tool, IToolCapability capability, ToolRecoveryBinding? recovery = null)
+    public RuntimeToolRegistration(IFunctionTool tool, IToolCapability capability, ToolRecoveryBinding? recovery = null, ToolArgumentCorrectionBinding? argumentCorrection = null)
     {
         Tool = tool ?? throw new ArgumentNullException(nameof(tool));
         Capability = capability ?? throw new ArgumentNullException(nameof(capability));
@@ -52,7 +54,7 @@ public sealed class RuntimeToolRegistration
             if (Descriptor is null || capability.CapabilityId != Descriptor.CapabilityId)
                 throw new ArgumentException();
             if (recovery is not null && tool is not IRecoverableFunctionTool) throw new ArgumentException();
-            Recovery = recovery;
+            Recovery = recovery; ArgumentCorrection = argumentCorrection;
         }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { throw new ArgumentException("The Host tool binding is invalid."); }
@@ -65,6 +67,8 @@ public sealed class RuntimeToolRegistration
     public ToolDescriptor Descriptor { get; }
     /// <summary>Gets the optional trusted Host recovery declaration; saved metadata never replaces this binding.</summary>
     public ToolRecoveryBinding? Recovery { get; }
+    /// <summary>Gets the optional live effect-free Host argument classifier and its static declaration.</summary>
+    public ToolArgumentCorrectionBinding? ArgumentCorrection { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(RuntimeToolRegistration);
 }
@@ -83,7 +87,7 @@ public sealed class RuntimeConfiguration
         IRuntimeExposureHooks? hooks, ProviderExchangeBounds? bounds = null,
         ExposureStrength requiredAcknowledgement = ExposureStrength.Volatile,
         RuntimeGuarantee requiredGuarantees = RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds,
-        IRuntimeContextAuthority? contextAuthority = null)
+        IRuntimeContextAuthority? contextAuthority = null, ToolArgumentCorrectionPolicy? toolArgumentCorrection = null)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Scope = provider.Scope ?? throw new ArgumentException("The Host provider scope is missing.");
@@ -94,8 +98,14 @@ public sealed class RuntimeConfiguration
         var snapshot = ProviderBoundary.Copy(tools, Bounds.MaximumTools);
         ProviderBoundary.Require(snapshot.Select(binding => binding.Descriptor.Name).Distinct(StringComparer.Ordinal).Count() == snapshot.Length,
             ProviderError.InvalidAssociation);
+        ProviderBoundary.Require(toolArgumentCorrection is not null || snapshot.All(t => t.ArgumentCorrection is null), ProviderError.InvalidInput);
+        if (toolArgumentCorrection is not null)
+            ProviderBoundary.Require(snapshot.All(t => t.ArgumentCorrection is null
+                || t.ArgumentCorrection.AllowedErrors.All(toolArgumentCorrection.ContainsError)), ProviderError.InvalidInput);
+        ToolArgumentCorrection = toolArgumentCorrection;
         Tools = Array.AsReadOnly(snapshot); Hooks = hooks;
-        RequiredAcknowledgement = requiredAcknowledgement; RequiredGuarantees = requiredGuarantees;
+        RequiredAcknowledgement = requiredAcknowledgement; RequiredGuarantees = requiredGuarantees
+            | (toolArgumentCorrection is null ? RuntimeGuarantee.None : RuntimeGuarantee.ToolArgumentCorrection);
         ContextAuthority = contextAuthority;
     }
     /// <summary>Gets the live Host provider; data never selects its transport.</summary>
@@ -114,6 +124,8 @@ public sealed class RuntimeConfiguration
     public RuntimeGuarantee RequiredGuarantees { get; }
     /// <summary>Gets freshly injected trusted provenance/exclusive recovery authority, never serialized or model-selected.</summary>
     public IRuntimeContextAuthority? ContextAuthority { get; }
+    /// <summary>Gets immutable explicit Host correction semantics, or null for the default fatal behavior.</summary>
+    public ToolArgumentCorrectionPolicy? ToolArgumentCorrection { get; }
     /// <summary>Checks an implementation's declared support without executing work or certifying its claims.</summary>
     public RuntimeStop CheckSupport(RuntimeSupport support)
     {
@@ -124,7 +136,8 @@ public sealed class RuntimeConfiguration
     /// <summary>Constructs a Host-authorized value using installed descriptive metadata and finite bounds; performs no dispatch.</summary>
     public ProviderRequest CreateRequest(ProviderAttempt attempt, IReadOnlyList<ProviderInput> inputs,
         ProviderContinuation? continuation = null, ProviderCapabilities requiredCapabilities = ProviderCapabilities.None) =>
-        new(Scope, attempt, inputs, Tools.Select(binding => binding.Descriptor).ToArray(), continuation, requiredCapabilities, Bounds);
+        new(Scope, attempt, inputs, Tools.Select(binding => binding.Descriptor).ToArray(), continuation, requiredCapabilities, Bounds,
+            toolArgumentCorrection: ToolArgumentCorrection);
     /// <summary>Projects explicitly safe metadata; does not disclose provider/client/tool/hook instances or credentials.</summary>
     public RuntimeConfigurationDisclosure Describe() => new(Tools.Count, Bounds.MaximumInputs, Bounds.MaximumTools, Bounds.MaximumToolCalls,
         Bounds.MaximumRequestBytes, Bounds.MaximumResponseBytes, Bounds.MaximumContinuationBytes, RequiredAcknowledgement, RequiredGuarantees);

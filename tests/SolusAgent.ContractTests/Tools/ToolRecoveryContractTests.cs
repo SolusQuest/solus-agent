@@ -7,6 +7,23 @@ namespace SolusAgent.ContractTests.Tools;
 
 public sealed class ToolRecoveryContractTests
 {
+    [Fact]
+    public void BindingAdmissionNeedsNoPreparedCallOperationOrQuery()
+    {
+        IRecoverableFunctionTool tool = new RecoverableCounterTool();
+        var cap = new RecoveryCounterCapability("target", ToolRecoveryGuarantee.QueryOutcome);
+        var binding = new ToolRecoveryBinding("keyed_recovery", "target", cap.Guarantee);
+        Assert.Equal(ToolError.None, tool.ValidateCapability(cap));
+        Assert.Equal(ToolError.None, tool.ValidateRecoveryBinding(binding, cap));
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateRecoveryBinding(new("keyed_recovery", "other", cap.Guarantee), cap));
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateRecoveryBinding(new("keyed_recovery", "target", ToolRecoveryGuarantee.ConcurrentSafeRepeat), cap));
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateRecoveryBinding(binding, new CounterCapability()));
+        cap.Allowed = false;
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateCapability(cap));
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateRecoveryBinding(binding, cap));
+        Assert.Equal(0, cap.Invocations); Assert.Equal(0, cap.Queries); Assert.Equal(0, cap.Effects);
+    }
+
     [Theory]
     [InlineData("5.00")] [InlineData("5e0")] [InlineData("0.5e1")]
     public async Task ActualKeyedProducerReadsExactIntegralSpellingWithoutChangingOperationOrReceipt(string token)

@@ -38,6 +38,18 @@ public abstract class FunctionTool<TCapability> : IFunctionTool where TCapabilit
     protected virtual bool ValidateArguments(JsonElement arguments) => true;
 
     /// <inheritdoc />
+    public ToolError ValidateCapability(IToolCapability? capability)
+    {
+        try
+        {
+            return capability is TCapability typed && typed.CapabilityId == Descriptor.CapabilityId
+                ? ToolError.None : ToolError.UnsupportedCapability;
+        }
+        catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
+        { return ToolError.UnsupportedCapability; }
+    }
+
+    /// <inheritdoc />
     public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability)
     {
         var error = ValidateBinding(prepared, expectedCall, capability);
@@ -50,13 +62,7 @@ public abstract class FunctionTool<TCapability> : IFunctionTool where TCapabilit
         ArgumentNullException.ThrowIfNull(expectedCall);
         if (!ReferenceEquals(prepared.Owner, this)) return ToolError.PreparedMismatch;
         if (!prepared.Call.Matches(expectedCall)) return ToolError.CallMismatch;
-        try
-        {
-            return capability is TCapability typed && typed.CapabilityId == Descriptor.CapabilityId
-                ? ToolError.None : ToolError.UnsupportedCapability;
-        }
-        catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
-        { return ToolError.UnsupportedCapability; }
+        return ValidateCapability(capability);
     }
 
     /// <inheritdoc />

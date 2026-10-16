@@ -139,7 +139,7 @@ public sealed class ProviderBoundsTests
     public void UndefinedFlagsAndInvalidIdentityRejectWithSafeErrors()
     {
         Assert.Equal(ProviderError.UnsupportedCapability, Assert.Throws<ProviderContractException>(() => new ProviderRequest(
-            ProviderExchangeTests.Scope, ProviderExchangeTests.Attempt(), [], requiredCapabilities: (ProviderCapabilities)8)).Error);
+            ProviderExchangeTests.Scope, ProviderExchangeTests.Attempt(), [], requiredCapabilities: (ProviderCapabilities)16)).Error);
         Assert.Equal(ProviderError.InvalidAssociation, Assert.Throws<ProviderContractException>(() => new ProviderAttempt(Guid.Empty, Guid.NewGuid(), Guid.NewGuid())).Error);
         Assert.Equal(ProviderError.InvalidAssociation, Assert.Throws<ProviderContractException>(() => new ProviderAttempt(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 0)).Error);
         var error = Assert.Throws<ProviderContractException>(() => new ProviderScope("SCOPE_CANARY\n", "model"));

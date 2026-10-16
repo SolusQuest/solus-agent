@@ -21,8 +21,10 @@ internal sealed partial class RunState
         records.Where(r => r.Model is not null).Select(r => r.Model!.Attempt).ToArray(),
         restored.Pending?.LogicalCallId == attempt.LogicalCallId ? restored.Pending : null);
     internal void RecordAttempt(ProviderRequest providerRequest, AttemptExecution result) => contextFacts.Add(new(providerRequest.Attempt,
-        result.Stop, result.SettlementStop, result.ProviderOutcome, result.ProviderError, result.Retry, result.Response?.Finish == ProviderFinish.Final,
-        result.ClosureAcknowledged, providerRequest.Bounds, result.Response?.Finish == ProviderFinish.ToolCalls));
+        result.Stop, result.SettlementStop, result.ProviderOutcome, result.ProviderError, result.Retry, CommittedFinish(providerRequest.Attempt) == ProviderFinish.Final,
+        result.ClosureAcknowledged, providerRequest.Bounds, CommittedFinish(providerRequest.Attempt) == ProviderFinish.ToolCalls,
+        CommittedFinish(providerRequest.Attempt) == ProviderFinish.ToolCorrection,
+        producedResponses.TryGetValue(providerRequest.Attempt.PhysicalAttemptId, out var finish) ? finish : null));
     internal void FreezeContext(AgentOutcome outcome)
     {
         if (contextStop.HasValue) return;
@@ -41,21 +43,8 @@ internal sealed partial class RunState
         if (contextFacts.Count != attempts.Count || records.Count == 0) return null;
         var last = contextFacts.LastOrDefault();
         var facts = contextFacts.Concat(restored?.Checkpoint.Rounds.SelectMany(r => r.Facts) ?? []).ToArray();
-        var members = originalToolRecords.Select(m => new SavedMember(m.ModelAttempt, m.Ordinal, m.Call,
-            SavedDescriptor.From(Configuration.Tools.Single(t => t.Descriptor.Name == m.Call.ToolName).Descriptor),
-            m.State, SavedResult.From(m.Result), m.Error, m.ReservationHeld, m.Operation!)).ToArray();
-        var inputs = records.Select(r =>
-        {
-            var model = r.Model;
-            var bounds = model is null ? null : facts.Single(f => f.Attempt.Matches(model.Attempt)).Bounds;
-            var member = r.ToolResult is null ? -1 : toolRecords.FindIndex(m => m.Call.Matches(r.ToolResult.Call));
-            if (r.ToolResult is not null && member < 0) throw new InvalidOperationException();
-            return new SavedInput(r.Kind, r.Text, model?.Finish == ProviderFinish.Final
-                ? new(model.Scope, model.Attempt, model.Text!, SavedContinuation.From(model.Continuation), bounds!) : null,
-                model?.Finish == ProviderFinish.ToolCalls
-                    ? new(model.Scope, model.Attempt, model.Text, model.Calls.ToArray(), SavedContinuation.From(model.Continuation), bounds!) : null,
-                member < 0 ? null : member);
-        }).ToArray();
+        var members = SaveMembers();
+        var inputs = SaveInputs(records, facts);
         SavedProvider? provider = latestRequest is null ? restored?.Checkpoint.Provider : null;
         if (latestRequest is not null && Configuration.Provider is IProviderContextPersistence persistence)
         {

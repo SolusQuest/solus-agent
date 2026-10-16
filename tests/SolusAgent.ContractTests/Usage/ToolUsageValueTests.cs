@@ -9,6 +9,25 @@ namespace SolusAgent.ContractTests.Usage;
 public sealed class ToolUsageValueTests
 {
     [Fact]
+    public void TotalCallAdmissionsAreIndependentOfActualEntriesAndProviderKnowledge()
+    {
+        var limits = new AgentUsageLimits(maximumToolInvocations: 1, maximumToolCallAdmissions: 2);
+        Assert.Equal(1, limits.MaximumToolInvocations); Assert.Equal(2, limits.MaximumToolCallAdmissions);
+        Assert.Null(new AgentUsageLimits().MaximumToolCallAdmissions);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AgentUsageLimits(maximumToolCallAdmissions: 0));
+        var id = Guid.NewGuid(); var admitted = new ToolCallAdmissionUsage(2);
+        var usage = new AgentRunUsage(id, UsageInventoryCoverage.Unavailable, [], new(), toolCallAdmissions: admitted);
+        var outcome = new AgentOutcome(id, AgentTerminationReason.Partial, 1, usage: usage);
+        var progress = new AgentProgress(id, 1, usage);
+        Assert.Same(admitted, outcome.Usage!.ToolCallAdmissions); Assert.Same(admitted, progress.Usage!.ToolCallAdmissions);
+        Assert.Equal(2, admitted.Admitted); Assert.Equal(0, usage.ToolInvocations!.Invoked);
+        Assert.Null(new AgentRunUsage(id, UsageInventoryCoverage.Complete, []).ToolCallAdmissions);
+        Assert.All(typeof(ToolCallAdmissionUsage).GetProperties(), property => Assert.False(property.CanWrite));
+        var request = new AgentRequest(id, "task", [], new(1, TimeSpan.FromSeconds(1)), AgentCapability.ToolCallAdmissionLimit, limits);
+        Assert.Equal(request.RequiredCapabilities, new RuntimeSupport(request.RequiredCapabilities, RuntimeGuarantee.None).SupportedCapabilities);
+    }
+
+    [Fact]
     public void AllowanceAndCapabilityValidateIndependentlyOfOtherDimensions()
     {
         Assert.Null(new AgentUsageLimits().MaximumToolInvocations);

@@ -6,13 +6,15 @@ public sealed class AgentUsageLimits
     /// <summary>Creates positive optional limits. Null means no configured limit in that dimension.</summary>
     /// <exception cref="ArgumentOutOfRangeException">A configured value is not positive.</exception>
     public AgentUsageLimits(int? maximumLogicalCalls = null, int? maximumPhysicalDispatches = null, long? inputTokenThreshold = null, long? outputTokenThreshold = null,
-        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null, AgentRetryPolicy? retryPolicy = null)
+        int? maximumToolInvocations = null, AgentAccountingPolicy? accountingPolicy = null, AgentRetryPolicy? retryPolicy = null, int? maximumToolCallAdmissions = null)
     {
         if (maximumLogicalCalls is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumLogicalCalls));
         if (maximumPhysicalDispatches is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumPhysicalDispatches));
         if (inputTokenThreshold is <= 0) throw new ArgumentOutOfRangeException(nameof(inputTokenThreshold));
         if (outputTokenThreshold is <= 0) throw new ArgumentOutOfRangeException(nameof(outputTokenThreshold));
         if (maximumToolInvocations is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumToolInvocations));
+        if (maximumToolCallAdmissions is <= 0) throw new ArgumentOutOfRangeException(nameof(maximumToolCallAdmissions));
+        MaximumToolCallAdmissions = maximumToolCallAdmissions;
         MaximumLogicalCalls = maximumLogicalCalls;
         MaximumPhysicalDispatches = maximumPhysicalDispatches;
         InputTokenThreshold = inputTokenThreshold;
@@ -37,6 +39,8 @@ public sealed class AgentUsageLimits
     public AgentAccountingPolicy? AccountingPolicy { get; }
     /// <summary>Gets the run-level invocation allowance, reserved for complete batches and charged on tool-interface entry, including failed or unknown effects.</summary>
     public int? MaximumToolInvocations { get; }
+    /// <summary>Gets the optional total admitted tool-member bound, including complete withheld corrections, independently of actual invocation entries.</summary>
+    public int? MaximumToolCallAdmissions { get; }
     /// <summary>Gets explicit provider-only retry permission; null preserves one attempt per logical call.</summary>
     public AgentRetryPolicy? RetryPolicy { get; }
 }

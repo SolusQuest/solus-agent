@@ -94,7 +94,14 @@ internal static class ProviderAttemptOperation
             try
             {
                 if (result.Response is null) throw new ProviderContractException(ProviderError.InvalidResponse);
-                if (cut.TryCommit(() => state.Accept(request, result.Response))) accepted = result.Response;
+                if (result.Response.Finish == ProviderFinish.ToolCorrection && result.Response.Correction?.Origin != ToolCorrectionOrigin.SchemaArguments)
+                    throw new ProviderContractException(ProviderError.InvalidResponse);
+                if (cut.TryCommit(() =>
+                {
+                    if (configuration.ToolArgumentCorrection is not null && result.Response.Finish != ProviderFinish.Final)
+                        state.RecordProduction(request, result.Response);
+                    else state.Accept(request, result.Response);
+                })) accepted = result.Response;
                 else stop = cut.Check();
             }
             catch (ProviderContractException exception)

@@ -280,6 +280,7 @@ internal static class RestorationChild
         internal int Invocations { get; private set; }
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation p, ToolCall c, IToolCapability? cap) => inner.ValidateInvocation(p, c, cap);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation p, ToolCall c, IToolCapability? cap, CancellationToken token = default)
         { Invocations++; return inner.InvokeAsync(p, c, cap, token); }
@@ -291,9 +292,11 @@ internal static class RestorationChild
         internal int Queries { get; private set; }
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation p, ToolCall c, IToolCapability? cap) => inner.ValidateInvocation(p, c, cap);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation p, ToolCall c, IToolCapability? cap, CancellationToken token = default)
         { Ordinary++; return inner.InvokeAsync(p, c, cap, token); }
+        public ToolError ValidateRecoveryBinding(ToolRecoveryBinding binding, IToolCapability? capability) => inner.ValidateRecoveryBinding(binding, capability);
         public ToolError ValidateOperation(ToolOperation op, IToolCapability? cap) => inner.ValidateOperation(op, cap);
         public ValueTask<ToolResult> InvokeOperationAsync(PreparedToolInvocation p, ToolOperation op, IToolCapability? cap, CancellationToken token = default)
         { Operations++; return inner.InvokeOperationAsync(p, op, cap, token); }

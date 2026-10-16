@@ -144,6 +144,7 @@ public sealed class StructuredToolContextTests
     {
         public ToolDescriptor Descriptor => descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability) => inner.ValidateInvocation(prepared, expectedCall, capability);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability, CancellationToken cancellationToken = default) =>
             inner.InvokeAsync(prepared, expectedCall, capability, cancellationToken);

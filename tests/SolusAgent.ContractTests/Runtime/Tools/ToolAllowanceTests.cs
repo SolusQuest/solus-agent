@@ -216,6 +216,7 @@ public sealed class ToolAllowanceTests
         public Task<ToolResult>? Invocation { get; private set; }
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability) =>
             inner.ValidateInvocation(prepared, call, capability);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability, CancellationToken token = default)

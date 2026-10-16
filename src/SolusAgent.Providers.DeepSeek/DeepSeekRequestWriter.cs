@@ -33,10 +33,11 @@ internal static class DeepSeekRequestWriter
                         if (model.Continuation is { } continuation)
                             writer.WriteString("reasoning_content", DeepSeekReplay.Decode(continuation));
                         else if (replayRequired) throw new ProviderContractException(ProviderError.ContinuationMismatch);
-                        if (model.Calls.Count != 0)
+                        var calls = model.Correction is { } correction ? correction.Members.Select(m => m.Call).ToArray() : model.Calls;
+                        if (calls.Count != 0)
                         {
                             writer.WriteStartArray("tool_calls");
-                            foreach (var call in model.Calls)
+                            foreach (var call in calls)
                             {
                                 writer.WriteStartObject(); writer.WriteString("id", call.CallId); writer.WriteString("type", "function");
                                 writer.WriteStartObject("function"); writer.WriteString("name", call.ToolName);
@@ -50,6 +51,11 @@ internal static class DeepSeekRequestWriter
                         writer.WriteString("role", "tool"); writer.WriteString("tool_call_id", result.Call.CallId);
                         // Failed results remain fixed data, never fabricated successful empty output.
                         writer.WriteString("content", result.Json ?? JsonSerializer.Serialize(new { outcome = result.Outcome.ToString(), error = result.Error.ToString() }));
+                        break;
+                    case ProviderInputKind.ToolCorrectionFeedbackData:
+                        var feedback = input.CorrectionFeedback!;
+                        writer.WriteString("role", "tool"); writer.WriteString("tool_call_id", feedback.Call.CallId);
+                        writer.WriteString("content", feedback.Json);
                         break;
                     default: throw new ProviderContractException(ProviderError.InvalidInput);
                 }

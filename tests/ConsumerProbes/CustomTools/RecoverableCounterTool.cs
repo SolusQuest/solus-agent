@@ -141,15 +141,23 @@ public sealed class RecoverableCounterTool(int maximumResultBytes = 100, ToolEff
         return prepared;
     }
     /// <inheritdoc />
+    public ToolError ValidateCapability(IToolCapability? capability) => capability is RecoveryCounterCapability { Allowed: true } target
+        && target.CapabilityId == Descriptor.CapabilityId ? ToolError.None : ToolError.UnsupportedCapability;
+    /// <inheritdoc />
     public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability) =>
         handles.TryGetValue(prepared, out var guarded) ? guarded.ValidateInvocation(prepared, call, capability) : ToolError.PreparedMismatch;
     /// <inheritdoc />
     public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability, CancellationToken token = default) =>
         (handles.GetValueOrDefault(prepared) ?? new Invocation(Descriptor)).InvokeAsync(prepared, call, capability, token);
     /// <inheritdoc />
-    public ToolError ValidateOperation(ToolOperation operation, IToolCapability? capability) => capability is RecoveryCounterCapability { Allowed: true } target
-        && operation.Call.ToolName == Descriptor.Name && operation.Recovery is { BindingId: "keyed_recovery" } binding
-        && binding.TargetSnapshot == target.TargetSnapshot && binding.Guarantee == target.Guarantee ? ToolError.None : ToolError.UnsupportedCapability;
+    public ToolError ValidateRecoveryBinding(ToolRecoveryBinding binding, IToolCapability? capability) =>
+        ValidateCapability(capability) == ToolError.None && capability is RecoveryCounterCapability target
+        && binding.BindingId == "keyed_recovery" && binding.TargetSnapshot == target.TargetSnapshot && binding.Guarantee == target.Guarantee
+            ? ToolError.None : ToolError.UnsupportedCapability;
+    /// <inheritdoc />
+    public ToolError ValidateOperation(ToolOperation operation, IToolCapability? capability) =>
+        operation.Call.ToolName == Descriptor.Name && operation.Recovery is { } binding
+            ? ValidateRecoveryBinding(binding, capability) : ToolError.UnsupportedCapability;
     /// <inheritdoc />
     public ValueTask<ToolResult> InvokeOperationAsync(PreparedToolInvocation prepared, ToolOperation operation, IToolCapability? capability,
         CancellationToken token = default)
