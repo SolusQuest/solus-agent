@@ -53,10 +53,14 @@ internal sealed record WireObservations(bool? JsonValid = null, bool? UsageValid
                 && message.TryGetProperty("role", out var role) && Text(role) == "assistant" && createdValid && fingerprintValid };
             if (!message.TryGetProperty("tool_calls", out var calls) || calls.ValueKind == JsonValueKind.Null) return result;
             if (calls.ValueKind != JsonValueKind.Array || calls.GetArrayLength() == 0 || calls.GetArrayLength() > request.Bounds.MaximumToolCalls) return Mark(result, 4);
-            int? metadataError = 0, argumentsError = 0; var ids = new HashSet<string>(StringComparer.Ordinal);
+            int? metadataError = 0, argumentsError = 0; var ids = new HashSet<string>(StringComparer.Ordinal); var ordinal = 0;
             foreach (var call in calls.EnumerateArray())
             {
-                if (!IsShape(call, ["id", "type", "function"])) result = Mark(result, 4);
+                if (!IsShape(call, ["id", "type", "function", "index"])) result = Mark(result, 4);
+                if (call.ValueKind == JsonValueKind.Object && call.TryGetProperty("index", out var callIndex)
+                    && !(callIndex.ValueKind == JsonValueKind.Number && callIndex.TryGetInt32(out var position) && position == ordinal))
+                    result = Mark(result, 4);
+                ordinal++;
                 if (!Required(call, ["id", "type", "function"])) result = Mark(result, 6);
                 if (call.ValueKind != JsonValueKind.Object || !call.TryGetProperty("type", out var type) || Text(type) != "function"
                     || !call.TryGetProperty("function", out var function) || function.ValueKind != JsonValueKind.Object)

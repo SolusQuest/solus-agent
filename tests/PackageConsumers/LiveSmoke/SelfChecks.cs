@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace PackageConsumers.LiveSmoke;
 
-internal enum FakeMode { Normal, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage, WhitespaceArguments, NonemptyArguments, MalformedArguments, ArrayArguments, UsageConflict, UnknownRoot }
+internal enum FakeMode { Normal, Indexed, RateLimited, Unavailable, Throw, Hold, EarlyFinal, WrongTool, Malformed, ReplayEmpty, ReplayExact, ReplayOverflow, ResponseExact, ResponseOverflow, OutputExact, OutputOverflow, UnknownUsage, WhitespaceArguments, NonemptyArguments, MalformedArguments, ArrayArguments, UsageConflict, UnknownRoot }
 internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
 {
     internal int Entries;
@@ -38,6 +38,13 @@ internal sealed class FakeTransport(FakeMode mode = FakeMode.Normal)
             if (mode == FakeMode.UsageConflict) changed["usage"]!["total_tokens"] = 16;
             else changed[Fixture.PrivateError] = Fixture.CredentialA;
             response = changed.ToJsonString();
+        }
+        if (mode == FakeMode.Indexed && tool)
+        {
+            var indexed = System.Text.Json.Nodes.JsonNode.Parse(response)!;
+            var call = indexed["choices"]![0]!["message"]!["tool_calls"]![0]!;
+            call["index"] = 0; call["function"]!["arguments"] = " { } ";
+            response = indexed.ToJsonString();
         }
         if (mode == FakeMode.ResponseExact) response = response.PadRight(65536);
         return Task.FromResult(new WireReply(mode == FakeMode.RateLimited ? 429 : mode == FakeMode.Unavailable ? 503 : 200, response));
@@ -257,9 +264,10 @@ internal static class SelfChecks
         cases += await FailureChecks.RunAsync();
         cases += await WireChecks.RunAsync();
         cases += await WireObservationChecks.RunAsync();
-        await Case("observer-failure-preserves-real-tool-restoration", async () =>
+        foreach (var mode in new[] { FakeMode.Normal, FakeMode.Indexed })
+        await Case("observer-failure-preserves-real-tool-restoration-" + mode, async () =>
         {
-            var fake = new FakeTransport(); using var host = new SmokeHost(fake.SendAsync);
+            var fake = new FakeTransport(mode); using var host = new SmokeHost(fake.SendAsync);
             var first = await host.RunAsync(true, observerFailure: true);
             var second = await host.RunAsync(false, observerFailure: true);
             Check.That(first.Wire == new WireObservations() && second.Wire == new WireObservations()

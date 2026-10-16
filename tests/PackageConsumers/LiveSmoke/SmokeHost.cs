@@ -153,6 +153,11 @@ internal sealed class SmokeHost : IDisposable
             Check.That(boot.Fresh ? report.Imports == 0 && report.Claims == 0
                 : report.Imports == 1 && report.Claims == 1 && report.HistoryTools >= 1 && report.HistoryAttempts >= 1, Failure.Authority);
             Check.That(report.Capture == ContextCaptureStatus.Delivered && report.Captured is not null, Failure.Capacity);
+            // Successful actual adapter/runtime admission establishes the wire ordinal invariant.
+            // Only normalized replay loses index; raw arguments, reasoning and call identities stay exact.
+            foreach (var message in expectedHistory!)
+                if (message?["tool_calls"] is JsonArray calls)
+                    foreach (var call in calls) call!.AsObject().Remove("index");
             Pin(report.Captured!); completedSource = !boot.Fresh;
             return report;
         }

@@ -20,7 +20,7 @@ internal static class WireObservationChecks
     internal static IEnumerable<(string Name, string Body, WireObservations Expected, ProviderError Error)> Cases()
     {
         var normal = new WireObservations(true, true, 0, 1, 1, true, 0, 0);
-        foreach (var name in new[] { "normal", "whitespace", "text", "extra-arguments", "bad-arguments", "duplicate-arguments", "wrong-tool",
+        foreach (var name in new[] { "normal", "call-index", "call-index-batch", "call-index-unknown", "call-index-null", "call-index-string", "call-index-bool", "call-index-negative", "call-index-wrong", "call-index-fraction", "call-index-integral-fraction", "call-index-exponent", "call-index-overflow", "call-index-second-wrong", "whitespace", "text", "extra-arguments", "bad-arguments", "duplicate-arguments", "wrong-tool",
             "bad-call-id", "mixed-batch", "missing-arguments", "total", "cache", "alias", "reasoning", "negative", "fraction", "exponent",
             "bad-detail", "missing-usage", "null-usage", "partial-usage", "unknown-usage-field", "unknown-root", "unknown-message",
             "missing-content", "array-content", "wrong-role", "bad-created", "bad-index", "logprobs", "filter", "aborted", "length", "resource", "unknown-finish", "missing-finish", "missing-reasoning", "arguments-limit", "arguments-unicode", "overflow-input", "scalar-usage", "unknown-function" })
@@ -30,6 +30,28 @@ internal static class WireObservationChecks
             var expected = normal; var error = ProviderError.None;
             switch (name)
             {
+                case "call-index": call["index"] = 0; break;
+                case "call-index-batch":
+                case "call-index-second-wrong":
+                    call["index"] = 0; var indexed = call.DeepClone(); indexed["id"] = "second-call";
+                    indexed["index"] = name == "call-index-batch" ? 1 : 0; message["tool_calls"]!.AsArray().Add(indexed);
+                    if (name == "call-index-second-wrong") { expected = expected with { Shape = 4 }; error = ProviderError.InvalidResponse; }
+                    break;
+                case "call-index-unknown": call["index"] = 0; call[Canary] = null; expected = expected with { Shape = 4 }; error = ProviderError.InvalidResponse; break;
+                case "call-index-null":
+                case "call-index-string":
+                case "call-index-bool":
+                case "call-index-negative":
+                case "call-index-wrong":
+                case "call-index-fraction":
+                case "call-index-integral-fraction":
+                case "call-index-exponent":
+                case "call-index-overflow":
+                    call["index"] = JsonNode.Parse(name switch {
+                        "call-index-null" => "null", "call-index-string" => "\"0\"", "call-index-bool" => "true",
+                        "call-index-negative" => "-1", "call-index-wrong" => "1", "call-index-fraction" => "0.5",
+                        "call-index-integral-fraction" => "0.0", "call-index-exponent" => "0e0", _ => "2147483648" });
+                    expected = expected with { Shape = 4 }; error = ProviderError.InvalidResponse; break;
                 case "whitespace": function["arguments"] = " { } "; break;
                 case "text": message["content"] = Canary; expected = expected with { Content = 2 }; break;
                 case "extra-arguments": function["arguments"] = "{\"extra\":true}"; expected = expected with { ArgumentsError = 6 }; error = ProviderError.InvalidResponse; break;
