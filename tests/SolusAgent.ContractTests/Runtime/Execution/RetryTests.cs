@@ -58,7 +58,7 @@ public sealed class RetryTests
     [Fact]
     public void PolicyRejectsUnboundedOrInconsistentConfiguration()
     {
-        foreach (var attempts in new[] { 0, -1, 65, int.MaxValue }) Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRetryPolicy(attempts));
+        foreach (var attempts in new[] { 0, -1, 129, int.MaxValue }) Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRetryPolicy(attempts));
         foreach (var delay in new[] { TimeSpan.FromTicks(-1), AgentRetryPolicy.DelayCeiling + TimeSpan.FromTicks(1), TimeSpan.MaxValue })
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRetryPolicy(2, backoff: delay));
@@ -66,7 +66,13 @@ public sealed class RetryTests
         }
         Assert.Throws<ArgumentOutOfRangeException>(() => new AgentRetryPolicy(2, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1)));
         Assert.Equal(TimeSpan.Zero, new AgentRetryPolicy(1, maximumDelay: TimeSpan.Zero).Backoff);
-        Assert.Equal(64, new AgentRetryPolicy(64, AgentRetryPolicy.DelayCeiling).MaximumAttemptsPerLogicalCall);
+        foreach (var attempts in new[] { 1, 64, 65, 127, 128 })
+        {
+            var policy = new AgentRetryPolicy(attempts, AgentRetryPolicy.DelayCeiling);
+            var limits = new AgentUsageLimits(retryPolicy: policy);
+            Assert.Equal(attempts, policy.MaximumAttemptsPerLogicalCall);
+            Assert.Same(policy, Request(limits).UsageLimits!.RetryPolicy);
+        }
     }
 
     [Theory]

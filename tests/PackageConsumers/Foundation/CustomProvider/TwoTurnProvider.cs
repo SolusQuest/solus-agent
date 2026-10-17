@@ -56,6 +56,7 @@ public sealed class ExposureHooks : IRuntimeExposureHooks
 {
     public int Permissions { get; private set; }
     public int Closures { get; private set; }
+    public Action<RuntimeSettlement>? Settled { get; init; }
     public ValueTask<ExposureAcknowledgement?> BeforeDispatchAsync(RuntimeExposure exposure, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested(); Permissions++;
@@ -63,7 +64,25 @@ public sealed class ExposureHooks : IRuntimeExposureHooks
     }
     public ValueTask<SettlementAcknowledgement?> AfterAttemptAsync(RuntimeSettlement settlement, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested(); Closures++;
+        cancellationToken.ThrowIfCancellationRequested(); Closures++; Settled?.Invoke(settlement);
         return ValueTask.FromResult<SettlementAcknowledgement?>(new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue, settlement.Accounting));
+    }
+}
+
+public sealed class RetryCapacityProvider(int attempts) : ModelProvider(new("foundation", "retry"), ProviderCapabilities.UsageReporting)
+{
+    private ProviderRequest? first;
+    private readonly HashSet<Guid> physical = [];
+    public int Calls { get; private set; }
+    protected override ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); first ??= request;
+        Calls++;
+        if (attempts is < 1 or > 128 || Calls > attempts || request.Attempt.AttemptNumber != Calls
+            || request.Attempt.LogicalCallId != first.Attempt.LogicalCallId || !physical.Add(request.Attempt.PhysicalAttemptId)
+            || !request.Inputs.SequenceEqual(first.Inputs)) throw new InvalidOperationException("Single-call retry association differed.");
+        observation.ObserveDispatch(DispatchExposure.Dispatched); observation.CaptureUsage(new(3, 2));
+        if (Calls < attempts) throw new ProviderFailureException(new(ProviderRetryKind.Transient));
+        return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.Final, "done", []));
     }
 }

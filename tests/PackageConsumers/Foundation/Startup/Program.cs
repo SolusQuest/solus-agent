@@ -32,13 +32,57 @@ var largeAgent = RuntimeAgentFactory.Create(new(largeProvider, [new(new Artifact
 _ = await BusinessWorkflow.ExecuteLargeAsync((ICandidateAgent)largeAgent, final);
 if (largeProvider.Calls != 2 || largeCounter.Effects != 1) throw new InvalidOperationException("Opt-in package effects differed.");
 
+foreach (var attempts in new[] { 65, 128 })
+{
+    var retryProvider = new RetryCapacityProvider(attempts); var retryHooks = new ExposureHooks();
+    var retryAgent = RuntimeAgentFactory.Create(new(retryProvider, [], retryHooks), new(maximumAttempts: 128));
+    _ = await BusinessWorkflow.ExecuteRetriesAsync(retryAgent, attempts);
+    if (retryProvider.Calls != attempts || retryHooks.Permissions != attempts || retryHooks.Closures != attempts)
+        throw new InvalidOperationException("Package retry permission or settlement count differed.");
+}
+
+foreach (var attempts in new[] { 65, 128 })
+foreach (var beforeDispatch in new[] { true, false })
+{
+    using var cancellation = new CancellationTokenSource();
+    var canceledProvider = new RetryCapacityProvider(attempts);
+    var canceledHooks = new ExposureHooks { Settled = s =>
+    {
+        if (s.Exposure.Attempt.AttemptNumber == 64) cancellation.Cancel();
+    } };
+    var canceledAgent = RuntimeAgentFactory.Create(new(canceledProvider, [], canceledHooks), new(maximumAttempts: 128));
+    if (beforeDispatch) cancellation.Cancel();
+    await ExpectCallerCancellation(() => BusinessWorkflow.ExecuteRetriesAsync(canceledAgent, attempts, cancellation.Token), cancellation.Token);
+    var expectedCalls = beforeDispatch ? 0 : 64;
+    if (canceledProvider.Calls != expectedCalls || canceledHooks.Permissions != expectedCalls || canceledHooks.Closures != expectedCalls)
+        throw new InvalidOperationException("Caller cancellation did not stop package retries before the next dispatch.");
+}
+
+using (var cancellation = new CancellationTokenSource())
+{
+    var canceledProvider = new LargeArtifactProvider(artifact, final); var canceledCounter = new Counter();
+    var canceledHooks = new ExposureHooks { Settled = _ => cancellation.Cancel() };
+    var canceledAgent = RuntimeAgentFactory.Create(new(canceledProvider, [new(new ArtifactTool(artifact), canceledCounter)], canceledHooks, largeBounds),
+        new(maximumRetainedBytes: 16 * 1048576));
+    await ExpectCallerCancellation(() => BusinessWorkflow.ExecuteLargeAsync((ICandidateAgent)canceledAgent, final, cancellation.Token), cancellation.Token);
+    if (canceledProvider.Calls != 1 || canceledCounter.Effects != 0 || canceledHooks.Permissions != 1 || canceledHooks.Closures != 1)
+        throw new InvalidOperationException("Caller cancellation did not stop candidate package work before tool effects.");
+}
+
 CheckReferences(typeof(BusinessWorkflow).Assembly, ["SolusAgent.Api"]);
 CheckReferences(typeof(IncrementTool).Assembly, ["SolusAgent.Tools.Api"]);
 CheckReferences(typeof(TwoTurnProvider).Assembly, ["SolusAgent.Api", "SolusAgent.Tools.Api", "SolusAgent.Runtime.Api"]);
 // A synthetic value and terminal handler prove the optional package's public construction without network access.
 using var adapter = new DeepSeekProvider(new("synthetic-unused", 16), new NoNetworkHandler());
 _ = RuntimeAgentFactory.Create(new(adapter, [], null, requiredGuarantees: RuntimeGuarantee.None));
-Console.WriteLine("Foundation passed: independent public startup and opt-in 4 MiB input, complete 1 MiB artifact/candidate; exact tool and Host effects.");
+Console.WriteLine("Foundation passed: independent public startup and opt-in 4 MiB input, complete 1 MiB artifact/candidate; exact tool and Host effects; single logical-call retry success at 65/128; caller cancellation before dispatch/after failure 64 and before candidate tool effects.");
+
+static async Task ExpectCallerCancellation<T>(Func<Task<T>> execute, CancellationToken token)
+{
+    try { _ = await execute(); }
+    catch (OperationCanceledException error) when (error.CancellationToken == token) { return; }
+    throw new InvalidOperationException("The package workflow did not propagate caller cancellation.");
+}
 
 static void CheckReferences(Assembly assembly, string[] allowed)
 {
