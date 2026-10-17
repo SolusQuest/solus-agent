@@ -32,13 +32,22 @@ var largeAgent = RuntimeAgentFactory.Create(new(largeProvider, [new(new Artifact
 _ = await BusinessWorkflow.ExecuteLargeAsync((ICandidateAgent)largeAgent, final);
 if (largeProvider.Calls != 2 || largeCounter.Effects != 1) throw new InvalidOperationException("Opt-in package effects differed.");
 
+foreach (var attempts in new[] { 65, 128 })
+{
+    var retryProvider = new RetryCapacityProvider(attempts); var retryHooks = new ExposureHooks();
+    var retryAgent = RuntimeAgentFactory.Create(new(retryProvider, [], retryHooks), new(maximumAttempts: 128));
+    _ = await BusinessWorkflow.ExecuteRetriesAsync(retryAgent, attempts);
+    if (retryProvider.Calls != attempts || retryHooks.Permissions != attempts || retryHooks.Closures != attempts)
+        throw new InvalidOperationException("Package retry permission or settlement count differed.");
+}
+
 CheckReferences(typeof(BusinessWorkflow).Assembly, ["SolusAgent.Api"]);
 CheckReferences(typeof(IncrementTool).Assembly, ["SolusAgent.Tools.Api"]);
 CheckReferences(typeof(TwoTurnProvider).Assembly, ["SolusAgent.Api", "SolusAgent.Tools.Api", "SolusAgent.Runtime.Api"]);
 // A synthetic value and terminal handler prove the optional package's public construction without network access.
 using var adapter = new DeepSeekProvider(new("synthetic-unused", 16), new NoNetworkHandler());
 _ = RuntimeAgentFactory.Create(new(adapter, [], null, requiredGuarantees: RuntimeGuarantee.None));
-Console.WriteLine("Foundation passed: independent public startup and opt-in 4 MiB input, complete 1 MiB artifact/candidate; exact tool and Host effects.");
+Console.WriteLine("Foundation passed: independent public startup and opt-in 4 MiB input, complete 1 MiB artifact/candidate; exact tool and Host effects; single logical-call retry success at 65/128.");
 
 static void CheckReferences(Assembly assembly, string[] allowed)
 {

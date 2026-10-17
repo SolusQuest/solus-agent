@@ -6,12 +6,12 @@ public sealed class AgentRetryPolicy
     /// <summary>Maximum backoff admitted by this draft.</summary>
     public static TimeSpan DelayCeiling { get; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>Creates a bounded policy including the first attempt. Both positive transient and throttled classifications are eligible.</summary>
+    /// <summary>Creates a bounded policy including the first attempt, from 1 through 128. Both positive transient and throttled classifications are eligible.</summary>
     /// <remarks>Absent backoff means zero; absent maximumDelay means ten minutes. An admitted hint above the Host maximum declines retry.</remarks>
     public AgentRetryPolicy(int maximumAttemptsPerLogicalCall, TimeSpan? backoff = null, TimeSpan? maximumDelay = null,
         bool honorRetryAfter = false)
     {
-        if (maximumAttemptsPerLogicalCall is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(maximumAttemptsPerLogicalCall));
+        if (maximumAttemptsPerLogicalCall is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(maximumAttemptsPerLogicalCall));
         var delay = backoff ?? TimeSpan.Zero;
         var maximum = maximumDelay ?? DelayCeiling;
         if (maximum < TimeSpan.Zero || maximum > DelayCeiling) throw new ArgumentOutOfRangeException(nameof(maximumDelay));

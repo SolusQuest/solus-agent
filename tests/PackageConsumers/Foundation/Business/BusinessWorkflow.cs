@@ -1,6 +1,7 @@
 using SolusAgent.Api.Execution;
 using SolusAgent.Api.Capabilities;
 using SolusAgent.Api.Candidates;
+using SolusAgent.Api.Usage;
 using System.Text.Json;
 
 namespace PackageConsumers.Foundation.Business;
@@ -15,6 +16,23 @@ public static class BusinessWorkflow
         if (result.ExecutionId != request.ExecutionId || result.Reason != AgentTerminationReason.Completed
             || result.CompletedWorkUnits != 2 || result.Usage?.Attempts.Count != 2)
             throw new InvalidOperationException("Public business execution did not complete both turns.");
+        return result;
+    }
+
+    public static async Task<AgentOutcome> ExecuteRetriesAsync(IAgent agent, int attempts)
+    {
+        var policy = new AgentRetryPolicy(attempts);
+        var request = new AgentRequest(Guid.NewGuid(), "Complete one logical call after classified failures.", [],
+            new(1, TimeSpan.FromSeconds(30)), AgentCapability.None,
+            new(maximumLogicalCalls: 1, maximumPhysicalDispatches: attempts, retryPolicy: policy));
+        var result = await agent.ExecuteAsync(request);
+        var usage = result.Usage!;
+        if (result.Reason != AgentTerminationReason.Completed || result.CompletedWorkUnits != 1 || usage.Attempts.Count != attempts
+            || usage.Attempts.Select(a => a.LogicalCallId).Distinct().Count() != 1
+            || usage.Attempts.Select(a => a.PhysicalAttemptId).Distinct().Count() != attempts
+            || !usage.Attempts.Select(a => a.AttemptNumber).SequenceEqual(Enumerable.Range(1, attempts))
+            || usage.InputTokens.ObservedTokens != 3L * attempts || usage.OutputTokens.ObservedTokens != 2L * attempts)
+            throw new InvalidOperationException("Public single-call retry capacity did not complete and retain all observations.");
         return result;
     }
 
