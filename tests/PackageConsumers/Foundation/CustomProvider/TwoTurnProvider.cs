@@ -56,6 +56,7 @@ public sealed class ExposureHooks : IRuntimeExposureHooks
 {
     public int Permissions { get; private set; }
     public int Closures { get; private set; }
+    public Action<RuntimeSettlement>? Settled { get; init; }
     public ValueTask<ExposureAcknowledgement?> BeforeDispatchAsync(RuntimeExposure exposure, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested(); Permissions++;
@@ -63,7 +64,7 @@ public sealed class ExposureHooks : IRuntimeExposureHooks
     }
     public ValueTask<SettlementAcknowledgement?> AfterAttemptAsync(RuntimeSettlement settlement, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested(); Closures++;
+        cancellationToken.ThrowIfCancellationRequested(); Closures++; Settled?.Invoke(settlement);
         return ValueTask.FromResult<SettlementAcknowledgement?>(new(settlement.Exposure, RuntimeHookStatus.Acknowledged, RuntimeContinuation.Continue, settlement.Accounting));
     }
 }
