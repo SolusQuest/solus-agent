@@ -66,8 +66,8 @@ internal static class ToolBatchOperation
                     if (disposition.Kind == ToolArgumentDispositionKind.Fatal) return Fail(disposition.Error);
                     if (disposition.Kind == ToolArgumentDispositionKind.Correctable)
                     {
-                        if (!state.Configuration.ToolArgumentCorrection!.ContainsError(disposition.ErrorCode!)) return Fail(ToolError.DomainRejected);
-                        denials.Add(new(call.CallId, disposition.ErrorCode!));
+                        if (!state.Configuration.ToolArgumentCorrection!.ContainsError(disposition.ErrorKey!)) return Fail(ToolError.DomainRejected);
+                        denials.Add(new(call.CallId, disposition.ErrorKey!));
                         continue;
                     }
                 }

@@ -26,7 +26,7 @@ internal sealed partial class RunState
                     ? new(model.Scope, model.Attempt, model.Text, model.Calls.ToArray(), SavedContinuation.From(model.Continuation), bounds!) : null,
                 member < 0 ? null : member,
                 correction is null ? null : new(model!.Scope, model.Attempt, model.Text, SavedContinuation.From(model.Continuation), bounds!, correction.Origin,
-                    correction.Members.Select((m, i) => new SavedCorrectionMember(i + 1, m.Call, m.OriginalArgumentBytes, m.ErrorCode, m.SchemaError)).ToArray(),
+                    correction.Members.Select((m, i) => new SavedCorrectionMember(i + 1, m.Call, m.OriginalArgumentBytes, m.ErrorKey, m.SchemaError)).ToArray(),
                     correction.OriginalResponseBytes, correction.DefinitionFingerprint),
                 entry.CorrectionFeedback is not { } feedback ? null : new(feedback.Attempt, feedback.Ordinal + 1));
         }).ToArray();

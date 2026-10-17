@@ -45,7 +45,7 @@ public sealed class ToolCorrectionTests
         Assert.Equal(request.ToolArgumentCorrection!.MarkerArgumentsJson, members[0].Call.ArgumentsJson);
         Assert.Equal(expected, members[0].SchemaError); Assert.Equal(Encoding.UTF8.GetByteCount(bad), members[0].OriginalArgumentBytes);
         Assert.Equal(Good, members[1].Call.ArgumentsJson); Assert.Equal(ToolError.None, members[1].SchemaError);
-        Assert.Equal(ToolArgumentCorrectionPolicy.BatchNotExecuted, members[1].ErrorCode);
+        Assert.Equal(ToolArgumentCorrectionPolicy.BatchNotExecuted, members[1].ErrorKey);
         Assert.NotEqual(ToolError.None, request.Tools[0].InputSchema.Validate(members[0].Call.ArgumentsJson));
         Assert.Equal("assistant text", model.Text); Assert.Equal(new byte[] { 1, 42 }, model.Continuation!.CopyReplayBytes());
         Assert.DoesNotContain(Rejected, JsonSerializer.Serialize(model.Correction) + model.Text + Convert.ToBase64String(model.Continuation.CopyReplayBytes())); Assert.DoesNotContain(Rejected, JsonSerializer.Serialize(result.Diagnostic));
@@ -150,7 +150,7 @@ public sealed class ToolCorrectionTests
     [Fact]
     public async Task HostDenialUsesSameGrammarWithOnlyStartupFixedAttributes()
     {
-        var policy = new ToolArgumentCorrectionPolicy("fixed", [new("path_not_tracked", [new("domain", "current_files")])], "_rejected");
+        var policy = new ToolArgumentCorrectionPolicy("fixed", [new("path_not_tracked", "path_not_tracked", [new("domain", "current_files")])], "_rejected");
         var request = Request(policy: policy); var source = (await Script("{\"amount\":1}").ExchangeAsync(request)).Response!;
         Assert.Equal(ProviderFinish.ToolCalls, source.Finish);
         var corrected = ProviderResponse.WithholdToolArguments(request, source, [new("bad", "path_not_tracked")]);
@@ -160,8 +160,8 @@ public sealed class ToolCorrectionTests
             ProviderInput.FromCorrectionFeedback(corrected, 0).CorrectionFeedback!.Json);
         _ = Next(request, corrected, Complete(request, corrected));
         Assert.Throws<ProviderContractException>(() => ProviderResponse.WithholdToolArguments(request, source, [new("bad", "not_configured")]));
-        Assert.Throws<ProviderContractException>(() => new ToolArgumentError("fixed", [new("code", "other")]));
-        Assert.Throws<ProviderContractException>(() => new ToolArgumentError("fixed", [new("domain", "../private")]));
+        Assert.Throws<ProviderContractException>(() => new ToolArgumentError("fixed", "fixed", [new("code", "other")]));
+        Assert.Throws<ProviderContractException>(() => new ToolArgumentError("fixed", "fixed", [new("domain", "../private")]));
         var classifier = new ToolArgumentCorrectionBinding("classifier", ["path_not_tracked"], (_, _) => ToolArgumentDisposition.Correct("not_configured"));
         Assert.Equal(ToolArgumentDispositionKind.Fatal, classifier.Classify(source.Calls[0], new CounterCapability()).Kind);
         var throwing = new ToolArgumentCorrectionBinding("throwing", ["path_not_tracked"], (_, _) => throw new Exception(Rejected));

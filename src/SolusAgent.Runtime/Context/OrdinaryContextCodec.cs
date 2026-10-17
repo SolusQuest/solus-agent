@@ -84,7 +84,7 @@ internal static partial class OrdinaryContextCodec
     }
     internal static string Binding(RuntimeConfiguration config, RuntimeOptions options) => Convert.ToHexString(SHA256.HashData(
         JsonSerializer.SerializeToUtf8Bytes(new { config.Scope, Tools = config.Tools.Select(t => new { t.Descriptor, t.Recovery,
-                ArgumentCorrection = t.ArgumentCorrection is null ? null : new { t.ArgumentCorrection.Identity, t.ArgumentCorrection.AllowedErrors } }).ToArray(),
+                ArgumentCorrection = t.ArgumentCorrection is null ? null : new { t.ArgumentCorrection.Identity, t.ArgumentCorrection.AllowedErrorKeys } }).ToArray(),
             ToolArgumentCorrection = config.ToolArgumentCorrection?.SemanticFingerprint, config.Bounds,
             config.RequiredAcknowledgement, config.RequiredGuarantees, options.RequireContinuation })));
 

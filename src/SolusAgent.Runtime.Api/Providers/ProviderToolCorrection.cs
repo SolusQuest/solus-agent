@@ -17,23 +17,23 @@ public enum ToolCorrectionOrigin
 public sealed class ProviderCorrectionMember
 {
     /// <summary>Copies bounded facts. Rejected calls must contain the selected marker at batch validation.</summary>
-    public ProviderCorrectionMember(ToolCall call, int originalArgumentBytes, string errorCode, ToolError schemaError = ToolError.None)
+    public ProviderCorrectionMember(ToolCall call, int originalArgumentBytes, string errorKey, ToolError schemaError = ToolError.None)
     {
         Call = call ?? throw new ArgumentNullException(nameof(call));
         ProviderBoundary.Require(originalArgumentBytes is >= 0 and <= ToolLimits.MaximumPayloadBytes, ProviderError.LimitExceeded);
         ProviderBoundary.Require(Enum.IsDefined(schemaError), ProviderError.InvalidInput);
-        OriginalArgumentBytes = originalArgumentBytes; ErrorCode = CorrectionBoundary.Identifier(errorCode); SchemaError = schemaError;
+        OriginalArgumentBytes = originalArgumentBytes; ErrorKey = CorrectionBoundary.Identifier(errorKey); SchemaError = schemaError;
     }
     /// <summary>Gets only sanitized rejected arguments or unchanged schema-valid sibling arguments.</summary>
     public ToolCall Call { get; }
     /// <summary>Gets numeric source size, never a content-derived identity.</summary>
     public int OriginalArgumentBytes { get; }
-    /// <summary>Gets the selected fixed feedback identifier.</summary>
-    public string ErrorCode { get; }
+    /// <summary>Gets the selected static declaration key, independent of its wire code.</summary>
+    public string ErrorKey { get; }
     /// <summary>Gets the original closed schema classification, or None for Host denial/valid siblings.</summary>
     public ToolError SchemaError { get; }
     /// <summary>Gets whether this member was argument-rejected; neither state implies an invocation.</summary>
-    public bool Rejected => ErrorCode != ToolArgumentCorrectionPolicy.BatchNotExecuted;
+    public bool Rejected => ErrorKey != ToolArgumentCorrectionPolicy.BatchNotExecuted;
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderCorrectionMember);
 }
@@ -42,17 +42,17 @@ public sealed class ProviderCorrectionMember
 public sealed class ToolArgumentDenial
 {
     /// <summary>Selects one exact original call and previously configured fixed error.</summary>
-    public ToolArgumentDenial(string callId, string errorCode)
+    public ToolArgumentDenial(string callId, string errorKey)
     {
         ProviderBoundary.Text(callId, ToolLimits.CallIdBytes);
         ProviderBoundary.Require(callId.Length != 0 && !callId.Any(char.IsControl), ProviderError.InvalidAssociation);
-        CallId = callId; ErrorCode = CorrectionBoundary.Identifier(errorCode);
-        ProviderBoundary.Require(ErrorCode != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
+        CallId = callId; ErrorKey = CorrectionBoundary.Identifier(errorKey);
+        ProviderBoundary.Require(ErrorKey != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
     }
     /// <summary>Gets the exact restricted original call identifier.</summary>
     public string CallId { get; }
-    /// <summary>Gets only the installed fixed error identifier.</summary>
-    public string ErrorCode { get; }
+    /// <summary>Gets only the installed fixed declaration key.</summary>
+    public string ErrorKey { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ToolArgumentDenial);
 }
@@ -74,7 +74,8 @@ public sealed class ProviderToolCorrection
         Origin = origin; Members = Array.AsReadOnly(copy); OriginalResponseBytes = originalResponseBytes;
         DefinitionFingerprint = definitionFingerprint;
         PayloadByteCount = ProviderBoundary.Bytes(definitionFingerprint) + copy.Sum(m => ProviderResponse.CallBytes(m.Call)
-            + ProviderBoundary.Bytes(m.ErrorCode) + ProviderBoundary.Bytes(policy.GetError(m.ErrorCode).Json));
+            + ProviderBoundary.Bytes(m.ErrorKey) + ProviderBoundary.Bytes(policy.GetError(m.ErrorKey).Code)
+            + ProviderBoundary.Bytes(policy.GetError(m.ErrorKey).Json));
     }
     internal ToolArgumentCorrectionPolicy Policy { get; }
     /// <summary>Gets the guarded origin; no origin grants effects or replay.</summary>
@@ -109,7 +110,7 @@ public sealed class ProviderToolCorrection
             ProviderBoundary.Require(descriptor is not null && !request.HistoricalCallIds.Contains(call.CallId), ProviderError.InvalidAssociation);
             ProviderBoundary.Require(member.OriginalArgumentBytes <= descriptor!.MaximumArgumentBytes, ProviderError.LimitExceeded);
             originalBytes = checked(originalBytes + ProviderBoundary.Bytes(call.CallId) + ProviderBoundary.Bytes(call.ToolName) + member.OriginalArgumentBytes);
-            ProviderBoundary.Require(policy.ContainsError(member.ErrorCode), ProviderError.InvalidResponse);
+            ProviderBoundary.Require(policy.ContainsError(member.ErrorKey), ProviderError.InvalidResponse);
             if (!member.Rejected)
             {
                 ProviderBoundary.Require(member.SchemaError == ToolError.None && member.OriginalArgumentBytes == ProviderBoundary.Bytes(call.ArgumentsJson)
@@ -119,7 +120,7 @@ public sealed class ProviderToolCorrection
             {
                 ProviderBoundary.Require(call.ArgumentsJson == policy.MarkerArgumentsJson, ProviderError.InvalidResponse);
                 ProviderBoundary.Require(Origin == ToolCorrectionOrigin.SchemaArguments
-                    ? member.ErrorCode == ToolArgumentCorrectionPolicy.ArgumentsInvalid && Eligible(member.SchemaError)
+                    ? member.ErrorKey == ToolArgumentCorrectionPolicy.ArgumentsInvalid && Eligible(member.SchemaError)
                     : member.SchemaError == ToolError.None, ProviderError.InvalidResponse);
             }
         }
@@ -143,8 +144,9 @@ public sealed class ProviderCorrectionFeedback
         ProviderBoundary.Require(model is { Accepted: true, Finish: ProviderFinish.ToolCorrection, Correction: not null }
             && ordinal >= 0 && ordinal < model.Correction.Members.Count, ProviderError.InvalidResponse);
         Scope = model.Scope; Attempt = model.Attempt; Ordinal = ordinal;
-        var member = model.Correction!.Members[ordinal]; Call = member.Call; ErrorCode = member.ErrorCode;
-        Json = model.Correction.Policy.GetError(ErrorCode).Json;
+        var member = model.Correction!.Members[ordinal]; Call = member.Call; ErrorKey = member.ErrorKey;
+        var declaration = model.Correction.Policy.GetError(ErrorKey);
+        ErrorCode = declaration.Code; Json = declaration.Json;
     }
     /// <summary>Gets restricted original scope.</summary>
     public ProviderScope Scope { get; }
@@ -154,13 +156,16 @@ public sealed class ProviderCorrectionFeedback
     public int Ordinal { get; }
     /// <summary>Gets only sanitized call association.</summary>
     public ToolCall Call { get; }
-    /// <summary>Gets the selected static error identifier.</summary>
+    /// <summary>Gets the selected static declaration key.</summary>
+    public string ErrorKey { get; }
+    /// <summary>Gets the selected declaration's model-visible wire code.</summary>
     public string ErrorCode { get; }
     /// <summary>Gets fixed feedback data, never successful tool output.</summary>
     public string Json { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderCorrectionFeedback);
-    internal int ByteCount => Scope.Bytes + ProviderResponse.CallBytes(Call) + ProviderBoundary.Bytes(ErrorCode) + ProviderBoundary.Bytes(Json);
+    internal int ByteCount => Scope.Bytes + ProviderResponse.CallBytes(Call) + ProviderBoundary.Bytes(ErrorKey)
+        + ProviderBoundary.Bytes(ErrorCode) + ProviderBoundary.Bytes(Json);
 }
 
 public sealed partial class ProviderResponse
@@ -187,10 +192,10 @@ public sealed partial class ProviderResponse
         var policy = request.ToolArgumentCorrection ?? throw new ProviderContractException(ProviderError.UnsupportedCapability);
         var copy = ProviderBoundary.Copy(denials, source.Calls.Count);
         ProviderBoundary.Require(copy.Length != 0 && copy.Select(d => d.CallId).Distinct(StringComparer.Ordinal).Count() == copy.Length
-            && copy.All(d => source.Calls.Any(c => c.CallId == d.CallId) && policy.ContainsError(d.ErrorCode)), ProviderError.InvalidAssociation);
+            && copy.All(d => source.Calls.Any(c => c.CallId == d.CallId) && policy.ContainsError(d.ErrorKey)), ProviderError.InvalidAssociation);
         var byId = copy.ToDictionary(d => d.CallId, StringComparer.Ordinal);
         var members = source.Calls.Select(call => byId.TryGetValue(call.CallId, out var denial)
-            ? new ProviderCorrectionMember(new(call.CallId, call.ToolName, policy.MarkerArgumentsJson), ProviderBoundary.Bytes(call.ArgumentsJson), denial.ErrorCode)
+            ? new ProviderCorrectionMember(new(call.CallId, call.ToolName, policy.MarkerArgumentsJson), ProviderBoundary.Bytes(call.ArgumentsJson), denial.ErrorKey)
             : new(call, ProviderBoundary.Bytes(call.ArgumentsJson), ToolArgumentCorrectionPolicy.BatchNotExecuted)).ToArray();
         return Correct(request, source.Scope, source.Attempt, source.Text, source.Continuation, ToolCorrectionOrigin.HostArguments,
             members, source.PayloadByteCount, ProviderToolCorrection.Definitions(request));

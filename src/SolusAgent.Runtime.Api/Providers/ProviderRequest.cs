@@ -186,7 +186,8 @@ public sealed class ProviderRequest
                 ProviderBoundary.Require(pending.TryGetValue(feedback.Call.CallId, out var expected) && expected.Feedback is { } required
                     && expected.Call.Matches(feedback.Call) && required.Scope.Matches(feedback.Scope) && required.Attempt.Matches(feedback.Attempt)
                     && required.Ordinal == feedback.Ordinal && feedback.Ordinal == correctionOrdinal++
-                    && required.ErrorCode == feedback.ErrorCode && required.Json == feedback.Json, ProviderError.InvalidAssociation);
+                    && required.ErrorKey == feedback.ErrorKey && required.ErrorCode == feedback.ErrorCode
+                    && required.Json == feedback.Json, ProviderError.InvalidAssociation);
                 pending.Remove(feedback.Call.CallId);
             }
         }

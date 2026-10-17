@@ -43,8 +43,9 @@ internal sealed class ArgumentCorrectionFixture
     internal readonly RuntimeHooks Hooks = new();
     internal readonly List<ProviderRequest> Requests = [];
     internal readonly ScriptedProvider Provider;
-    internal readonly ToolArgumentCorrectionPolicy Policy = new("snapshot_policy", [new("path_invalid", [new("field", "path")]),
-        new("membership_invalid", [new("domain", "current_files")]), new("cursor_invalid", [new("action", "restart")])]);
+    internal readonly ToolArgumentCorrectionPolicy Policy = new("snapshot_policy", [new("path_invalid", "path_invalid", [new("field", "path")]),
+        new("membership_invalid", "membership_invalid", [new("domain", "current_files")]),
+        new("cursor_invalid", "cursor_invalid", [new("action", "restart")])]);
     internal readonly string Mode;
     internal readonly bool Enabled;
     internal int Classifications;
