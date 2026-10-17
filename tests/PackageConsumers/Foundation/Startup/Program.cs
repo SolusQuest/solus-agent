@@ -10,6 +10,7 @@ using SolusAgent.Runtime.Api.Providers;
 using System.Text;
 using System.Text.Json;
 
+StaticFeedback.Verify();
 var provider = new TwoTurnProvider();
 var counter = new Counter();
 var hooks = new ExposureHooks();

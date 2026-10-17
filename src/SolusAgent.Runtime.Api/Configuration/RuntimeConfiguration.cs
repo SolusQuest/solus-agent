@@ -101,7 +101,7 @@ public sealed class RuntimeConfiguration
         ProviderBoundary.Require(toolArgumentCorrection is not null || snapshot.All(t => t.ArgumentCorrection is null), ProviderError.InvalidInput);
         if (toolArgumentCorrection is not null)
             ProviderBoundary.Require(snapshot.All(t => t.ArgumentCorrection is null
-                || t.ArgumentCorrection.AllowedErrors.All(toolArgumentCorrection.ContainsError)), ProviderError.InvalidInput);
+                || t.ArgumentCorrection.AllowedErrorKeys.All(toolArgumentCorrection.ContainsError)), ProviderError.InvalidInput);
         ToolArgumentCorrection = toolArgumentCorrection;
         Tools = Array.AsReadOnly(snapshot); Hooks = hooks;
         RequiredAcknowledgement = requiredAcknowledgement; RequiredGuarantees = requiredGuarantees

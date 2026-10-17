@@ -62,15 +62,17 @@ public sealed class ArgumentCorrectionCapacityTests
     }
 
     [Theory]
-    [InlineData(300000, true)] [InlineData(400000, false)]
-    public async Task EncodedCorrectionCapRemainsIndependentOfLargerRuntimeRetention(int characters, bool admitted)
+    [InlineData(300000, true, false)] [InlineData(400000, false, false)]
+    [InlineData(300000, true, true)] [InlineData(400000, false, true)]
+    public async Task EncodedCorrectionCapRemainsIndependentOfLargerRuntimeRetention(int characters, bool admitted, bool variants)
     {
         var good = "{\"path\":\"" + new string('<', characters) + "\"}";
         const string bad = "{\"path\":0,\"discard\":\"REJECTED_CAPACITY_CANARY\"}";
         var provider = Producer(bad, good, "text"); var capability = new SnapshotCapability();
         var tool = new SnapshotTool(maximumArgumentBytes: 1048576); var sink = new RestrictedContextHost();
         var agent = (IContextAgent)RuntimeAgentFactory.Create(new(new CaptureOnly(provider), [new(tool, capability)], new RuntimeHooks(),
-            new(maximumRequestBytes: 8388608, maximumResponseBytes: 4194304), toolArgumentCorrection: new("encoded_policy")),
+            new(maximumRequestBytes: 8388608, maximumResponseBytes: 4194304),
+            toolArgumentCorrection: variants ? Providers.FeedbackVariants.Policy() : new("encoded_policy")),
             new(maximumRetainedBytes: 16777216, requireContinuation: true));
         var result = await agent.ExecuteWithContextAsync(new(Request(), ContextExecutionIntent.Fresh), sink);
         Assert.Equal(admitted ? AgentTerminationReason.Completed : AgentTerminationReason.ResourceLimit, result.Outcome!.Reason);

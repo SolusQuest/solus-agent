@@ -118,7 +118,7 @@ public sealed class CorrectionContextTests
     [Theory]
     [InlineData("marker")] [InlineData("feedback")] [InlineData("missing_feedback")] [InlineData("reorder")]
     [InlineData("duplicate_id")] [InlineData("unknown_code")] [InlineData("origin")] [InlineData("fact")]
-    [InlineData("debit")] [InlineData("source_size")] [InlineData("continuation")] [InlineData("old_format")]
+    [InlineData("debit")] [InlineData("source_size")] [InlineData("continuation")] [InlineData("old_format")] [InlineData("legacy_binding")]
     public async Task IndependentlyTrustedMalformedCorrectionRejectsBeforeClaimImportOrDispatch(string mutation)
     {
         using var first = new CorrectionContextFixture("schema", true); var sink = new RestrictedContextHost();
@@ -128,6 +128,8 @@ public sealed class CorrectionContextTests
         var model = node["Records"]![1]!["CorrectionModel"]!;
         switch (mutation)
         {
+            // Measured binding from this same literal fixture on the preceding source revision.
+            case "legacy_binding": node["Binding"] = "1CD33ABA5811C264BA24AF50075361732B35F459F54003915452BFBB02D00057"; break;
             case "marker": model["Members"]![0]!["Call"]!["ArgumentsJson"] = first.Host.BadArguments; break;
             case "feedback": node["Records"]![2]!["CorrectionFeedback"]!["Ordinal"] = 2; break;
             case "missing_feedback": node["Records"]!.AsArray().RemoveAt(2); break;
@@ -151,6 +153,7 @@ public sealed class CorrectionContextTests
         Assert.Equal(ContextAdmission.Rejected, result.Context.Admission); Assert.Equal(0, authority.Claims);
         Assert.Equal(0, second.Provider.Imports); Assert.Equal(0, second.Handler.Sends); Assert.Equal(0, second.Host.Capability.Entries);
         Assert.Null(result.Context.Outcome);
+        if (mutation == "legacy_binding") Assert.Equal(ContextRejectionCode.IncompatibleContext, result.Context.RejectionCode);
     }
 
     [Theory]

@@ -16,6 +16,7 @@ internal sealed record SavedContinuation(ProviderScope Scope, ProviderAttempt Or
 internal sealed record SavedFinal(ProviderScope Scope, ProviderAttempt Attempt, string Text, SavedContinuation? Continuation, ProviderExchangeBounds Bounds);
 internal sealed record SavedToolModel(ProviderScope Scope, ProviderAttempt Attempt, string? Text, ToolCall[] Calls,
     SavedContinuation? Continuation, ProviderExchangeBounds Bounds);
+// Preserve the format-2 field spelling; ErrorCode holds the selected static declaration key, not its wire code.
 internal sealed record SavedCorrectionMember(int Ordinal, ToolCall Call, int OriginalArgumentBytes, string ErrorCode, ToolError SchemaError);
 internal sealed record SavedCorrectionModel(ProviderScope Scope, ProviderAttempt Attempt, string? Text, SavedContinuation? Continuation,
     ProviderExchangeBounds Bounds, ToolCorrectionOrigin Origin, SavedCorrectionMember[] Members, int OriginalResponseBytes, string DefinitionFingerprint);

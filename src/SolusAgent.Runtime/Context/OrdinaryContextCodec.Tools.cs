@@ -66,7 +66,7 @@ internal static partial class OrdinaryContextCodec
                             || SavedDescriptor.From(binding.Tool.Descriptor) != SavedDescriptor.From(binding.Descriptor)
                             || binding.Capability.CapabilityId != binding.Descriptor.CapabilityId) throw new JsonException();
                         if (correction.Origin == ToolCorrectionOrigin.HostArguments && member.ErrorCode != ToolArgumentCorrectionPolicy.BatchNotExecuted
-                            && (binding.ArgumentCorrection is null || !binding.ArgumentCorrection.AllowedErrors.Contains(member.ErrorCode, StringComparer.Ordinal)))
+                            && (binding.ArgumentCorrection is null || !binding.ArgumentCorrection.AllowedErrorKeys.Contains(member.ErrorCode, StringComparer.Ordinal)))
                             throw new JsonException();
                     }
                     completed.Add(correction.Attempt.PhysicalAttemptId, false);

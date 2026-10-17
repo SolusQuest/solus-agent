@@ -41,7 +41,7 @@ internal sealed class CorrectionContextFixture : IDisposable
         Producing = producing; Candidates = candidates;
         Host = new(mode, enabled: !missingPolicy, effect: toolEffect);
         Policy = missingPolicy ? null : changedPolicy ? new("changed", Host.Policy.Errors.Where(e =>
-            e.Code is not ToolArgumentCorrectionPolicy.ArgumentsInvalid and not ToolArgumentCorrectionPolicy.BatchNotExecuted).ToArray()) : Host.Policy;
+            e.Key is not ToolArgumentCorrectionPolicy.ArgumentsInvalid and not ToolArgumentCorrectionPolicy.BatchNotExecuted).ToArray()) : Host.Policy;
         Handler = new(async (message, token) =>
         {
             Xunit.Assert.Equal(producing ? AdapterFixture.Credential : RotatedCredential, message.Headers.Authorization!.Parameter);

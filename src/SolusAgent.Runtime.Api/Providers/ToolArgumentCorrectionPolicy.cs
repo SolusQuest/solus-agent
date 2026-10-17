@@ -9,8 +9,9 @@ namespace SolusAgent.Runtime.Api.Providers;
 public sealed class ToolArgumentError
 {
     /// <summary>Creates a closed error envelope with bounded, ordered, static identifier attributes.</summary>
-    public ToolArgumentError(string code, IReadOnlyList<KeyValuePair<string, string>>? attributes = null)
+    public ToolArgumentError(string key, string code, IReadOnlyList<KeyValuePair<string, string>>? attributes = null)
     {
+        Key = CorrectionBoundary.Identifier(key);
         Code = CorrectionBoundary.Identifier(code);
         attributes ??= [];
         var count = attributes.Count;
@@ -35,7 +36,9 @@ public sealed class ToolArgumentError
         Json = Encoding.UTF8.GetString(stream.ToArray());
         ProviderBoundary.Text(Json, ToolLimits.PayloadBytes);
     }
-    /// <summary>Gets the fixed restricted error identifier.</summary>
+    /// <summary>Gets the policy-scoped static selector, which is never projected as a wire field.</summary>
+    public string Key { get; }
+    /// <summary>Gets the fixed model-visible code, which may be shared by distinct declarations.</summary>
     public string Code { get; }
     /// <summary>Gets copied static attributes, never per-call rejected values.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> Attributes { get; }
@@ -48,11 +51,13 @@ public sealed class ToolArgumentError
 /// <summary>Immutable Host opt-in and fixed feedback semantics; neither data nor saved state can install it.</summary>
 public sealed class ToolArgumentCorrectionPolicy
 {
-    /// <summary>The fixed schema-argument error identifier.</summary>
+    /// <summary>The maximum number of fixed declarations, including the two builtins, independent of tool count.</summary>
+    public const int MaximumErrors = 32;
+    /// <summary>The fixed schema-argument selector and wire code.</summary>
     public const string ArgumentsInvalid = "arguments_invalid";
-    /// <summary>The fixed otherwise-valid withheld-member identifier.</summary>
+    /// <summary>The fixed otherwise-valid withheld-member selector and wire code.</summary>
     public const string BatchNotExecuted = "batch_not_executed";
-    private readonly IReadOnlyDictionary<string, ToolArgumentError> byCode;
+    private readonly IReadOnlyDictionary<string, ToolArgumentError> byKey;
 
     /// <summary>Creates a finite declaration; marker and error attributes are Host-selected static identifiers.</summary>
     public ToolArgumentCorrectionPolicy(string identity, IReadOnlyList<ToolArgumentError>? errors = null,
@@ -60,19 +65,26 @@ public sealed class ToolArgumentCorrectionPolicy
     {
         Identity = CorrectionBoundary.Identifier(identity);
         MarkerProperty = CorrectionBoundary.Identifier(rejectedArgumentProperty, allowLeadingUnderscore: true);
-        var custom = ProviderBoundary.Copy(errors ?? [], ProviderLimits.Tools - 2);
+        var custom = ProviderBoundary.Copy(errors ?? [], MaximumErrors - 2);
         var values = new Dictionary<string, ToolArgumentError>(StringComparer.Ordinal)
         {
-            [ArgumentsInvalid] = new(ArgumentsInvalid), [BatchNotExecuted] = new(BatchNotExecuted),
+            [ArgumentsInvalid] = new(ArgumentsInvalid, ArgumentsInvalid),
+            [BatchNotExecuted] = new(BatchNotExecuted, BatchNotExecuted),
         };
-        foreach (var error in custom) ProviderBoundary.Require(values.TryAdd(error.Code, error), ProviderError.InvalidInput);
-        Errors = Array.AsReadOnly(values.Values.OrderBy(error => error.Code, StringComparer.Ordinal).ToArray());
-        byCode = values;
+        var envelopes = new HashSet<string>(values.Values.Select(error => error.Json), StringComparer.Ordinal);
+        foreach (var error in custom)
+        {
+            ProviderBoundary.Require(error.Code is not ArgumentsInvalid and not BatchNotExecuted
+                && values.TryAdd(error.Key, error) && envelopes.Add(error.Json), ProviderError.InvalidInput);
+        }
+        Errors = Array.AsReadOnly(values.Values.OrderBy(error => error.Key, StringComparer.Ordinal).ToArray());
+        byKey = values;
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         { writer.WriteStartObject(); writer.WriteBoolean(MarkerProperty, true); writer.WriteEndObject(); writer.Flush(); }
         MarkerArgumentsJson = Encoding.UTF8.GetString(stream.ToArray());
-        var declaration = JsonSerializer.SerializeToUtf8Bytes(new { Identity, MarkerArgumentsJson, Errors = Errors.Select(e => e.Json).ToArray() });
+        var declaration = JsonSerializer.SerializeToUtf8Bytes(new { Identity, MarkerArgumentsJson,
+            Errors = Errors.Select(e => new { e.Key, e.Json }).ToArray() });
         PayloadByteCount = declaration.Length;
         ProviderBoundary.Require(PayloadByteCount <= ProviderLimits.RequestBytes, ProviderError.LimitExceeded);
         SemanticFingerprint = Convert.ToHexString(SHA256.HashData(declaration));
@@ -89,10 +101,10 @@ public sealed class ToolArgumentCorrectionPolicy
     public string SemanticFingerprint { get; }
     /// <summary>Gets bounded declaration bytes charged as Host configuration material.</summary>
     public int PayloadByteCount { get; }
-    /// <summary>Checks that a fixed feedback identifier belongs to this declaration.</summary>
-    public bool ContainsError(string code) => code is not null && byCode.ContainsKey(code);
-    /// <summary>Gets an installed fixed error without accepting per-call attributes or text.</summary>
-    public ToolArgumentError GetError(string code) => code is not null && byCode.TryGetValue(code, out var error)
+    /// <summary>Checks an exact installed selector; a wire code supplies no fallback lookup.</summary>
+    public bool ContainsError(string key) => key is not null && byKey.ContainsKey(key);
+    /// <summary>Gets the exact installed selector's declaration without accepting per-call attributes or text.</summary>
+    public ToolArgumentError GetError(string key) => key is not null && byKey.TryGetValue(key, out var error)
         ? error : throw new ProviderContractException(ProviderError.InvalidInput);
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ToolArgumentCorrectionPolicy);
@@ -112,16 +124,16 @@ public enum ToolArgumentDispositionKind
 /// <summary>A bounded Host classification; it cannot carry raw arguments, attributes or exceptions.</summary>
 public sealed class ToolArgumentDisposition
 {
-    private ToolArgumentDisposition(ToolArgumentDispositionKind kind, string? code, ToolError error)
-    { Kind = kind; ErrorCode = code; Error = error; }
+    private ToolArgumentDisposition(ToolArgumentDispositionKind kind, string? errorKey, ToolError error)
+    { Kind = kind; ErrorKey = errorKey; Error = error; }
     /// <summary>Creates an allowed classification without granting an invocation.</summary>
     public static ToolArgumentDisposition Allow() => new(ToolArgumentDispositionKind.Allowed, null, ToolError.None);
     /// <summary>Selects one previously installed fixed error; the registration and policy must independently admit it.</summary>
-    public static ToolArgumentDisposition Correct(string code)
+    public static ToolArgumentDisposition Correct(string errorKey)
     {
-        code = CorrectionBoundary.Identifier(code);
-        ProviderBoundary.Require(code != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
-        return new(ToolArgumentDispositionKind.Correctable, code, ToolError.None);
+        errorKey = CorrectionBoundary.Identifier(errorKey);
+        ProviderBoundary.Require(errorKey != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
+        return new(ToolArgumentDispositionKind.Correctable, errorKey, ToolError.None);
     }
     /// <summary>Creates a fixed terminal classification; it grants no rollback or retry.</summary>
     public static ToolArgumentDisposition Fail(ToolError error)
@@ -132,7 +144,7 @@ public sealed class ToolArgumentDisposition
     /// <summary>Gets the closed classification.</summary>
     public ToolArgumentDispositionKind Kind { get; }
     /// <summary>Gets only the selected installed identifier.</summary>
-    public string? ErrorCode { get; }
+    public string? ErrorKey { get; }
     /// <summary>Gets the fixed fatal failure, or None.</summary>
     public ToolError Error { get; }
     /// <summary>Returns only the type name.</summary>
@@ -144,32 +156,32 @@ public sealed class ToolArgumentCorrectionBinding
 {
     private readonly Func<ToolCall, IToolCapability, ToolArgumentDisposition> classify;
     /// <summary>Installs bounded effect-free classification. Do not retain calls, inspect effects, invoke I/O or return input-derived errors.</summary>
-    public ToolArgumentCorrectionBinding(string identity, IReadOnlyList<string> allowedErrors,
+    public ToolArgumentCorrectionBinding(string identity, IReadOnlyList<string> allowedErrorKeys,
         Func<ToolCall, IToolCapability, ToolArgumentDisposition> classify)
     {
         Identity = CorrectionBoundary.Identifier(identity);
-        var copy = ProviderBoundary.Copy(allowedErrors, ProviderLimits.Tools);
-        foreach (var code in copy)
+        var copy = ProviderBoundary.Copy(allowedErrorKeys, ToolArgumentCorrectionPolicy.MaximumErrors - 1);
+        foreach (var key in copy)
         {
-            CorrectionBoundary.Identifier(code);
-            ProviderBoundary.Require(code != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
+            CorrectionBoundary.Identifier(key);
+            ProviderBoundary.Require(key != ToolArgumentCorrectionPolicy.BatchNotExecuted, ProviderError.InvalidInput);
         }
         ProviderBoundary.Require(copy.Distinct(StringComparer.Ordinal).Count() == copy.Length, ProviderError.InvalidInput);
-        AllowedErrors = Array.AsReadOnly(copy);
+        AllowedErrorKeys = Array.AsReadOnly(copy.OrderBy(key => key, StringComparer.Ordinal).ToArray());
         this.classify = classify ?? throw new ArgumentNullException(nameof(classify));
     }
     /// <summary>Gets the stable restricted Host classifier identity.</summary>
     public string Identity { get; }
-    /// <summary>Gets the copied static identifier allowlist; delegate identity is not a saved compatibility claim.</summary>
-    public IReadOnlyList<string> AllowedErrors { get; }
-    /// <summary>Classifies transient schema-valid arguments without preparation or effects; unknown codes and faults are fatal.</summary>
+    /// <summary>Gets at most 31 copied, ordinally sorted static selectors; delegate identity is not a saved compatibility claim.</summary>
+    public IReadOnlyList<string> AllowedErrorKeys { get; }
+    /// <summary>Classifies transient schema-valid arguments without preparation or effects; disallowed selectors and faults are fatal.</summary>
     public ToolArgumentDisposition Classify(ToolCall call, IToolCapability capability)
     {
         try
         {
             var value = classify(call, capability);
             if (value is null || value.Kind == ToolArgumentDispositionKind.Correctable
-                && !AllowedErrors.Contains(value.ErrorCode!, StringComparer.Ordinal)) return ToolArgumentDisposition.Fail(ToolError.DomainRejected);
+                && !AllowedErrorKeys.Contains(value.ErrorKey!, StringComparer.Ordinal)) return ToolArgumentDisposition.Fail(ToolError.DomainRejected);
             return value;
         }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
