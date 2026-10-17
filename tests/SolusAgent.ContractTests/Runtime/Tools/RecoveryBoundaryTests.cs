@@ -165,6 +165,7 @@ public sealed class RecoveryBoundaryTests
     {
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation p, ToolCall call, IToolCapability? cap) =>
             call.CallId == "last" ? ToolError.UnsupportedCapability : inner.ValidateInvocation(p, call, cap);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation p, ToolCall call, IToolCapability? cap, CancellationToken token = default) => inner.InvokeAsync(p, call, cap, token);

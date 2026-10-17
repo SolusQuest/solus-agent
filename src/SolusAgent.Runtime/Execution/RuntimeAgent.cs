@@ -26,9 +26,9 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
         var unsupported = request.RequiredCapabilities & ~SupportedCapabilities;
         if (unsupported != AgentCapability.None)
             return new(request.ExecutionId, AgentTerminationReason.UnsupportedCapability, 0, unsupported,
-                usage: new AgentRunUsage(request.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new()));
+                usage: new AgentRunUsage(request.ExecutionId, UsageInventoryCoverage.Complete, [], toolInvocations: new(), toolCallAdmissions: new()));
         using var cut = new RunCut(options.TimeProvider, request.Bounds.MaximumDuration, cancellationToken);
-        var state = new RunState(request, configuration, options, cut, restored);
+        var state = new RunState(request, configuration, options, cut, restored, terminal is not null);
         var outcome = await DriveAsync().ConfigureAwait(false);
         terminal?.Invoke(state, outcome);
         return outcome;
@@ -61,11 +61,14 @@ internal sealed partial class RuntimeAgent(RuntimeConfiguration configuration, R
                             : state.Outcome(AgentTerminationReason.Failed, AgentFailureCode.ExecutionFailed);
 
                     var finished = attempt.Response.Finish == ProviderFinish.Final;
-                    if (attempt.Response.Finish == ProviderFinish.ToolCalls)
+                    if (attempt.Response.Finish is ProviderFinish.ToolCalls or ProviderFinish.ToolCorrection)
                     {
                         // The accepted model turn is not permission to bypass provider closure or all-member tool admission.
                         if (!state.CanContinue) return StopOutcome(state);
                         var batch = await ToolBatchOperation.ExecuteAsync(state, providerRequest, attempt.Response).ConfigureAwait(false);
+                        // Release the original transient proposal before progress or another provider await.
+                        attempt = attempt with { Response = null };
+                        call = call with { Attempt = attempt };
                         if (cut.Check() != RuntimeStop.None) return CutOutcome(state);
                         if (batch.Stop != RuntimeStop.None || batch.Error != SolusAgent.Tools.Api.ToolError.None) return StopOutcome(state);
                     }

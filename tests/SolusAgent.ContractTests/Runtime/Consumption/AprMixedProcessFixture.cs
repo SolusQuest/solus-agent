@@ -178,7 +178,9 @@ internal static class AprMixedProcessFixture
         internal TaskCompletionSource Returned { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation p, ToolCall c, IToolCapability? capability) => inner.ValidateInvocation(p, c, capability);
+        public ToolError ValidateRecoveryBinding(ToolRecoveryBinding binding, IToolCapability? capability) => inner.ValidateRecoveryBinding(binding, capability);
         public ToolError ValidateOperation(ToolOperation operation, IToolCapability? capability) => inner.ValidateOperation(operation, capability);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation p, ToolCall c, IToolCapability? capability, CancellationToken token = default) =>
             capability is RecoveryCounterCapability target ? InvokeOperationAsync(p, new(Guid.NewGuid(), c,

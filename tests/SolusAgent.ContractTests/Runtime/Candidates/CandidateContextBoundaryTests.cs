@@ -95,7 +95,7 @@ public sealed class CandidateContextBoundaryTests
             case "admission-round": episode["AdmissionRound"] = Guid.NewGuid(); break;
             case "duplicate-final": node["Candidates"]!["Submissions"]!.AsArray().Add(node["Candidates"]!["Submissions"]![0]!.DeepClone()); break;
         }
-        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+        var envelope = new AgentContextEnvelope(source.Envelope.ImplementationId, source.Envelope.FormatVersion, source.Envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
         var provider = new PersistentProvider(); var host = CandidateContextFixture.Host(); var authority = new SelectedAuthority(envelope, source.Result.Context.Checkpoint!);
         var result = await CandidateConsumer.RunWithContextAsync(CandidateContextFixture.Agent(provider, authority),
             CandidateContextFixture.Resume(source.Result, envelope, CandidateContextFixture.Request()), new(2, 1, 0), host);

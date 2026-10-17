@@ -86,6 +86,7 @@ public sealed class RuntimeToolInterfaceTests
             }
             return guarded.Prepare(call);
         }
+        public ToolError ValidateCapability(IToolCapability? capability) => guarded.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability) => guarded.ValidateInvocation(prepared, expectedCall, capability);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall call, IToolCapability? capability, CancellationToken token = default)
         {

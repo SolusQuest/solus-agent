@@ -32,7 +32,7 @@ public sealed class OrdinaryRecoveryBoundaryTests
         }
         var node = JsonNode.Parse(bytes.CopyRestrictedPayload())!;
         node["Rounds"]!.AsArray()[^1]!["LogicalWorkId"] = firstWork; node["Info"]!["LogicalWorkId"] = firstWork;
-        bytes = new(bytes.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+        bytes = new(bytes.ImplementationId, bytes.FormatVersion, bytes.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
         var modified = source.Checkpoint! with { LogicalWorkId = firstWork }; var authority = new SelectedAuthority(bytes, modified);
         var next = OrdinaryFixture.Request(); var provider = new PersistentProvider();
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(next, ContextExecutionIntent.NewRunFromContext,
@@ -86,7 +86,7 @@ public sealed class OrdinaryRecoveryBoundaryTests
         if (kind == "tamper")
         {
             var node = JsonNode.Parse(bytes.CopyRestrictedPayload())!; node["Records"]![0]!["Text"] = "changed";
-            bytes = new(bytes.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+            bytes = new(bytes.ImplementationId, bytes.FormatVersion, bytes.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
             request = OrdinaryFixture.Request(request.ExecutionId, "changed");
         }
         var result = await OrdinaryFixture.Agent(provider, kind == "missing" ? null : authority).ExecuteWithContextAsync(
@@ -196,7 +196,7 @@ public sealed class OrdinaryRecoveryBoundaryTests
             node["Records"]!.AsArray().Add(model); Change(node["Provider"]!["Origin"]!);
             void Change(JsonNode attempt) { attempt["LogicalCallId"] = logical; attempt["PhysicalAttemptId"] = physical; }
         }
-        var bytes = new AgentContextEnvelope(envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(node));
+        var bytes = new AgentContextEnvelope(envelope.ImplementationId, envelope.FormatVersion, envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(node));
         var authority = new SelectedAuthority(bytes, source.Checkpoint!); var provider = new PersistentProvider(); var request = OrdinaryFixture.Request();
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(request,
             kind is "multi-final" or "partial-final" ? ContextExecutionIntent.NewRunFromContext : ContextExecutionIntent.ContinueRun, bytes,

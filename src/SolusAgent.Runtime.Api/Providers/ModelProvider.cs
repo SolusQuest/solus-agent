@@ -137,7 +137,7 @@ public interface IModelProvider
 }
 
 /// <summary>Guarded provider extension, not a transport, scheduler, loop or hostile-code sandbox.</summary>
-public abstract class ModelProvider : IModelProvider
+public abstract class ModelProvider : IModelProvider, IProviderRequestValidation
 {
     /// <summary>Installs an exact host scope and supported capabilities.</summary>
     protected ModelProvider(ProviderScope scope, ProviderCapabilities capabilities)
@@ -149,6 +149,20 @@ public abstract class ModelProvider : IModelProvider
     public ProviderScope Scope { get; }
     /// <inheritdoc />
     public ProviderCapabilities Capabilities { get; }
+    /// <inheritdoc />
+    public ProviderError ValidateRequest(ProviderRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!Scope.Matches(request.Scope)) return ProviderError.InvalidAssociation;
+        if ((request.RequiredCapabilities & ~Capabilities) != 0) return ProviderError.UnsupportedCapability;
+        try { var error = ValidateRequestCore(request); return Enum.IsDefined(error) ? error : ProviderError.InvalidInput; }
+        catch (ProviderContractException exception) { return exception.Error; }
+        catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
+        { return ProviderError.InvalidInput; }
+    }
+    /// <summary>Checks the actual provider-owned projection without effects; logical-only providers have no additional wire format.</summary>
+    protected virtual ProviderError ValidateRequestCore(ProviderRequest request) => ProviderError.None;
+
     /// <inheritdoc />
     public async ValueTask<ProviderExchangeResult> ExchangeAsync(ProviderRequest request, CancellationToken cancellationToken = default)
     {
@@ -178,12 +192,12 @@ public abstract class ModelProvider : IModelProvider
         try
         {
             ProviderBoundary.Require(candidate is not null, ProviderError.InvalidResponse);
-            candidate!.ValidateFor(request);
+            candidate = candidate!.AdmitFor(request);
         }
         catch (ProviderContractException exception) { return new(request.Scope, ProviderOutcome.Rejected, exception.Error, observation); }
         // This final check is the acceptance cut; later cancellation cannot rewrite this immutable result.
         if (cancellationToken.IsCancellationRequested) return new(request.Scope, ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
-        return new(request.Scope, ProviderOutcome.Succeeded, ProviderError.None, observation, candidate.Accept());
+        return new(request.Scope, ProviderOutcome.Succeeded, ProviderError.None, observation, candidate);
 
         ProviderExchangeResult BeforeCore(ProviderOutcome result, ProviderError failure)
         {

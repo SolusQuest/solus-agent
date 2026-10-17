@@ -9,10 +9,12 @@ public enum ProviderFinish
     Final,
     /// <summary>A call batch with optional model data.</summary>
     ToolCalls,
+    /// <summary>A complete sanitized argument-correction proposal, never invocation-ready calls or tool results.</summary>
+    ToolCorrection,
 }
 
 /// <summary>Restricted model candidate; only guarded acceptance makes it eligible for history.</summary>
-public sealed class ProviderResponse
+public sealed partial class ProviderResponse
 {
     /// <summary>Creates a bounded coherent candidate; the guard validates request-relative semantics.</summary>
     public ProviderResponse(ProviderScope scope, ProviderAttempt attempt, ProviderFinish finish, string? text,
@@ -20,7 +22,7 @@ public sealed class ProviderResponse
     {
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Attempt = attempt ?? throw new ArgumentNullException(nameof(attempt));
-        ProviderBoundary.Require(Enum.IsDefined(finish), ProviderError.InvalidResponse);
+        ProviderBoundary.Require(finish is ProviderFinish.Final or ProviderFinish.ToolCalls, ProviderError.InvalidResponse);
         if (text is not null) ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes);
         var copy = ProviderBoundary.Copy(calls, ProviderLimits.Tools);
         ProviderBoundary.Require(finish == ProviderFinish.Final ? text is { Length: > 0 } && copy.Length == 0 : copy.Length != 0, ProviderError.InvalidResponse);
@@ -32,7 +34,7 @@ public sealed class ProviderResponse
     private ProviderResponse(ProviderResponse source)
     {
         Scope = source.Scope; Attempt = source.Attempt; Finish = source.Finish; Text = source.Text;
-        Calls = source.Calls; Continuation = source.Continuation; Accepted = true;
+        Calls = source.Calls; Continuation = source.Continuation; Correction = source.Correction; Accepted = true;
     }
     /// <summary>Gets restricted provider/model association.</summary>
     public ProviderScope Scope { get; }
@@ -53,7 +55,7 @@ public sealed class ProviderResponse
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderResponse);
     internal int ByteCount => Scope.Bytes + ProviderBoundary.Bytes(Text) + Calls.Sum(CallBytes)
-        + (Continuation is null ? 0 : Continuation.ByteCount + Continuation.Scope.Bytes);
+        + (Continuation is null ? 0 : Continuation.ByteCount + Continuation.Scope.Bytes) + (Correction?.PayloadByteCount ?? 0);
     internal static int CallBytes(ToolCall call) => ProviderBoundary.Bytes(call.CallId) + ProviderBoundary.Bytes(call.ToolName) + ProviderBoundary.Bytes(call.ArgumentsJson);
     internal ProviderResponse Accept() => new(this);
     /// <summary>Rehydrates an ordinary Final only after exact original-request validation; callers must independently establish trusted checkpoint provenance.</summary>
@@ -81,6 +83,11 @@ public sealed class ProviderResponse
         ArgumentNullException.ThrowIfNull(request);
         ProviderBoundary.Require(Scope.Matches(request.Scope) && Attempt.Matches(request.Attempt), ProviderError.InvalidAssociation);
         if (Text is not null) ProviderBoundary.Text(Text, request.Bounds.MaximumTextBytes);
+        if (Finish == ProviderFinish.ToolCorrection)
+        {
+            ProviderBoundary.Require(Correction is not null && Calls.Count == 0, ProviderError.InvalidResponse);
+            Correction!.ValidateFor(this, request); return;
+        }
         ProviderBoundary.Require(Calls.Count <= request.Bounds.MaximumToolCalls && ByteCount <= request.Bounds.MaximumResponseBytes, ProviderError.LimitExceeded);
         if (Continuation is not null)
         {

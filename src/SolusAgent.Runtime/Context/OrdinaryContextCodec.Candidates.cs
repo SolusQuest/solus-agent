@@ -124,12 +124,12 @@ internal static partial class OrdinaryContextCodec
                 || segment.Length == 0 || segment.Take(segment.Length - 1).Any(f => f.AcceptedFinal)
                 || ledger.Submissions.Count(s => s.EpisodeId == episode.Id) > 1) throw new JsonException();
             for (var j = 1; j < segment.Length; j++)
-                if (segment[j].Attempt.LogicalCallId != segment[j - 1].Attempt.LogicalCallId && !segment[j - 1].AcceptedTools
+                if (segment[j].Attempt.LogicalCallId != segment[j - 1].Attempt.LogicalCallId && !segment[j - 1].AcceptedTools && !segment[j - 1].AcceptedCorrection
                     || segment[j].Attempt.LogicalCallId == segment[j - 1].Attempt.LogicalCallId
                         && (segment[j - 1].Retry is null || !segment[j - 1].ClosureAcknowledged
                             || segment[j].Attempt.AttemptNumber != segment[j - 1].Attempt.AttemptNumber + 1)) throw new JsonException();
             if (episode.CorrectionIndex is { } correctionIndex && saved.Records.Select((r, n) => (r, n))
-                .Any(x => (x.r.Final?.Attempt ?? x.r.ToolModel?.Attempt) is { } model
+                .Any(x => ModelAttempt(x.r) is { } model
                     && segment.Any(f => f.Attempt.Matches(model)) && x.n <= correctionIndex)) throw new JsonException();
             if (episode.Predecessor is { } predecessorId)
             {
@@ -139,14 +139,14 @@ internal static partial class OrdinaryContextCodec
             }
         }
         // After model history starts, data is either a marked once-only correction or new-run Host input.
-        var firstModel = Array.FindIndex(saved.Records, r => r.Final is not null || r.ToolModel is not null);
+        var firstModel = Array.FindIndex(saved.Records, r => ModelAttempt(r) is not null);
         for (var recordIndex = Math.Max(0, firstModel + 1); firstModel >= 0 && recordIndex < saved.Records.Length; recordIndex++)
         {
             if (saved.Records[recordIndex].Kind != ProviderInputKind.InputData || correctionIndices.Contains(recordIndex)) continue;
             var newRunData = ledger.Episodes.Select((e, i) => (e, i)).Where(x => x.i > 0 && x.e.Predecessor is null).Any(x =>
             {
                 var prior = ledger.Submissions.Single(s => s.EpisodeId == ledger.Episodes[x.i - 1].Id).FinalIndex;
-                var firstModelInRun = Array.FindIndex(saved.Records, r => (r.Final?.Attempt ?? r.ToolModel?.Attempt) is { } origin
+                var firstModelInRun = Array.FindIndex(saved.Records, r => ModelAttempt(r) is { } origin
                     && saved.Rounds.Where(round => round.LogicalWorkId == x.e.WorkId).SelectMany(round => round.Facts).Any(f => f.Attempt.Matches(origin)));
                 return recordIndex > prior && (firstModelInRun < 0 || recordIndex < firstModelInRun);
             });

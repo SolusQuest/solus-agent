@@ -66,7 +66,7 @@ internal static class OrdinaryContextChild
                 {
                     var document = JsonNode.Parse(envelope.CopyRestrictedPayload())!;
                     document["Records"]![0]!["Text"] = "CHANGED_BUT_STRUCTURALLY_VALID";
-                    envelope = new(envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(document));
+                    envelope = new(envelope.ImplementationId, envelope.FormatVersion, envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(document));
                     // An attacker can compute this matching hash, but the trusted-selection file is unchanged.
                     File.WriteAllBytes(Path.Combine(directory, "untrusted-digest.bin"), OrdinaryFixture.Fingerprint(envelope));
                     request = OrdinaryFixture.Request(request.ExecutionId, instructions: "CHANGED_BUT_STRUCTURALLY_VALID");

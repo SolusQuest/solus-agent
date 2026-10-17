@@ -32,6 +32,8 @@ public sealed class TransformTool : IFunctionTool
     /// <inheritdoc />
     public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
     /// <inheritdoc />
+    /// <inheritdoc />
+    public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
     public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability) =>
         inner.ValidateInvocation(prepared, expectedCall, capability);
     /// <inheritdoc />

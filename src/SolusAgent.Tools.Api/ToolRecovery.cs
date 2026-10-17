@@ -95,6 +95,8 @@ public sealed class ToolRecoveryReceipt
 /// A concurrent-safe repeat guarantee must cover an original invocation that ignores cancellation or completes late.</remarks>
 public interface IRecoverableFunctionTool : IFunctionTool
 {
+    /// <summary>Checks current capability, target and guarantee binding without creating an operation or invoking effects.</summary>
+    ToolError ValidateRecoveryBinding(ToolRecoveryBinding binding, IToolCapability? capability);
     /// <summary>Revalidates current permission and exact original recovery evidence without effects.</summary>
     ToolError ValidateOperation(ToolOperation operation, IToolCapability? capability);
     /// <summary>Invokes through the normal guarded path with a fresh single-use handle and stable original operation key.</summary>

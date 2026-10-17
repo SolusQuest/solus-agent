@@ -84,6 +84,7 @@ public sealed class StructuredToolRuntimeTests
         private readonly StructuredReadTool guarded = new("read_file");
         public ToolDescriptor Descriptor => guarded.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => guarded.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => guarded.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability) =>
             guarded.ValidateInvocation(prepared, expectedCall, capability);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability, CancellationToken cancellationToken = default) =>

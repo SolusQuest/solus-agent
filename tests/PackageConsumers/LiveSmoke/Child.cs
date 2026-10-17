@@ -209,6 +209,8 @@ internal static class Child
         internal int Entries;
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) =>
+            allowed ? inner.ValidateCapability(capability) : ToolError.UnsupportedCapability;
         public ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expected, IToolCapability? capability) =>
             allowed ? inner.ValidateInvocation(prepared, expected, capability) : ToolError.UnsupportedCapability;
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation prepared, ToolCall expected, IToolCapability? capability, CancellationToken token = default)

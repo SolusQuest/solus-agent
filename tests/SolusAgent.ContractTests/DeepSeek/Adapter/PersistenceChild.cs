@@ -31,6 +31,7 @@ internal static class PersistenceChild
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "argument-correction-child") return await RuntimeIntegration.CorrectionContextChild.Run(args);
         if (args.Length == 3 && args[0] == "deepseek-restoration-child") return await RuntimeIntegration.RestorationChild.Run(args);
         // Preserve every other command, including future C1-owned routes and unknown-argument exit behavior.
         if (args.Length == 0 || args[0] != "deepseek-persistence-child") return await OrdinaryContextChild.Main(args);
@@ -143,7 +144,7 @@ internal static class PersistenceChild
 
     private static AgentContextEnvelope Alter(AgentContextEnvelope envelope, string command)
     {
-        if (command == "reject-outer-format") return new(envelope.ImplementationId, 2, envelope.CompatibilityVersion, envelope.CopyRestrictedPayload());
+        if (command == "reject-outer-format") return new(envelope.ImplementationId, 3, envelope.CompatibilityVersion, envelope.CopyRestrictedPayload());
         var value = JsonNode.Parse(envelope.CopyRestrictedPayload())!;
         switch (command)
         {

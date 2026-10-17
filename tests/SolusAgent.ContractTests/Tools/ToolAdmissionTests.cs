@@ -14,6 +14,9 @@ public sealed class ToolAdmissionTests
         var handle = tool.Prepare(call).Prepared!; var valid = new CounterCapability();
         IToolCapability? supplied = mode switch
         { "missing" => null, "wrong_type" => new OtherCapability(), "wrong_id" => new CounterCapability("other"), _ => new ThrowingCapability() };
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateCapability(supplied));
+        Assert.Equal(ToolError.None, tool.ValidateCapability(valid));
+        Assert.Equal(0, valid.Effects);
         Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateInvocation(handle, call, supplied));
         Assert.Equal(ToolError.None, tool.ValidateInvocation(handle, call, valid));
         Assert.Equal(ToolError.None, tool.ValidateInvocation(handle, call, valid)); Assert.Equal(0, valid.Effects);
@@ -39,6 +42,9 @@ public sealed class ToolAdmissionTests
     public async Task InterfaceOnlyProducerUsesSameAdmissionWithoutBaseClassCast()
     {
         IFunctionTool tool = new TransformTool(); var capability = new TransformCapability();
+        Assert.Equal(ToolError.None, tool.ValidateCapability(capability));
+        Assert.Equal(ToolError.UnsupportedCapability, tool.ValidateCapability(new OtherCapability()));
+        Assert.Equal(0, capability.Effects);
         var call = new ToolCall("id", "transform", "{\"text\":\"data\"}"); var handle = tool.Prepare(call).Prepared!;
         Assert.False(tool is FunctionTool<TransformCapability>); Assert.Equal(ToolError.None, tool.ValidateInvocation(handle, call, capability));
         Assert.Equal(0, capability.Effects); var result = await tool.InvokeAsync(handle, call, capability);

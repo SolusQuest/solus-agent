@@ -13,7 +13,7 @@ public sealed partial class DeepSeekProvider : ModelProvider, IProviderContextPe
     private int disposed;
     /// <summary>Creates an adapter using its owned safe production handler policy.</summary>
     public DeepSeekProvider(DeepSeekOptions options) : base(new("deepseek", DeepSeekOptions.Model),
-        ProviderCapabilities.ToolCalls | ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting)
+        ProviderCapabilities.ToolCalls | ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting | ProviderCapabilities.ToolArgumentCorrection)
         => this.options = options ?? throw new ArgumentNullException(nameof(options));
     /// <summary>Creates an adapter with an owned Host-supplied terminal handler. Arbitrary executable handlers are trusted capabilities, must not retry or disclose requests, and are not sandboxed.</summary>
     public DeepSeekProvider(DeepSeekOptions options, HttpMessageHandler handler) : this(options)
@@ -27,6 +27,14 @@ public sealed partial class DeepSeekProvider : ModelProvider, IProviderContextPe
             throw new ArgumentException("Unsupported handler policy.", nameof(handler));
         injectedInvoker = new(new SafeHandler(handler));
     }
+    /// <inheritdoc />
+    protected override ProviderError ValidateRequestCore(ProviderRequest request)
+    {
+        if (Volatile.Read(ref disposed) != 0) return ProviderError.ProviderFailed;
+        _ = DeepSeekRequestWriter.Write(request, options);
+        return ProviderError.None;
+    }
+
     /// <inheritdoc />
     protected override async ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken cancellationToken)
     {

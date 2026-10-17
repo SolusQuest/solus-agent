@@ -14,6 +14,8 @@ public enum ProviderCapabilities
     Continuation = 2,
     /// <summary>Honest nullable observation retained across later failure.</summary>
     UsageReporting = 4,
+    /// <summary>Guarded non-invocable argument correction, complete typed feedback history and pure prospective projection.</summary>
+    ToolArgumentCorrection = 8,
 }
 
 /// <summary>Finite positive per-exchange bounds within the draft ceilings.</summary>
@@ -62,13 +64,15 @@ public enum ProviderInputKind
     ModelData,
     /// <summary>Guarded tool output, always data.</summary>
     ToolResultData,
+    /// <summary>Fixed complete-batch argument feedback, with zero invocation and no domain evidence.</summary>
+    ToolCorrectionFeedbackData,
 }
 
 /// <summary>Immutable classified input; factories classify content but do not authenticate the caller.</summary>
 public sealed class ProviderInput
 {
-    private ProviderInput(ProviderInputKind kind, string? text = null, ProviderResponse? model = null, ToolResult? toolResult = null)
-    { Kind = kind; Text = text; Model = model; ToolResult = toolResult; }
+    private ProviderInput(ProviderInputKind kind, string? text = null, ProviderResponse? model = null, ToolResult? toolResult = null, ProviderCorrectionFeedback? correctionFeedback = null)
+    { Kind = kind; Text = text; Model = model; ToolResult = toolResult; CorrectionFeedback = correctionFeedback; }
     /// <summary>Classifies bounded host-authorized instructions. Never use this for response/tool data.</summary>
     public static ProviderInput Instruction(string text) => new(ProviderInputKind.HostInstruction, ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes));
     /// <summary>Classifies bounded untrusted input.</summary>
@@ -85,6 +89,9 @@ public sealed class ProviderInput
     /// <summary>Classifies a guarded result or admitted historical result as data, never as current invocation authority.</summary>
     public static ProviderInput FromTool(ToolResult result) => new(ProviderInputKind.ToolResultData,
         toolResult: result ?? throw new ArgumentNullException(nameof(result)));
+    /// <summary>Creates one fixed associated non-invocation feedback from a guarded correction turn.</summary>
+    public static ProviderInput FromCorrectionFeedback(ProviderResponse model, int ordinal) =>
+        new(ProviderInputKind.ToolCorrectionFeedbackData, correctionFeedback: new(model, ordinal));
     /// <summary>Gets immutable classification.</summary>
     public ProviderInputKind Kind { get; }
     /// <summary>Gets restricted instruction/input text.</summary>
@@ -93,10 +100,15 @@ public sealed class ProviderInput
     public ProviderResponse? Model { get; }
     /// <summary>Gets restricted tool-result data.</summary>
     public ToolResult? ToolResult { get; }
+    /// <summary>Gets fixed correction data, never an invocation result or observation.</summary>
+    public ProviderCorrectionFeedback? CorrectionFeedback { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderInput);
+    /// <summary>Gets bounded variable entry bytes, independently of provider wire escaping or tokens.</summary>
+    public int PayloadByteCount => ByteCount;
     internal int ByteCount => ProviderBoundary.Bytes(Text) + (Model?.ByteCount ?? 0)
-        + (ToolResult is null ? 0 : ProviderResponse.CallBytes(ToolResult.Call) + ProviderBoundary.Bytes(ToolResult.Json));
+        + (ToolResult is null ? 0 : ProviderResponse.CallBytes(ToolResult.Call) + ProviderBoundary.Bytes(ToolResult.Json))
+        + (CorrectionFeedback?.ByteCount ?? 0);
 }
 
 /// <summary>Host-built classified exchange, with completed tool rounds and exact latest-turn replay.</summary>
@@ -106,11 +118,12 @@ public sealed class ProviderRequest
     public ProviderRequest(ProviderScope scope, ProviderAttempt attempt, IReadOnlyList<ProviderInput> inputs,
         IReadOnlyList<ToolDescriptor>? tools = null, ProviderContinuation? continuation = null,
         ProviderCapabilities requiredCapabilities = ProviderCapabilities.None, ProviderExchangeBounds? bounds = null,
-        ProviderHistory? history = null)
+        ProviderHistory? history = null, ToolArgumentCorrectionPolicy? toolArgumentCorrection = null)
     {
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Attempt = attempt ?? throw new ArgumentNullException(nameof(attempt));
-        History = history;
+        History = history; ToolArgumentCorrection = toolArgumentCorrection;
+        if (toolArgumentCorrection is not null) requiredCapabilities |= ProviderCapabilities.ToolArgumentCorrection;
         if (history?.OperationOrigin is { } origin)
             ProviderBoundary.Require(origin.ExecutionId != attempt.ExecutionId && origin.LogicalCallId == attempt.LogicalCallId
                 && origin.PhysicalAttemptId != attempt.PhysicalAttemptId && attempt.AttemptNumber > origin.AttemptNumber, ProviderError.InvalidAssociation);
@@ -119,13 +132,16 @@ public sealed class ProviderRequest
         var entries = ProviderBoundary.Copy(inputs, Bounds.MaximumInputs);
         var definitions = ProviderBoundary.Copy(tools ?? [], Bounds.MaximumTools);
         ProviderBoundary.Require(definitions.Select(tool => tool.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Length, ProviderError.InvalidAssociation);
+        Tools = Array.AsReadOnly(definitions);
         var total = 0;
+        if (toolArgumentCorrection is not null) ProviderBoundary.Charge(ref total, toolArgumentCorrection.PayloadByteCount, Bounds.MaximumRequestBytes);
         ProviderBoundary.Charge(ref total, scope.Bytes, Bounds.MaximumRequestBytes);
         foreach (var definition in definitions)
             ProviderBoundary.Charge(ref total, ProviderBoundary.Bytes(definition.Name) + ProviderBoundary.Bytes(definition.Description)
                 + ProviderBoundary.Bytes(definition.CapabilityId) + ProviderBoundary.Bytes(definition.InputSchema.NormalizedJson)
                 + ProviderBoundary.Bytes(definition.ResultSchema.NormalizedJson), Bounds.MaximumRequestBytes);
-        var pending = new Dictionary<string, ToolCall>(StringComparer.Ordinal);
+        var pending = new Dictionary<string, (ToolCall Call, ProviderCorrectionFeedback? Feedback)>(StringComparer.Ordinal);
+        var correctionOrdinal = 0;
         var physical = new HashSet<Guid> { attempt.PhysicalAttemptId };
         var logical = new HashSet<Guid> { attempt.LogicalCallId };
         var callIds = new HashSet<string>(StringComparer.Ordinal);
@@ -146,19 +162,32 @@ public sealed class ProviderRequest
                 ProviderBoundary.Require(scope.Matches(model.Scope) && (model.Attempt.ExecutionId == attempt.ExecutionId
                     || history?.AcceptedOrigins.Any(model.Attempt.Matches) == true)
                     && physical.Add(model.Attempt.PhysicalAttemptId) && logical.Add(model.Attempt.LogicalCallId), ProviderError.InvalidAssociation);
-                ProviderBoundary.Require(model.Calls.Count <= Bounds.MaximumToolCalls, ProviderError.LimitExceeded);
+                var represented = model.Correction is { } correction ? correction.Members.Select(m => m.Call).ToArray() : model.Calls;
+                ProviderBoundary.Require(represented.Count <= Bounds.MaximumToolCalls, ProviderError.LimitExceeded);
+                if (model.Correction is { } corrected)
+                    ProviderBoundary.Require(toolArgumentCorrection is not null && corrected.DefinitionFingerprint == ProviderToolCorrection.Definitions(this), ProviderError.InvalidAssociation);
                 CheckContinuation(model.Continuation);
-                foreach (var call in model.Calls)
+                for (var ordinal = 0; ordinal < represented.Count; ordinal++)
                 {
+                    var call = represented[ordinal];
                     ProviderBoundary.Require(callIds.Add(call.CallId), ProviderError.InvalidAssociation);
-                    pending.Add(call.CallId, call);
+                    pending.Add(call.CallId, (call, model.Correction is null ? null : new ProviderCorrectionFeedback(model, ordinal)));
                 }
                 latest = model;
+                correctionOrdinal = 0;
             }
             if (entry.ToolResult is { } result)
             {
-                ProviderBoundary.Require(pending.TryGetValue(result.Call.CallId, out var expected) && expected.Matches(result.Call), ProviderError.InvalidAssociation);
+                ProviderBoundary.Require(pending.TryGetValue(result.Call.CallId, out var expected) && expected.Feedback is null && expected.Call.Matches(result.Call), ProviderError.InvalidAssociation);
                 pending.Remove(result.Call.CallId);
+            }
+            if (entry.CorrectionFeedback is { } feedback)
+            {
+                ProviderBoundary.Require(pending.TryGetValue(feedback.Call.CallId, out var expected) && expected.Feedback is { } required
+                    && expected.Call.Matches(feedback.Call) && required.Scope.Matches(feedback.Scope) && required.Attempt.Matches(feedback.Attempt)
+                    && required.Ordinal == feedback.Ordinal && feedback.Ordinal == correctionOrdinal++
+                    && required.ErrorCode == feedback.ErrorCode && required.Json == feedback.Json, ProviderError.InvalidAssociation);
+                pending.Remove(feedback.Call.CallId);
             }
         }
         ProviderBoundary.Require(pending.Count == 0, ProviderError.InvalidAssociation);
@@ -198,11 +227,13 @@ public sealed class ProviderRequest
     public ProviderObservation Observation { get; }
     /// <summary>Gets exact admitted historical lineage; original IDs are preserved across rounds.</summary>
     public ProviderHistory? History { get; }
+    /// <summary>Gets immutable Host-selected correction semantics; absent preserves terminal argument rejection.</summary>
+    public ToolArgumentCorrectionPolicy? ToolArgumentCorrection { get; }
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(ProviderRequest);
     internal IReadOnlySet<string> HistoricalCallIds { get; }
     internal static void ValidateCapabilities(ProviderCapabilities capabilities) => ProviderBoundary.Require(
-        (capabilities & ~(ProviderCapabilities.ToolCalls | ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting)) == 0, ProviderError.UnsupportedCapability);
+        (capabilities & ~(ProviderCapabilities.ToolCalls | ProviderCapabilities.Continuation | ProviderCapabilities.UsageReporting | ProviderCapabilities.ToolArgumentCorrection)) == 0, ProviderError.UnsupportedCapability);
     private void CheckContinuation(ProviderContinuation? continuation)
     {
         if (continuation is null) return;

@@ -87,6 +87,19 @@ public sealed class ToolInvocationUsage
     public int ReleasedUnstarted { get; }
 }
 
+/// <summary>Immutable current-execution complete-batch admission count, independent of physical tool entries and historical inventory.</summary>
+public sealed class ToolCallAdmissionUsage
+{
+    /// <summary>Creates a known nonnegative count; committed admissions never refund.</summary>
+    public ToolCallAdmissionUsage(int admitted = 0)
+    {
+        if (admitted < 0) throw new ArgumentOutOfRangeException(nameof(admitted));
+        Admitted = admitted;
+    }
+    /// <summary>Gets original members admitted in normal or withheld correction batches, counted once.</summary>
+    public int Admitted { get; }
+}
+
 /// <summary>An immutable validated provider inventory with checked core token observations and independent optional tool counts.</summary>
 public sealed class AgentRunUsage
 {
@@ -95,7 +108,7 @@ public sealed class AgentRunUsage
     /// <exception cref="ArgumentOutOfRangeException">Coverage is undefined.</exception>
     /// <exception cref="ArgumentNullException">The attempt list is null.</exception>
     public AgentRunUsage(Guid executionId, UsageInventoryCoverage coverage, IReadOnlyList<UsageAttemptObservation> attempts,
-        ToolInvocationUsage? toolInvocations = null, RunAccountingSnapshot? accounting = null, IReadOnlyList<UsageCallLineage>? continuedCalls = null)
+        ToolInvocationUsage? toolInvocations = null, RunAccountingSnapshot? accounting = null, IReadOnlyList<UsageCallLineage>? continuedCalls = null, ToolCallAdmissionUsage? toolCallAdmissions = null)
     {
         if (executionId == Guid.Empty) throw new ArgumentException("An execution identity is required.", nameof(executionId));
         if (!Enum.IsDefined(coverage)) throw new ArgumentOutOfRangeException(nameof(coverage));
@@ -117,6 +130,7 @@ public sealed class AgentRunUsage
         Coverage = coverage;
         Attempts = Array.AsReadOnly(snapshot);
         ToolInvocations = toolInvocations;
+        ToolCallAdmissions = toolCallAdmissions;
         InputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.InputTokens);
         OutputTokens = RunTokenObservation.Aggregate(coverage, Attempts, usage => usage.OutputTokens);
         if (accounting is not null)
@@ -139,6 +153,8 @@ public sealed class AgentRunUsage
     public IReadOnlyList<UsageAttemptObservation> Attempts { get; }
     /// <summary>Gets independent immutable tool counts, or null when unavailable. Provider inventory coverage does not establish tool knowledge.</summary>
     public ToolInvocationUsage? ToolInvocations { get; }
+    /// <summary>Gets independent current tool-call admissions, or null when unavailable; historical admissions are not charged again.</summary>
+    public ToolCallAdmissionUsage? ToolCallAdmissions { get; }
     /// <summary>Gets checked input observations; incomplete subtotals do not claim whole-run consumption.</summary>
     public RunTokenObservation InputTokens { get; }
     /// <summary>Gets checked output observations, independently of input availability.</summary>

@@ -17,8 +17,8 @@ public static class RuntimeAgentFactory
     /// <summary>Gets exactly the implemented guarantees, including provider and complete-batch tool admission and post-response token thresholds.</summary>
     public static RuntimeSupport Support { get; } = new(
         AgentCapability.WorkUnitLimit | AgentCapability.DurationLimit | AgentCapability.Cancellation | AgentCapability.UsageReporting
-            | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting,
-        RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds);
+            | AgentCapability.DispatchLimits | AgentCapability.UsageThresholds | AgentCapability.ToolInvocationLimit | AgentCapability.UsageAccounting | AgentCapability.ToolCallAdmissionLimit,
+        RuntimeGuarantee.OrderedExposure | RuntimeGuarantee.ProviderBounds | RuntimeGuarantee.ToolArgumentCorrection);
 
     /// <summary>Validates required startup integration before effects and returns an agent with isolated per-call state.</summary>
     /// <remarks>Both entrypoints honor explicit bounded provider retry policy on the same run ledger and cut. Ordinary execution uses complete tool admission and sequential guarded invocation. The returned agent implements IContextCandidateAgent, ICandidateAgent and IContextAgent. The combined candidate-context invocation requires exposure hooks and otherwise throws NotSupportedException before context claim or work, even when the ordinary startup profile permits omitted hooks. Context restoration requires provider persistence admission and trusted exclusive Host recovery authority. Completed tool batches and candidate protocol cursors are retained. Supported partial batches in an admitted candidate production use the same explicitly bound tool recovery policy; unresolved effects without that evidence and unknown candidate feedback do not authorize replay.</remarks>
@@ -31,7 +31,9 @@ public static class RuntimeAgentFactory
         {
             unsupported = configuration.CheckSupport(Support) != RuntimeStop.None
                 || (configuration.Hooks is null && configuration.RequiredAcknowledgement == ExposureStrength.Durable)
-                || (options.RequireContinuation && !configuration.Provider.Capabilities.HasFlag(ProviderCapabilities.Continuation));
+                || (options.RequireContinuation && !configuration.Provider.Capabilities.HasFlag(ProviderCapabilities.Continuation))
+                || (configuration.ToolArgumentCorrection is not null && (!configuration.Provider.Capabilities.HasFlag(ProviderCapabilities.ToolArgumentCorrection)
+                    || configuration.Provider is not IProviderRequestValidation));
         }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { throw new ArgumentException("The required runtime integration is unavailable.", nameof(configuration)); }

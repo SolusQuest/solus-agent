@@ -215,7 +215,7 @@ public sealed class OrdinaryContextTests
         var (source, envelope) = await OrdinaryFixture.Capture();
         var document = JsonNode.Parse(envelope.CopyRestrictedPayload())!;
         document["Records"]![0]!["Text"] = "TAMPERED_INSTRUCTIONS";
-        var modified = new AgentContextEnvelope(envelope.ImplementationId, 1, 1, JsonSerializer.SerializeToUtf8Bytes(document));
+        var modified = new AgentContextEnvelope(envelope.ImplementationId, envelope.FormatVersion, envelope.CompatibilityVersion, JsonSerializer.SerializeToUtf8Bytes(document));
         Assert.NotEqual(OrdinaryFixture.Fingerprint(envelope), OrdinaryFixture.Fingerprint(modified));
         var request = OrdinaryFixture.Request(instructions: "TAMPERED_INSTRUCTIONS"); var provider = new PersistentProvider();
         var authority = new SelectedAuthority(envelope, source.Checkpoint!);
@@ -249,7 +249,7 @@ public sealed class OrdinaryContextTests
         }
         var bytes = mutation switch { "duplicate" => Encoding.UTF8.GetBytes(text.Insert(1, "\"Elapsed\":\"00:00:00\",")),
             "truncated" => envelope.CopyRestrictedPayload()[..^1], "utf8" => new byte[] { 0xff, 0xfe }, _ => JsonSerializer.SerializeToUtf8Bytes(node) };
-        var bad = new AgentContextEnvelope(envelope.ImplementationId, 1, 1, bytes);
+        var bad = new AgentContextEnvelope(envelope.ImplementationId, envelope.FormatVersion, envelope.CompatibilityVersion, bytes);
         var provider = new PersistentProvider(); var authority = new SelectedAuthority(bad, source.Checkpoint!); var request = OrdinaryFixture.Request();
         var result = await OrdinaryFixture.Agent(provider, authority).ExecuteWithContextAsync(new(request, ContextExecutionIntent.ContinueRun, bad, OrdinaryFixture.Grant(source, request.ExecutionId)));
         Assert.Equal(ContextAdmission.Rejected, result.Admission); Assert.Null(result.Outcome);

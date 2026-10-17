@@ -92,6 +92,8 @@ public interface IFunctionTool
     ToolDescriptor Descriptor { get; }
     /// <summary>Bounded effect-free actual argument validation; supplies no invocation authority.</summary>
     ToolPreparation Prepare(ToolCall call);
+    /// <summary>Checks the current concrete Host capability without arguments, preparation, claiming or effects.</summary>
+    ToolError ValidateCapability(IToolCapability? capability);
     /// <summary>Checks owner, full call, concrete Host capability and unused handle without effects or claiming invocation.</summary>
     /// <remarks>Batch consumers check every member before the first effect. Invocation must revalidate; this check grants no lasting authority.</remarks>
     ToolError ValidateInvocation(PreparedToolInvocation prepared, ToolCall expectedCall, IToolCapability? capability);

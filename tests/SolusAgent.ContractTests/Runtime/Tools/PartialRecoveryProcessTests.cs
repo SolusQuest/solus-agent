@@ -93,10 +93,12 @@ internal static class PartialRecoveryChild
         internal TaskCompletionSource<ToolResult> Returned { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ToolDescriptor Descriptor => inner.Descriptor;
         public ToolPreparation Prepare(ToolCall call) => inner.Prepare(call);
+        public ToolError ValidateCapability(IToolCapability? capability) => inner.ValidateCapability(capability);
         public ToolError ValidateInvocation(PreparedToolInvocation p, ToolCall c, IToolCapability? cap) => inner.ValidateInvocation(p, c, cap);
         public ValueTask<ToolResult> InvokeAsync(PreparedToolInvocation p, ToolCall c, IToolCapability? cap, CancellationToken token = default) =>
             cap is RecoveryCounterCapability target ? InvokeOperationAsync(p, new ToolOperation(Guid.NewGuid(), c,
                 new("keyed_recovery", target.TargetSnapshot, target.Guarantee)), cap, token) : inner.InvokeAsync(p, c, cap, token);
+        public ToolError ValidateRecoveryBinding(ToolRecoveryBinding binding, IToolCapability? capability) => inner.ValidateRecoveryBinding(binding, capability);
         public ToolError ValidateOperation(ToolOperation op, IToolCapability? cap) => inner.ValidateOperation(op, cap);
         public async ValueTask<ToolResult> InvokeOperationAsync(PreparedToolInvocation p, ToolOperation op, IToolCapability? cap, CancellationToken token = default)
         { var result = await inner.InvokeOperationAsync(p, op, cap, token); Returned.TrySetResult(result); return result; }
