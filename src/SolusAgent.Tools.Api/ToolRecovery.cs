@@ -16,7 +16,7 @@ public sealed class ToolRecoveryBinding
     public ToolRecoveryBinding(string bindingId, string targetSnapshot, ToolRecoveryGuarantee guarantee)
     {
         BindingId = ToolBoundary.Identifier(bindingId);
-        TargetSnapshot = ToolBoundary.CallId(targetSnapshot);
+        TargetSnapshot = ToolBoundary.CallId(targetSnapshot, ToolLimits.RecoveryTargetBytes);
         if (!Enum.IsDefined(guarantee)) throw new ArgumentOutOfRangeException(nameof(guarantee));
         Guarantee = guarantee;
     }
@@ -69,7 +69,7 @@ public sealed class ToolRecoveryReceipt
     {
         ArgumentNullException.ThrowIfNull(operation); ArgumentNullException.ThrowIfNull(recordedCall);
         if (!Enum.IsDefined(outcome) || !Enum.IsDefined(error)) throw new ToolContractException(ToolError.InvalidResult);
-        if (json is not null) ToolBoundary.Text(json, ToolLimits.PayloadBytes);
+        if (json is not null) ToolBoundary.Text(json, ToolLimits.MaximumPayloadBytes);
         return new(operation, recordedCall, outcome, error, invocationStarted, json);
     }
     /// <summary>Gets the producer's original operation association.</summary>

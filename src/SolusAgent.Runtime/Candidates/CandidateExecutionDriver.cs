@@ -139,10 +139,12 @@ internal static class CandidateExecutionDriver
 
                 var pendingSubmission = submissions[^1];
                 var payload = state.Records[pendingSubmission.FinalIndex].Model!.Text!;
+                if (System.Text.Encoding.UTF8.GetByteCount(payload) > request.Bounds.MaximumPayloadBytes)
+                    return Stop(CandidateStopReason.RuntimeLimit);
                 var predecessor = episodes.Single(e => e.Id == pendingSubmission.EpisodeId).Predecessor;
                 var rejected = predecessor is { } predecessorId && submissions.Single(s => s.SubmissionId == predecessorId).Receipt!.Decision == CandidateDecision.Reject;
                 var submission = new CandidateSubmission(pendingSubmission.ExecutionId, pendingSubmission.SubmissionId, payload,
-                    rejected ? predecessor : null);
+                    rejected ? predecessor : null, request.Bounds.MaximumPayloadBytes);
                 // Reserve worst-case safe receipt/cursor bookkeeping before invoking a potentially effecting Host.
                 var prospective = Snapshot();
                 prospective.Submissions[^1] = pendingSubmission with { Invoked = true, InvocationRound = state.CandidateRoundId,

@@ -4,7 +4,7 @@
 
 ## Supported metadata and schema
 
-`ToolDescriptor` is immutable. Tool names, capability semantic identifiers and schema property names use `[a-z][a-z0-9_]{0,63}` and ordinal exact comparison. Noncanonical values reject rather than being folded into another identity. Descriptive `ReadOnly` and `Mutating` values grant no execution authority; unknown effect values reject. Descriptions admit at most 1024 UTF-8 source bytes before trimming outer whitespace and reject empty normalized text. Opaque call IDs retain exact spelling and whitespace, reject control characters, and admit at most 128 UTF-8 bytes.
+`ToolDescriptor` is immutable. Tool names, capability semantic identifiers and schema property names use `[a-z][a-z0-9_]{0,63}` and ordinal exact comparison. Noncanonical values reject rather than being folded into another identity. Descriptive `ReadOnly` and `Mutating` values grant no execution authority; unknown effect values reject. Descriptions admit at most 1024 UTF-8 source bytes before trimming outer whitespace and reject empty normalized text. Opaque call IDs retain exact spelling and whitespace, reject control characters, and admit at most 1024 UTF-8 bytes.
 
 `ToolSchema` supports the `bounded_closed_object` profile. The root is a nonnullable object; objects at every level declare `properties` and `additionalProperties: false`. Required names must be unique declared properties; omitted `required` normalizes explicitly to `[]`. Optional absence and a present null remain distinct. Nested values support closed objects, homogeneous arrays, strings, booleans and signed Int64 integers. A nested type can be paired with `null` using a two-entry type array; other unions, null-only types, references, open objects and unsupported keywords reject. This is a deliberately bounded subset, not general JSON Schema.
 
@@ -20,13 +20,15 @@ Strings optionally declare a nonempty ordinal-distinct `enum`; null can appear o
 | Semantic object/array container depth | 6 |
 | Schema-syntax JSON container depth / member occurrences / aggregate array elements | 18 / 1024 / 256 |
 | String enum entries, including null | 32 |
-| Argument or success-result UTF-8 bytes | 16384, or the smaller descriptor limit |
+| Argument or success-result UTF-8 bytes | 16384 by default; positive descriptor limits up to 8,388,608 |
 | Payload JSON container depth / aggregate member occurrences | 6 / 2048 |
 | Payload elements per array / across all arrays | 1000 / 1024 |
 
 All independent limits apply; their maxima are not promised simultaneously. Count decoded member occurrences across all objects, while detecting duplicate names within each object. Charge every scalar, null and container array element once in its parent, plus any elements inside nested arrays. Semantic schema nodes and declared properties are distinct from schema-syntax containers and keywords. Strict JSON admits no comments, trailing commas, duplicate decoded names or malformed Unicode. Syntax/depth/duplicate errors remain `InvalidJson`, count/byte excess is `LimitExceeded`, and unsupported schema semantics is `UnsupportedSchema`.
 
 Byte factories admit size before strict UTF-8 decoding; string entrypoints check strict UTF-8 byte count and reject malformed UTF-16 before parsing. Payloads use owned immutable strings, so caller byte-array mutation or document disposal cannot change a prepared call. Producers must also bound their own allocations before creating output. Supporting a request for 800 lines does not promise an 800-line result: independent complete-result bytes, including metadata, can reject it. Products own any declared truncation policy; the schema and runtime do not silently clip results.
+
+Argument, output and recovery-receipt construction admits at most 8,388,608 UTF-8 bytes. Descriptor argument/result limits and standalone schema validation default to 16,384 bytes; the Host may explicitly select positive limits up to that construction ceiling. Construction alone does not establish preparation or result acceptance under the configured limits. Recovery target tokens retain their separate 128-byte ceiling.
 
 An integration must verify support for the complete profile, property semantics, result boundary, effect description and capability semantics before adapting a descriptor. It must reject unsupported semantics rather than silently omit constraints or treat a similarly named built-in tool as equivalent.
 
@@ -85,7 +87,7 @@ The contracts are unreleased drafts with one coherent current producer/consumer 
 
 ## Trusted operation recovery (M4-R2)
 
-`ToolOperation` carries a runtime-created nonempty operation key, the exact original call and an optional `ToolRecoveryBinding`. Runtime supplies the operation before the first possible effect and retains it for subsequent physical attempts. The binding is a trusted Host declaration with a bounded binding ID, actual target snapshot and one closed guarantee: `ConcurrentSafeRepeat` covers repetition even while the original invocation may still be executing; `QueryOutcome` permits retrieving a terminal prior outcome only. `ToolEffect.ReadOnly`, matching names, failures and timeouts provide neither guarantee. Saved binding evidence never supplies a live capability or permission.
+`ToolOperation` carries a runtime-created nonempty operation key, the exact original call and an optional `ToolRecoveryBinding`. Runtime supplies the operation before the first possible effect and retains it for subsequent physical attempts. The binding is a trusted Host declaration with a bounded binding ID, an independently bounded 128-byte target snapshot and one closed guarantee: `ConcurrentSafeRepeat` covers repetition even while the original invocation may still be executing; `QueryOutcome` permits retrieving a terminal prior outcome only. Enlarging call IDs does not enlarge target evidence. `ToolEffect.ReadOnly`, matching names, failures and timeouts provide neither guarantee. Saved binding evidence never supplies a live capability or permission.
 
 `IRecoverableFunctionTool` is optional. `ValidateOperation` must be effect-free and verify current permission, the actual injected target and the exact original operation/guarantee. `InvokeOperationAsync` must preserve the normal concrete capability, owner, exact-call, cancellation and atomic single-use guards; each authorized new physical invocation receives a fresh prepared handle while retaining the original operation key. `QueryOutcomeAsync` performs only the explicitly admitted query. It returns a bounded `ToolRecoveryReceipt`, with exact operation/call association and original outcome/error/started/JSON facts, or unresolved. Unresolved is not evidence of no effect and never grants a repeat. A found terminal failure remains a failure; the query-only route does not turn it into another invocation or a later contradictory success.
 

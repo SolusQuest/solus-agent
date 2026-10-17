@@ -76,7 +76,7 @@ public sealed class RuntimeToolRegistration
 /// <summary>Explicit ordinary configuration metadata containing no live objects, scope labels or run-policy inputs.</summary>
 public sealed record RuntimeConfigurationDisclosure(int Tools, int MaximumInputs, int MaximumTools, int MaximumToolCalls,
     int MaximumRequestBytes, int MaximumResponseBytes, int MaximumContinuationBytes,
-    ExposureStrength RequiredAcknowledgement, RuntimeGuarantee RequiredGuarantees);
+    ExposureStrength RequiredAcknowledgement, RuntimeGuarantee RequiredGuarantees, int MaximumTextBytes);
 
 /// <summary>Live Host-supplied self-owned extension configuration, separate from the current AgentRequest.</summary>
 /// <remarks>Run bounds, optional usage limits and existing capability requirements remain solely on AgentRequest. Never place this container, provider, tools or hooks in model/saved/ordinary data; use Describe for ordinary metadata. This is not startup, storage, a scheduler or a hostile-code sandbox.</remarks>
@@ -140,7 +140,7 @@ public sealed class RuntimeConfiguration
             toolArgumentCorrection: ToolArgumentCorrection);
     /// <summary>Projects explicitly safe metadata; does not disclose provider/client/tool/hook instances or credentials.</summary>
     public RuntimeConfigurationDisclosure Describe() => new(Tools.Count, Bounds.MaximumInputs, Bounds.MaximumTools, Bounds.MaximumToolCalls,
-        Bounds.MaximumRequestBytes, Bounds.MaximumResponseBytes, Bounds.MaximumContinuationBytes, RequiredAcknowledgement, RequiredGuarantees);
+        Bounds.MaximumRequestBytes, Bounds.MaximumResponseBytes, Bounds.MaximumContinuationBytes, RequiredAcknowledgement, RequiredGuarantees, Bounds.MaximumTextBytes);
     /// <summary>Returns only the type name.</summary>
     public override string ToString() => nameof(RuntimeConfiguration);
 }

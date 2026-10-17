@@ -20,7 +20,7 @@ public sealed class ProviderCorrectionMember
     public ProviderCorrectionMember(ToolCall call, int originalArgumentBytes, string errorCode, ToolError schemaError = ToolError.None)
     {
         Call = call ?? throw new ArgumentNullException(nameof(call));
-        ProviderBoundary.Require(originalArgumentBytes is >= 0 and <= ToolLimits.PayloadBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(originalArgumentBytes is >= 0 and <= ToolLimits.MaximumPayloadBytes, ProviderError.LimitExceeded);
         ProviderBoundary.Require(Enum.IsDefined(schemaError), ProviderError.InvalidInput);
         OriginalArgumentBytes = originalArgumentBytes; ErrorCode = CorrectionBoundary.Identifier(errorCode); SchemaError = schemaError;
     }
@@ -68,7 +68,7 @@ public sealed class ProviderToolCorrection
         var copy = ProviderBoundary.Copy(members, ProviderLimits.Tools);
         ProviderBoundary.Require(copy.Length != 0 && copy.Any(m => m.Rejected)
             && copy.Select(m => m.Call.CallId).Distinct(StringComparer.Ordinal).Count() == copy.Length, ProviderError.InvalidAssociation);
-        ProviderBoundary.Require(originalResponseBytes is >= 0 and <= ProviderLimits.ResponseBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(originalResponseBytes is >= 0 and <= ProviderLimits.MaximumResponseBytes, ProviderError.LimitExceeded);
         ProviderBoundary.Require(definitionFingerprint is { Length: 64 }
             && definitionFingerprint.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F'), ProviderError.InvalidAssociation);
         Origin = origin; Members = Array.AsReadOnly(copy); OriginalResponseBytes = originalResponseBytes;
@@ -169,10 +169,10 @@ public sealed partial class ProviderResponse
         ProviderToolCorrection correction)
     {
         Scope = scope; Attempt = attempt;
-        if (text is not null) ProviderBoundary.Text(text, ProviderLimits.TextBytes);
+        if (text is not null) ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes);
         ProviderBoundary.Require(continuation is null || scope.Matches(continuation.Scope) && attempt.Matches(continuation.Origin), ProviderError.ContinuationMismatch);
         Text = text; Continuation = continuation; Correction = correction; Finish = ProviderFinish.ToolCorrection; Calls = Array.AsReadOnly(Array.Empty<ToolCall>());
-        ProviderBoundary.Require(ByteCount <= ProviderLimits.ResponseBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(ByteCount <= ProviderLimits.MaximumResponseBytes, ProviderError.LimitExceeded);
     }
     /// <summary>Gets guarded sanitized zero-invocation data only for ToolCorrection.</summary>
     public ProviderToolCorrection? Correction { get; }
@@ -220,6 +220,7 @@ public sealed partial class ProviderResponse
         { ValidateFor(request); return Accept(); }
         // Complete structural admission precedes every schema classification; short markers never launder raw limits.
         ProviderBoundary.Require(Scope.Matches(request.Scope) && Attempt.Matches(request.Attempt), ProviderError.InvalidAssociation);
+        if (Text is not null) ProviderBoundary.Text(Text, request.Bounds.MaximumTextBytes);
         ProviderBoundary.Require(Calls.Count <= request.Bounds.MaximumToolCalls && ByteCount <= request.Bounds.MaximumResponseBytes, ProviderError.LimitExceeded);
         ValidateContinuationFor(request);
         var descriptors = new ToolDescriptor[Calls.Count];

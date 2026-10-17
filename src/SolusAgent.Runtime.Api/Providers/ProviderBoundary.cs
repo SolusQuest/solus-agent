@@ -2,23 +2,35 @@ using System.Text;
 
 namespace SolusAgent.Runtime.Api.Providers;
 
-/// <summary>Finite ceilings for this in-memory draft, not wire-format guarantees.</summary>
+/// <summary>Conservative exchange defaults and finite construction ceilings, not wire-format guarantees.</summary>
 public static class ProviderLimits
 {
     /// <summary>Maximum exact provider/model label bytes.</summary>
     public const int ScopeBytes = 128;
-    /// <summary>Maximum bytes in one text value.</summary>
+    /// <summary>Default bytes in one text value admitted by an exchange.</summary>
     public const int TextBytes = 16384;
-    /// <summary>Maximum opaque replay bytes.</summary>
+    /// <summary>Default opaque replay bytes and independent provider-owned saved-state ceiling.</summary>
     public const int ContinuationBytes = 8192;
-    /// <summary>Maximum classified inputs.</summary>
+    /// <summary>Default classified inputs.</summary>
     public const int Inputs = 32;
     /// <summary>Maximum definitions or calls per turn.</summary>
     public const int Tools = 16;
-    /// <summary>Maximum retained request bytes.</summary>
+    /// <summary>Default retained request bytes.</summary>
     public const int RequestBytes = 131072;
-    /// <summary>Maximum retained response bytes.</summary>
+    /// <summary>Default retained response bytes.</summary>
     public const int ResponseBytes = 65536;
+    /// <summary>Finite text construction ceiling; actual exchanges enforce MaximumTextBytes.</summary>
+    public const int MaximumTextBytes = 32 * 1024 * 1024;
+    /// <summary>Maximum Host-selectable aggregate logical request bytes.</summary>
+    public const int MaximumRequestBytes = 128 * 1024 * 1024;
+    /// <summary>Maximum constructed and Host-admitted aggregate logical response bytes.</summary>
+    public const int MaximumResponseBytes = 8 * 1024 * 1024;
+    /// <summary>Maximum constructed opaque replay bytes; provider-owned saved state remains independently bounded.</summary>
+    public const int MaximumContinuationBytes = 2 * 1024 * 1024;
+    /// <summary>Maximum Host-selectable classified input inventory.</summary>
+    public const int MaximumInputs = 2048;
+    /// <summary>Maximum exact accepted origins retained for historical admission.</summary>
+    public const int MaximumHistoryOrigins = 128;
 }
 
 /// <summary>Closed errors; none grants remote rollback or retry permission.</summary>
@@ -78,7 +90,7 @@ internal static class ProviderBoundary
     }
     internal static string Decode(ReadOnlySpan<byte> bytes)
     {
-        Require(bytes.Length <= ProviderLimits.TextBytes, ProviderError.LimitExceeded);
+        Require(bytes.Length <= ProviderLimits.MaximumTextBytes, ProviderError.LimitExceeded);
         try { return StrictUtf8.GetString(bytes); }
         catch (DecoderFallbackException) { throw new ProviderContractException(ProviderError.InvalidEncoding); }
     }

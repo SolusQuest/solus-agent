@@ -24,14 +24,16 @@ public sealed class ProviderExchangeBounds
     /// <summary>Creates bounds; invalid or above-ceiling values reject.</summary>
     public ProviderExchangeBounds(int maximumInputs = ProviderLimits.Inputs, int maximumTools = ProviderLimits.Tools,
         int maximumToolCalls = ProviderLimits.Tools, int maximumRequestBytes = ProviderLimits.RequestBytes,
-        int maximumResponseBytes = ProviderLimits.ResponseBytes, int maximumContinuationBytes = ProviderLimits.ContinuationBytes)
+        int maximumResponseBytes = ProviderLimits.ResponseBytes, int maximumContinuationBytes = ProviderLimits.ContinuationBytes,
+        int maximumTextBytes = ProviderLimits.TextBytes)
     {
-        MaximumInputs = Limit(maximumInputs, ProviderLimits.Inputs);
+        MaximumInputs = Limit(maximumInputs, ProviderLimits.MaximumInputs);
         MaximumTools = Limit(maximumTools, ProviderLimits.Tools);
         MaximumToolCalls = Limit(maximumToolCalls, ProviderLimits.Tools);
-        MaximumRequestBytes = Limit(maximumRequestBytes, ProviderLimits.RequestBytes);
-        MaximumResponseBytes = Limit(maximumResponseBytes, ProviderLimits.ResponseBytes);
-        MaximumContinuationBytes = Limit(maximumContinuationBytes, ProviderLimits.ContinuationBytes);
+        MaximumRequestBytes = Limit(maximumRequestBytes, ProviderLimits.MaximumRequestBytes);
+        MaximumResponseBytes = Limit(maximumResponseBytes, ProviderLimits.MaximumResponseBytes);
+        MaximumContinuationBytes = Limit(maximumContinuationBytes, ProviderLimits.MaximumContinuationBytes);
+        MaximumTextBytes = Limit(maximumTextBytes, ProviderLimits.MaximumTextBytes);
     }
     /// <summary>Maximum input entries.</summary>
     public int MaximumInputs { get; }
@@ -45,6 +47,8 @@ public sealed class ProviderExchangeBounds
     public int MaximumResponseBytes { get; }
     /// <summary>Maximum bytes per continuation.</summary>
     public int MaximumContinuationBytes { get; }
+    /// <summary>Maximum strict UTF-8 bytes per classified instruction/input or model text, including represented history.</summary>
+    public int MaximumTextBytes { get; }
     private static int Limit(int value, int ceiling)
     { if (value < 1 || value > ceiling) throw new ArgumentOutOfRangeException(nameof(value)); return value; }
 }
@@ -70,9 +74,9 @@ public sealed class ProviderInput
     private ProviderInput(ProviderInputKind kind, string? text = null, ProviderResponse? model = null, ToolResult? toolResult = null, ProviderCorrectionFeedback? correctionFeedback = null)
     { Kind = kind; Text = text; Model = model; ToolResult = toolResult; CorrectionFeedback = correctionFeedback; }
     /// <summary>Classifies bounded host-authorized instructions. Never use this for response/tool data.</summary>
-    public static ProviderInput Instruction(string text) => new(ProviderInputKind.HostInstruction, ProviderBoundary.Text(text, ProviderLimits.TextBytes));
+    public static ProviderInput Instruction(string text) => new(ProviderInputKind.HostInstruction, ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes));
     /// <summary>Classifies bounded untrusted input.</summary>
-    public static ProviderInput Data(string text) => new(ProviderInputKind.InputData, ProviderBoundary.Text(text, ProviderLimits.TextBytes));
+    public static ProviderInput Data(string text) => new(ProviderInputKind.InputData, ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes));
     /// <summary>Admits strict UTF-8 data before decoding.</summary>
     public static ProviderInput DataFromUtf8(ReadOnlySpan<byte> bytes) => Data(ProviderBoundary.Decode(bytes));
     /// <summary>Classifies only guard-accepted model data; rejected candidate continuation is unusable.</summary>
@@ -145,6 +149,8 @@ public sealed class ProviderRequest
         var dataStarted = false;
         foreach (var entry in entries)
         {
+            if (entry.Text is { } text) ProviderBoundary.Text(text, Bounds.MaximumTextBytes);
+            if (entry.Model?.Text is { } modelText) ProviderBoundary.Text(modelText, Bounds.MaximumTextBytes);
             ProviderBoundary.Charge(ref total, entry.ByteCount, Bounds.MaximumRequestBytes);
             if (entry.Kind == ProviderInputKind.HostInstruction)
                 ProviderBoundary.Require(!dataStarted, ProviderError.InvalidInput);

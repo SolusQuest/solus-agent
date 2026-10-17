@@ -22,8 +22,9 @@ public sealed class TransformTool : IFunctionTool
     private readonly Guard inner;
     /// <summary>Constructs the unrelated tool with optional effect-free rejection or controlled effect behavior.</summary>
     public TransformTool(bool rejectDomain = false, int maximumResultBytes = 128,
-        Func<ToolCall, TransformCapability, CancellationToken, ValueTask<ToolOutput>>? effect = null)
-        => inner = new(rejectDomain, maximumResultBytes, effect);
+        Func<ToolCall, TransformCapability, CancellationToken, ValueTask<ToolOutput>>? effect = null,
+        int maximumArgumentBytes = ToolLimits.PayloadBytes)
+        => inner = new(rejectDomain, maximumResultBytes, effect, maximumArgumentBytes);
     /// <summary>Gets the closed object schema with a string property.</summary>
     public const string Schema = "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"],\"additionalProperties\":false}";
     /// <inheritdoc />
@@ -40,9 +41,9 @@ public sealed class TransformTool : IFunctionTool
         CancellationToken cancellationToken = default) => inner.InvokeAsync(prepared, expectedCall, capability, cancellationToken);
 
     private sealed class Guard(bool rejectDomain, int maximumResultBytes,
-        Func<ToolCall, TransformCapability, CancellationToken, ValueTask<ToolOutput>>? effect)
+        Func<ToolCall, TransformCapability, CancellationToken, ValueTask<ToolOutput>>? effect, int maximumArgumentBytes)
         : FunctionTool<TransformCapability>(new("transform", "Synthetic uppercase transform", ToolSchema.Parse(Schema),
-            ToolSchema.Parse(Schema), "text_transform", ToolEffect.ReadOnly, maximumResultBytes: maximumResultBytes))
+            ToolSchema.Parse(Schema), "text_transform", ToolEffect.ReadOnly, maximumArgumentBytes, maximumResultBytes))
     {
         protected override bool ValidateArguments(JsonElement arguments) => !rejectDomain;
         protected override ValueTask<ToolOutput> InvokeCoreAsync(ToolCall call, TransformCapability capability, CancellationToken token)

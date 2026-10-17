@@ -58,6 +58,8 @@ internal sealed partial class RunState
         var definitions = Configuration.Tools.Sum(t => Encoding.UTF8.GetByteCount(t.Descriptor.Name) + Encoding.UTF8.GetByteCount(t.Descriptor.Description)
             + Encoding.UTF8.GetByteCount(t.Descriptor.CapabilityId) + Encoding.UTF8.GetByteCount(t.Descriptor.InputSchema.NormalizedJson)
             + Encoding.UTF8.GetByteCount(t.Descriptor.ResultSchema.NormalizedJson)) + (Configuration.ToolArgumentCorrection?.PayloadByteCount ?? 0);
-        return checked(OrdinaryContextCodec.Measure(checkpoint) + definitions);
+        var encoded = OrdinaryContextCodec.Measure(checkpoint, Options.MaximumRetainedBytes);
+        return encoded > Math.Min(OrdinaryContextCodec.MaximumEncodedBytes, Options.MaximumRetainedBytes)
+            ? int.MaxValue : checked(encoded + definitions);
     }
 }

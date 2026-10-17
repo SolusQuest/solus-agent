@@ -36,12 +36,27 @@ internal static partial class OrdinaryContextCodec
     internal static AgentContextEnvelope Encode(OrdinaryCheckpoint value, RuntimeOptions options)
     {
         if (value.Candidates is not null) ValidateCandidates(value, options);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Json);
-        if (bytes.Length > Math.Min(MaximumEncodedBytes, options.MaximumRetainedBytes)) throw new JsonException();
-        return new(Implementation, 2, 1, bytes);
+        using var stream = new CappedContextStream(Math.Min(MaximumEncodedBytes, options.MaximumRetainedBytes));
+        JsonSerializer.Serialize(stream, value, Json);
+        return new(Implementation, 2, 1, stream.ToArray());
+    }
+    private sealed class CappedContextStream(int cap) : MemoryStream(Math.Min(cap, 4096))
+    {
+        internal bool Exceeded { get; private set; }
+        public override void Write(ReadOnlySpan<byte> buffer) { Check(buffer.Length); base.Write(buffer); }
+        public override void Write(byte[] buffer, int offset, int count) { Check(count); base.Write(buffer, offset, count); }
+        public override void WriteByte(byte value) { Check(1); base.WriteByte(value); }
+        private void Check(int count) { if (count > cap - Length) { Exceeded = true; throw new JsonException(); } }
     }
     // Pure size proof for a prospective snapshot. It neither accepts, exports nor publishes a checkpoint.
-    internal static int Measure(OrdinaryCheckpoint value) => JsonSerializer.SerializeToUtf8Bytes(value, Json).Length;
+    internal static int Measure(OrdinaryCheckpoint value, int maximumBytes)
+    {
+        var cap = Math.Min(MaximumEncodedBytes, maximumBytes);
+        using var stream = new CappedContextStream(cap);
+        try { JsonSerializer.Serialize(stream, value, Json); }
+        catch (JsonException) when (stream.Exceeded) { return cap + 1; }
+        return checked((int)stream.Length);
+    }
     // Exact constructor-backed grammar, including optional-but-serialized fields, precedes domain constructors.
     private static void Shape(JsonElement element, Type type)
     {
@@ -50,7 +65,7 @@ internal static partial class OrdinaryContextCodec
         if (element.ValueKind == JsonValueKind.Array)
         {
             var item = type.IsArray ? type.GetElementType()! : type.GetGenericArguments().Single();
-            if (element.GetArrayLength() > 64) throw new JsonException();
+            if (element.GetArrayLength() > RuntimeOptions.MaximumRecordCapacity) throw new JsonException();
             foreach (var child in element.EnumerateArray()) { if (child.ValueKind == JsonValueKind.Null) throw new JsonException(); Shape(child, item); }
             return;
         }
@@ -292,11 +307,13 @@ internal static partial class OrdinaryContextCodec
     }
     private static bool SameBounds(ProviderExchangeBounds a, ProviderExchangeBounds b) => a.MaximumInputs == b.MaximumInputs
         && a.MaximumTools == b.MaximumTools && a.MaximumToolCalls == b.MaximumToolCalls && a.MaximumRequestBytes == b.MaximumRequestBytes
-        && a.MaximumResponseBytes == b.MaximumResponseBytes && a.MaximumContinuationBytes == b.MaximumContinuationBytes;
+        && a.MaximumResponseBytes == b.MaximumResponseBytes && a.MaximumContinuationBytes == b.MaximumContinuationBytes
+        && a.MaximumTextBytes == b.MaximumTextBytes;
     private static bool WithinBoundProfile(ProviderExchangeBounds effective, ProviderExchangeBounds configured) =>
         effective.MaximumInputs == configured.MaximumInputs && effective.MaximumTools == configured.MaximumTools
         && effective.MaximumToolCalls == configured.MaximumToolCalls && effective.MaximumRequestBytes == configured.MaximumRequestBytes
-        && effective.MaximumContinuationBytes == configured.MaximumContinuationBytes && effective.MaximumResponseBytes <= configured.MaximumResponseBytes;
+        && effective.MaximumContinuationBytes == configured.MaximumContinuationBytes && effective.MaximumResponseBytes <= configured.MaximumResponseBytes
+        && effective.MaximumTextBytes == configured.MaximumTextBytes;
 
     private static void ValidateTerminal(SavedRound round, bool candidateMode)
     {

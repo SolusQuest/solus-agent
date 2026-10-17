@@ -8,6 +8,39 @@ namespace SolusAgent.ContractTests.DeepSeek.Adapter;
 
 public sealed class ToolCorrectionProjectionTests
 {
+    [Fact]
+    public async Task ActualLargeAggregateCorrectionPreservesTheAdaptersIndependentPerFieldProfile()
+    {
+        var text = new string('m', 14000); var good = "{\"text\":\"" + new string('s', 14000) + "\"}";
+        var bad = "{\"text\":\"" + new string('r', 14000) + "\",\"unknown\":true}";
+        var bodies = new List<string>();
+        using var handler = new FakeHandler(async (message, token) =>
+        {
+            bodies.Add(await message.Content!.ReadAsStringAsync(token));
+            return AdapterFixture.Http(bodies.Count == 1 ? AdapterFixture.Response(text, "original replay", "tool_calls", calls:
+                [AdapterFixture.Call("bad", args: bad), AdapterFixture.Call("good", args: good), AdapterFixture.Call("good_2", args: good),
+                    AdapterFixture.Call("good_3", args: good), AdapterFixture.Call("good_4", args: good)]) : AdapterFixture.Response());
+        });
+        using var provider = AdapterFixture.Provider(handler);
+        var initial = new ProviderRequest(AdapterFixture.Scope, new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1),
+            [ProviderInput.Instruction("Host rule"), ProviderInput.Data("untrusted data")], [AdapterFixture.Tool()],
+            requiredCapabilities: AdapterFixture.All, bounds: new(maximumRequestBytes: 262144, maximumResponseBytes: 131072, maximumTextBytes: 32768),
+            toolArgumentCorrection: new("large_policy"));
+        var source = await provider.ExchangeAsync(initial); Assert.Equal(ProviderOutcome.Succeeded, source.Outcome);
+        Assert.True(source.Response!.Correction!.OriginalResponseBytes > ProviderLimits.ResponseBytes);
+        var next = Next(initial, source.Response); Assert.Equal(ProviderError.None, provider.ValidateRequest(next));
+        Assert.Equal(ProviderOutcome.Succeeded, (await provider.ExchangeAsync(next)).Outcome); Assert.Equal(2, handler.Sends);
+        var expected = Expected(); expected["messages"]![2]!["content"] = text;
+        expected["messages"]![2]!["tool_calls"]![1]!["function"]!["arguments"] = good;
+        foreach (var id in new[] { "good_2", "good_3", "good_4" })
+        {
+            expected["messages"]![2]!["tool_calls"]!.AsArray().Add(Call(id, good));
+            expected["messages"]!.AsArray().Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = id, ["content"] = Withheld });
+        }
+        Assert.True(JsonNode.DeepEquals(expected, JsonNode.Parse(bodies[1])));
+        Assert.DoesNotContain(new string('r', 14000), bodies[1]);
+    }
+
     private const string Bad = "{\"text\":\"REJECTED_WIRE_CANARY\",\"unknown\":true}";
     private const string Good = "{ \"text\" : \"retained\" }";
     private const string Marker = "{\"_solus_rejected\":true}";
@@ -85,8 +118,8 @@ public sealed class ToolCorrectionProjectionTests
         [AdapterFixture.Tool()], requiredCapabilities: AdapterFixture.All, toolArgumentCorrection: new("fixed"));
     private static ProviderRequest Next(ProviderRequest initial, ProviderResponse model) => new(initial.Scope,
         new(initial.Attempt.ExecutionId, Guid.NewGuid(), Guid.NewGuid(), 1), [.. initial.Inputs, ProviderInput.FromModel(model),
-            ProviderInput.FromCorrectionFeedback(model, 0), ProviderInput.FromCorrectionFeedback(model, 1)], initial.Tools, model.Continuation,
-        AdapterFixture.All, toolArgumentCorrection: initial.ToolArgumentCorrection);
+            .. Enumerable.Range(0, model.Correction!.Members.Count).Select(i => ProviderInput.FromCorrectionFeedback(model, i))], initial.Tools, model.Continuation,
+        AdapterFixture.All, bounds: initial.Bounds, toolArgumentCorrection: initial.ToolArgumentCorrection);
 
     private static JsonObject Expected(string data = "untrusted data") => new()
     {

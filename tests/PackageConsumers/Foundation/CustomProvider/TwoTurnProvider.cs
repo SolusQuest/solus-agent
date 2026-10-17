@@ -2,6 +2,8 @@ using SolusAgent.Api.Usage;
 using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Runtime.Api.Providers;
 using SolusAgent.Tools.Api;
+using System.Text;
+using System.Text.Json;
 
 namespace PackageConsumers.Foundation.CustomProvider;
 
@@ -23,6 +25,30 @@ public sealed class TwoTurnProvider : ModelProvider
         if (Calls != 2 || result.Call.CallId != "foundation-call" || result.Outcome != ToolOutcome.Succeeded
             || result.Json != "{\"done\":true}") throw new InvalidOperationException("Tool result association failed.");
         return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.Final, "done", []));
+    }
+}
+
+public sealed class LargeArtifactProvider(string artifact, string final) : ModelProvider(new("foundation", "capacity"),
+    ProviderCapabilities.ToolCalls | ProviderCapabilities.UsageReporting)
+{
+    public int Calls { get; private set; }
+    protected override ValueTask<ProviderResponse> ExchangeCoreAsync(ProviderRequest request, ProviderObservation observation, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); Calls++;
+        observation.ObserveDispatch(DispatchExposure.Dispatched); observation.CaptureUsage(new(3, 2));
+        if (Calls == 1)
+        {
+            if (Encoding.UTF8.GetByteCount(request.Inputs.Single(i => i.Kind == ProviderInputKind.InputData).Text!) != 4194304
+                || request.Bounds.MaximumTextBytes != ProviderLimits.MaximumTextBytes)
+                throw new InvalidOperationException("Complete opt-in input did not reach the provider.");
+            return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.ToolCalls, null, [new("artifact-call", "artifact", "{}")]));
+        }
+        var result = request.Inputs.Single(i => i.ToolResult is not null).ToolResult!;
+        using var json = JsonDocument.Parse(result.Json!);
+        if (Calls != 2 || result.Call.CallId != "artifact-call" || result.Outcome != ToolOutcome.Succeeded
+            || !StringComparer.Ordinal.Equals(artifact, json.RootElement.GetProperty("artifact").GetString()))
+            throw new InvalidOperationException("Complete artifact did not survive guarded tool history.");
+        return ValueTask.FromResult(new ProviderResponse(request.Scope, request.Attempt, ProviderFinish.Final, final, []));
     }
 }
 

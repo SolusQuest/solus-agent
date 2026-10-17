@@ -36,7 +36,7 @@ internal sealed class CorrectionContextFixture : IDisposable
 
     internal CorrectionContextFixture(string mode, bool producing, bool candidates = false, IRuntimeContextAuthority? authority = null,
         RuntimeOptions? options = null, Action? toolEffect = null, Action? hostEffect = null, bool missingPolicy = false,
-        bool changedPolicy = false, int maximumTokens = 2048)
+        bool changedPolicy = false, int maximumTokens = 2048, bool restrictHostErrors = false, bool missingClassifier = false)
     {
         Producing = producing; Candidates = candidates;
         Host = new(mode, enabled: !missingPolicy, effect: toolEffect);
@@ -58,7 +58,7 @@ internal sealed class CorrectionContextFixture : IDisposable
         });
         Adapter = new(new(producing ? AdapterFixture.Credential : RotatedCredential, maximumTokens), Handler);
         Provider = new(Adapter);
-        Agent = RuntimeAgentFactory.Create(new(Provider, [Host.Binding()], Host.Hooks,
+        Agent = RuntimeAgentFactory.Create(new(Provider, [missingClassifier ? new(Host.Tool, Host.Capability) : Host.Binding(allowedErrors: restrictHostErrors ? ["path_invalid"] : null)], Host.Hooks,
             contextAuthority: authority, toolArgumentCorrection: Policy), options ?? new(requireContinuation: true));
         CandidateHost = new((submission, _) =>
         {

@@ -18,10 +18,10 @@ internal sealed class SnapshotCapability(Action? observe = null) : IToolCapabili
     internal void Read() { Interlocked.Increment(ref Entries); observe?.Invoke(); }
 }
 
-internal sealed class SnapshotTool(bool invalidResult = false) : FunctionTool<SnapshotCapability>(new("read_snapshot", "Synthetic fixed snapshot",
+internal sealed class SnapshotTool(bool invalidResult = false, int maximumArgumentBytes = 2048) : FunctionTool<SnapshotCapability>(new("read_snapshot", "Synthetic fixed snapshot",
     ToolSchema.Parse("""{"type":"object","properties":{"path":{"type":"string"},"cursor":{"type":"string"}},"required":["path"],"additionalProperties":false}"""),
     ToolSchema.Parse("""{"type":"object","properties":{"read":{"type":"boolean"}},"required":["read"],"additionalProperties":false}"""),
-    "snapshot_access", ToolEffect.ReadOnly, 2048, 128))
+    "snapshot_access", ToolEffect.ReadOnly, maximumArgumentBytes, 128))
 {
     internal int DomainChecks;
     protected override bool ValidateArguments(JsonElement arguments)
@@ -98,8 +98,8 @@ internal sealed class ArgumentCorrectionFixture
     internal SolusAgent.Runtime.Api.Configuration.RuntimeConfiguration Configuration(bool wrongCapability = false) => new(new Validating(Provider, r => Validate?.Invoke(r)),
         [Binding(wrongCapability)], Hooks,
         toolArgumentCorrection: Enabled ? Policy : null);
-    internal RuntimeToolRegistration Binding(bool wrongCapability = false) => new(Tool, wrongCapability ? new OtherCapability() : Capability,
-        argumentCorrection: Enabled ? new("snapshot_classifier", ["path_invalid", "membership_invalid", "cursor_invalid"], Classify) : null);
+    internal RuntimeToolRegistration Binding(bool wrongCapability = false, IReadOnlyList<string>? allowedErrors = null) => new(Tool, wrongCapability ? new OtherCapability() : Capability,
+        argumentCorrection: Enabled ? new("snapshot_classifier", allowedErrors ?? ["path_invalid", "membership_invalid", "cursor_invalid"], Classify) : null);
     internal IAgent Agent(RuntimeOptions? options = null, bool wrongCapability = false) =>
         RuntimeAgentFactory.Create(Configuration(wrongCapability), options ?? new(requireContinuation: true));
     internal static AgentRequest Request(int work = 3, int admissions = 4, int invocations = 2, Guid? id = null) => new(id ?? Guid.NewGuid(), "host", [],

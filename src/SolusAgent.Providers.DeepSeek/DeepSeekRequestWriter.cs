@@ -89,16 +89,19 @@ internal static class DeepSeekRequestWriter
 
 internal static class DeepSeekReplay
 {
+    internal const int MaximumFrameBytes = 8192;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     internal static ProviderContinuation Encode(ProviderRequest request, string reasoning)
     {
         var count = StrictUtf8.GetByteCount(reasoning);
-        if (count + 1 > request.Bounds.MaximumContinuationBytes) throw new ProviderContractException(ProviderError.LimitExceeded);
+        if (count + 1 > Math.Min(request.Bounds.MaximumContinuationBytes, MaximumFrameBytes))
+            throw new ProviderContractException(ProviderError.LimitExceeded);
         var bytes = new byte[count + 1]; bytes[0] = 1; StrictUtf8.GetBytes(reasoning, bytes.AsSpan(1));
         return new(request.Scope, request.Attempt, bytes);
     }
     internal static string Decode(ProviderContinuation continuation)
     {
+        if (continuation.ByteCount > MaximumFrameBytes) throw new ProviderContractException(ProviderError.ContinuationMismatch);
         var bytes = continuation.CopyReplayBytes();
         if (bytes[0] != 1) throw new ProviderContractException(ProviderError.ContinuationMismatch);
         try { return StrictUtf8.GetString(bytes.AsSpan(1)); }

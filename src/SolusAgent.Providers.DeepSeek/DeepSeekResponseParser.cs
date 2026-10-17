@@ -60,7 +60,8 @@ internal static class DeepSeekResponseParser
                     ordinal++;
                     Require(Text(call.GetProperty("type")) == "function");
                     var function = call.GetProperty("function"); Shape(function, "name", "arguments");
-                    calls.Add(new(Text(call.GetProperty("id"), ToolLimits.CallIdBytes), Text(function.GetProperty("name"), ToolLimits.IdentifierCharacters),
+                    // This adapter retains its independently selected response-ID profile.
+                    calls.Add(new(Text(call.GetProperty("id"), 128), Text(function.GetProperty("name"), ToolLimits.IdentifierCharacters),
                         Text(function.GetProperty("arguments"), ToolLimits.PayloadBytes)));
                 }
             }
@@ -70,7 +71,7 @@ internal static class DeepSeekResponseParser
             if (request.Tools.Count != 0) Require(hasReasoning, ProviderError.ContinuationMismatch);
             if (hasReasoning)
             {
-                var reasoningText = Text(reasoning, ProviderLimits.ContinuationBytes);
+                var reasoningText = Text(reasoning, DeepSeekReplay.MaximumFrameBytes);
                 if (request.RequiredCapabilities.HasFlag(ProviderCapabilities.Continuation)) continuation = DeepSeekReplay.Encode(request, reasoningText);
             }
             return new(request.Scope, request.Attempt, finish == "stop" ? ProviderFinish.Final : ProviderFinish.ToolCalls, text, calls, continuation);

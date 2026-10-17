@@ -9,12 +9,41 @@ using SolusAgent.ContractTests.Runtime.Context;
 using SolusAgent.ContractTests.Runtime.Tools;
 using SolusAgent.ContractTests.Runtime.Execution;
 using SolusAgent.Runtime.Startup;
+using SolusAgent.Runtime.Api.Providers;
 using Xunit;
 
 namespace SolusAgent.ContractTests.DeepSeek.RuntimeIntegration;
 
 public sealed class CorrectionContextTests
 {
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task TrustedHostDenialMustBelongToTheOwningRegistrationBeforeClaim(bool missingClassifier)
+    {
+        var mode = missingClassifier ? "schema" : "path";
+        using var first = new CorrectionContextFixture(mode, true, restrictHostErrors: true, missingClassifier: missingClassifier);
+        var sink = new RestrictedContextHost();
+        var source = await first.Execute(new(CorrectionContextFixture.Request(true), ContextExecutionIntent.Fresh), sink);
+        Assert.Equal(AgentTerminationReason.Completed, source.Context.Outcome!.Reason);
+        var original = sink.CopyRestrictedContext(); var node = JsonNode.Parse(original.CopyRestrictedPayload())!;
+        var model = node["Records"]![1]!["CorrectionModel"]!;
+        model["Origin"] = (int)ToolCorrectionOrigin.HostArguments;
+        model["Members"]![0]!["SchemaError"] = (int)SolusAgent.Tools.Api.ToolError.None;
+        model["Members"]![0]!["ErrorCode"] = missingClassifier ? "path_invalid" : "cursor_invalid";
+        node["Rounds"]![0]!["Facts"]![0]!["ProducedFinish"] = (int)ProviderFinish.ToolCalls;
+        var altered = new AgentContextEnvelope(original.ImplementationId, original.FormatVersion, original.CompatibilityVersion,
+            JsonSerializer.SerializeToUtf8Bytes(node));
+        var authority = new SelectedAuthority(altered, source.Context.Checkpoint!);
+        using var second = new CorrectionContextFixture(mode, false, authority: authority,
+            restrictHostErrors: true, missingClassifier: missingClassifier);
+        var request = CorrectionContextFixture.Request(false);
+        var result = await second.Execute(new(request, ContextExecutionIntent.NewRunFromContext, altered,
+            new(Guid.NewGuid(), source.Context.Checkpoint!, request.ExecutionId, Guid.NewGuid())));
+        Assert.Equal(ContextAdmission.Rejected, result.Context.Admission); Assert.Equal(0, authority.Claims);
+        Assert.Equal(0, second.Provider.Imports); Assert.Equal(0, second.Handler.Sends);
+        Assert.Equal(0, second.Host.Classifications); Assert.Equal(0, second.Host.Tool.DomainChecks); Assert.Equal(0, second.Host.Capability.Entries);
+    }
+
     [Theory]
     [InlineData(false)] [InlineData(true)]
     public async Task CancelledCorrectionHistorySuppliesNoNewContinuationAuthority(bool candidates)

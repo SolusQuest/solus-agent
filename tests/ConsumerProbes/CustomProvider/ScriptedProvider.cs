@@ -13,7 +13,7 @@ public sealed class ScriptedProvider : ModelProvider
     public ScriptedProvider(IReadOnlyList<Func<ProviderRequest, ProviderObservation, CancellationToken, ValueTask<ProviderResponse>>> steps,
         ProviderScope? scope = null, ProviderCapabilities capabilities = DelegateProvider.All) : base(scope ?? new("p", "m"), capabilities)
     {
-        if (steps.Count is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(steps));
+        if (steps.Count is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(steps));
         this.steps = steps.ToArray();
         if (this.steps.Any(step => step is null)) throw new ArgumentException("Invalid synthetic script.");
     }

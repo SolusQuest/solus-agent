@@ -17,6 +17,19 @@ namespace SolusAgent.ContractTests.Runtime.Tools;
 public sealed class ArgumentCorrectionTests
 {
     [Theory]
+    [InlineData(false, 0)] [InlineData(true, 2)]
+    public async Task DeadlineBeforeOrAfterCorrectionCommitNeverAdmitsDependentWork(bool after, int admissions)
+    {
+        var clock = new ControlledTimeProvider(); var fixture = new ArgumentCorrectionFixture();
+        if (!after) fixture.Validate = r => { if (r.Inputs.Any(i => i.Model?.Correction is not null)) clock.Advance(TimeSpan.FromSeconds(10)); };
+        var outcome = await fixture.Agent(new(timeProvider: clock, requireContinuation: true)).ExecuteAsync(ArgumentCorrectionFixture.Request(),
+            new InlineProgress(_ => { if (after) clock.Advance(TimeSpan.FromSeconds(10)); }));
+        Assert.Equal(AgentTerminationReason.ResourceLimit, outcome.Reason); Assert.Equal(1, outcome.CompletedWorkUnits);
+        Assert.Equal(admissions, outcome.Usage!.ToolCallAdmissions!.Admitted); Assert.Equal(0, outcome.Usage.ToolInvocations!.Invoked);
+        Assert.Equal(0, fixture.Capability.Entries); Assert.Equal(1, fixture.Provider.Effects);
+    }
+
+    [Theory]
     [InlineData("schema")] [InlineData("path")]
     public async Task ArgumentDenialCannotHideInvalidRecoveryTargetBinding(string mode)
     {
