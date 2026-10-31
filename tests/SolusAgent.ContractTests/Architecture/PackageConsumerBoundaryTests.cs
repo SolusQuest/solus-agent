@@ -71,10 +71,17 @@ public sealed class PackageConsumerBoundaryTests
     }
 
     [Fact]
-    public void OnlyTheFiveProductionLibrariesOptIntoPacking()
+    public void LegacyAgentPackageSelectionRemainsExactlyFiveAlongsideTheNeutralContract()
     {
-        var production = Directory.GetFiles(Path.Combine(RepositoryLayout.Root, "src"), "*.csproj", SearchOption.AllDirectories);
+        string[] legacyNames = ["SolusAgent.Api", "SolusAgent.Tools.Api", "SolusAgent.Runtime.Api", "SolusAgent.Runtime", "SolusAgent.Providers.DeepSeek"];
+        var sourceProjects = XDocument.Load(RepositoryLayout.SolutionPath).Descendants("Project")
+            .Select(element => Path.GetFullPath(element.Attribute("Path")!.Value, RepositoryLayout.Root))
+            .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "src"))).ToArray();
+        Assert.Equal(legacyNames.Append("Solus.Telemetry.Contracts").Order(StringComparer.Ordinal),
+            sourceProjects.Select(Path.GetFileNameWithoutExtension).Order(StringComparer.Ordinal));
+        var production = sourceProjects.Where(path => legacyNames.Contains(Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal)).ToArray();
         Assert.Equal(5, production.Length);
+        Assert.Equal("true", MsbuildProjectEvaluation.Evaluate(RepositoryLayout.ProductionProjectPath("Solus.Telemetry.Contracts")).PropertyValue("IsPackable"));
         foreach (var project in production)
         {
             var evaluation = MsbuildProjectEvaluation.Evaluate(project);

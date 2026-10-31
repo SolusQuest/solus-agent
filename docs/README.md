@@ -26,6 +26,8 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 
 ## Architecture
 
+- [Neutral telemetry v1 contract](20_architecture/telemetry-contract.md): implemented independent contract, strict JSON, ownership and validation boundaries.
+
 - [L1 telemetry and logging plan](90_roadmap/logging-l1-plan.md): planned independent solutions, shared telemetry contract, Supabase storage and consumer release boundary; not implemented behavior.
 
 - [Architecture](20_architecture/architecture.md).

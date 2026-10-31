@@ -1,0 +1,31 @@
+name: Logging CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  logging-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore Logging
+        run: dotnet restore Solus.Logging.slnx
+      - name: Build Logging
+        run: dotnet build Solus.Logging.slnx -c Release --no-restore
+      - name: Test neutral contracts and Logging architecture
+        run: dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Contracts|FullyQualifiedName~Architecture"
+      - name: Restore Agent
+        run: dotnet restore SolusAgent.slnx
+      - name: Build Agent
+        run: dotnet build SolusAgent.slnx -c Release --no-restore
+      - name: Preserve exact Agent boundaries
+        run: dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj -c Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Architecture"

@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
     <Project Path="src/SolusAgent.Api/SolusAgent.Api.csproj" />
     <Project Path="src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
     <Project Path="src/SolusAgent.Runtime.Api/SolusAgent.Runtime.Api.csproj" />
