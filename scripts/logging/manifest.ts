@@ -67,6 +67,10 @@ export function publicationFiles(feed: string, directory: string, manifest: any,
     || fileSha(genuineApiArchive) !== api.packageSha256 || readPackage(genuineApiArchive, api.id, api.version).dllSha256 !== api.dllSha256) throw new Error('genuine_baseline_publication_gate');
   if (JSON.stringify(manifest.source) !== JSON.stringify(selectedSource()) || manifest.validationBaseline.sourceCommit !== api.sourceCommit
     || manifest.validationBaseline.sourceSha256 !== apiSource() || manifest.validationBaseline.neverPublish !== true) throw new Error('publication_source_provenance');
+  const declaredFeed = resolve(directory, manifest.validationBaseline.directory);
+  if (!inside(declaredFeed, directory) || lstatSync(declaredFeed).isSymbolicLink() || manifest.validationBaseline.file !== `${api.id}.${api.version}.nupkg`) throw new Error('genuine_baseline_publication_gate');
+  const declaredArchive = member(declaredFeed, manifest.validationBaseline.file);
+  if (fileSha(declaredArchive) !== api.packageSha256 || readPackage(declaredArchive, api.id, api.version).dllSha256 !== api.dllSha256) throw new Error('genuine_baseline_publication_gate');
   if (manifest.packages.some((p: any) => p.id === api.id || p.role?.includes('fixture'))) throw new Error('fixture_publication_forbidden');
   return [...manifest.packages.map((p: any) => member(feed, p.file)), member(resolve(directory, manifest.payload.directory), manifest.payload.filename)];
 }
