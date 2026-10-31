@@ -20,6 +20,7 @@ Solus.Logging.slnx
 src/
     Solus.Logging/
     Solus.Logging.Supabase/
+    Solus.Logging.Cli/
     Solus.Telemetry.Contracts/
     SolusAgent.Telemetry/
     SolusAgent.Api/
@@ -49,7 +50,7 @@ docs/
 
 Shared engineering guidance and its resources are loaded from the handbook submodule. [Shared handbook adoption](../00_project/shared-handbook.md) owns initialization and the selected revision; the remaining documentation directories retain project requirements.
 
-The XML solution format follows ContractScribe's .NET solution layout. The five existing Agent production projects, optional mapper and independent Contracts/Logging projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
+The XML solution format follows ContractScribe's .NET solution layout. The five existing Agent production projects, optional mapper and independent Contracts/Logging projects are ordinary `net10.0` libraries. The independent Logging CLI is a non-packable managed executable. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
 
 ## Assembly responsibilities
 
@@ -57,6 +58,7 @@ The XML solution format follows ContractScribe's .NET solution layout. The five 
 | --- | --- | --- |
 | `Solus.Telemetry.Contracts` | Neutral immutable telemetry records, bounded JSON and extension admission. | Agent mechanics, product policy, uploads or database authority. |
 | `Solus.Logging` | Admitted payloads, sink capability, finite delivery policy and safe independent results. | Agent mechanics, product replay, ambient credentials or a durable queue. |
+| `Solus.Logging.Cli` | Bounded stdin/configuration and independent safe delivery JSON through the implemented sink. | Product execution, ambient credentials, release publication or Agent dependencies. |
 | `Solus.Logging.Supabase` | Fixed Data API transport and operator-applied writer-scoped schema/RLS/RPC. | Token provisioning, automatic migrations, arbitrary SQL/table selection or Agent dependencies. |
 | `SolusAgent.Telemetry` | Optional public Agent usage mapping, scoped accounting and current-run summaries. | Runtime enforcement, product acceptance, history discovery, upload or storage. |
 | `SolusAgent.Api` | Outer agent execution contracts, requests, results, events, usage, capabilities, and context envelopes. | A concrete runtime, model SDK, provider wire format, or mandatory tool registry. |
@@ -118,14 +120,15 @@ A single downstream project can begin with these source-level responsibilities. 
 
 ## Neutral telemetry foundation
 
-The [neutral telemetry foundation](telemetry-contract.md) now adds the independently packable `Solus.Telemetry.Contracts` project, with no project/package references, to both solutions. `Solus.Logging.slnx` contains Contracts, packable `Solus.Logging` and `Solus.Logging.Supabase`, and its non-packable `tests/Solus.Logging.Tests` runner. Logging references only Contracts; Supabase references Logging and Contracts. Neither production library adds third-party packages or an Agent edge. The runner references these three libraries, evaluates actual solution membership and rejects Agent project, package and direct assembly edges, including imported project references. Original Agent project edges remain exact, and the legacy five-package release selection is unchanged.
+The [neutral telemetry foundation](telemetry-contract.md) now adds the independently packable `Solus.Telemetry.Contracts` project, with no project/package references, to both solutions. `Solus.Logging.slnx` contains Contracts, packable `Solus.Logging` and `Solus.Logging.Supabase`, the non-packable `Solus.Logging.Cli` executable and its non-packable `tests/Solus.Logging.Tests` runner. Logging references only Contracts; Supabase references Logging and Contracts. Neither production library adds third-party packages or an Agent edge. The CLI references these three libraries. The runner references those libraries and the CLI, evaluates actual solution membership and rejects Agent project, package and direct assembly edges, including imported project references. Original Agent project edges remain exact, and the legacy five-package release selection is unchanged.
 
 The independent Logging reference graph is:
 
 ```text
 Solus.Logging -> Solus.Telemetry.Contracts
 Solus.Logging.Supabase -> Solus.Logging, Solus.Telemetry.Contracts
-Solus.Logging.Tests -> all three implemented Logging-track libraries
+Solus.Logging.Cli -> Solus.Logging, Solus.Logging.Supabase, Solus.Telemetry.Contracts
+Solus.Logging.Tests -> all three implemented Logging-track libraries and CLI
 ```
 
 ## Optional Agent telemetry mapper
@@ -134,7 +137,7 @@ Solus.Logging.Tests -> all three implemented Logging-track libraries
 
 ## Future project changes
 
-The [Agent mapper](telemetry-integration.md) and [bounded Supabase path](../10_workflow/logging-supabase.md) implement mapping and callable storage delivery. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains CLI as a future project; no unimplemented project is registered as a placeholder.
+The [Agent mapper](telemetry-integration.md) and [bounded Supabase path](../10_workflow/logging-supabase.md) implement mapping and callable storage delivery. The [packaged CLI and standalone Action](../10_workflow/logging-action.md) now implement the uploader and candidate payload builder. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains release selection, clean consumption and hosted qualification as later outcomes; no unimplemented project is registered as a placeholder.
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 

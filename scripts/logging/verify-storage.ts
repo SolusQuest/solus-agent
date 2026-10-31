@@ -28,7 +28,7 @@ const hydration = spawnSync(process.execPath, [path.join(platformRoot, 'scripts/
 assert.equal(hydration.status, 0, 'Pinned PostgreSQL platform setup must succeed');
 const password = randomBytes(24).toString('hex');
 const engine = new EmbeddedPostgres({ databaseDir: path.join(owned, 'cluster'), user: 'postgres', password, port,
-    persistent: false, createPostgresUser: false, postgresFlags: ['-h', '127.0.0.1', '-c', 'unix_socket_directories='],
+    persistent: false, createPostgresUser: false, initdbFlags: ['--encoding=UTF8', '--locale=C'], postgresFlags: ['-h', '127.0.0.1', '-c', 'unix_socket_directories='],
     onLog: () => {}, onError: () => {} });
 const connections: pg.Client[] = [];
 let checks = 0;
@@ -60,6 +60,7 @@ const fixture = JSON.parse(await readFile(path.join(root, 'tests/Solus.Logging.T
 try {
     await engine.initialise(); await engine.start();
     const admin = await connect();
+    assert.equal((await admin.query('show server_encoding')).rows[0].server_encoding, 'UTF8');
     console.log((await admin.query('select version() as version')).rows[0].version);
     await admin.query(`create role anon nologin; create role authenticated nologin;
         create role synthetic_client login noinherit password '${password}';

@@ -1,0 +1,44 @@
+name: Solus bounded telemetry upload
+description: Upload one neutral record with an exact Linux x64 CLI payload; delivery is independent of business results.
+inputs:
+  telemetry-json:
+    description: Neutral v1 JSON, at most 64 KiB UTF-8. Empty is a visible skip.
+  telemetry-json-file:
+    description: Optional mutually exclusive same-job regular file under workspace or runner temp, at most 256 KiB. No symlinks.
+  adapter:
+    description: Implemented storage adapter.
+    default: supabase
+  supabase-url:
+    description: HTTPS Supabase project origin.
+  supabase-publishable-key:
+    description: Explicit sb_publishable_ key from secrets or an already-masked value.
+  supabase-access-token:
+    description: Explicit dedicated authenticated ingest JWT from secrets or an already-masked value.
+  strict-delivery:
+    description: Fail only this logging step on delivery failure when exactly true; default warns.
+    default: 'false'
+  maximum-attempts:
+    description: Finite delivery attempts, 1..10.
+    default: '3'
+  timeout-ms:
+    description: CLI total deadline including input and delivery, 1..120000 milliseconds.
+    default: '10000'
+  retry-delay-ms:
+    description: Fixed delivery delay, 0..10000 milliseconds.
+    default: '200'
+  cli-version:
+    description: Exact prepared payload version. No latest or range selection.
+  cli-artifact-url:
+    description: Exact HTTPS payload URL selected by the operator.
+  cli-artifact-sha256:
+    description: Trusted lowercase SHA-256 of the entire compressed payload.
+  artifact-read-token:
+    description: Optional separate masked artifact download bearer token. Never passed to storage or CLI.
+outputs:
+  delivery-status:
+    description: stored, duplicate, skipped, or failed; independent of the product result.
+  diagnostic-code:
+    description: Bounded fixed diagnostic code, with no record, credential or server text.
+runs:
+  using: node24
+  main: main.mjs
