@@ -49,6 +49,8 @@ public sealed class CliTests
     [Theory]
     [InlineData("{}")]
     [InlineData("null")]
+    [InlineData("\uFEFF")]
+    [InlineData("\u00A0")]
     [InlineData("{\"raw-secret\":\"canary\"}")]
     public async Task CliInvalidInputCannotAccessConfigurationOrStorage(string input)
     {

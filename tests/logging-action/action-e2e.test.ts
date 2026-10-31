@@ -130,7 +130,7 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
       const before = [requests, downloads];
       const empty = await action('', { 'INPUT_SUPABASE-URL': '', 'INPUT_CLI-ARTIFACT-URL': '' });
       expect(empty, 'skipped', 'input_unavailable'); assert.ok(empty.stdout.includes('::notice::'));
-      expect(await action('{"secret":"SYNTHETIC_RECORD_CANARY"'), 'failed', 'invalid_record');
+      for (const malformed of ['{"secret":"SYNTHETIC_RECORD_CANARY"', '\uFEFF', '\u00A0']) expect(await action(malformed), 'failed', 'invalid_record');
       assert.deepEqual([requests, downloads], before);
     });
     await t.test('bad configuration fails before acquisition, full .NET record validation fails before storage', async () => {

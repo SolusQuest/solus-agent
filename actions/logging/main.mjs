@@ -40,8 +40,8 @@ export async function runAction(env = process.env, write = text => process.stdou
     if (get(env, 'adapter', 'supabase') !== 'supabase') throw new Error('invalid_config');
     signal = AbortSignal.any([cancellation.signal, AbortSignal.timeout(45000 + timeout)]);
     const input = await recordInput(get(env, 'telemetry-json'), get(env, 'telemetry-json-file'), env);
-    let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(input); } catch { throw new Error('invalid_record'); }
-    if (!text.trim()) { result = { deliveryStatus: 'skipped', diagnosticCode: 'input_unavailable', attempts: 0 }; }
+    let text; try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(input); } catch { throw new Error('invalid_record'); }
+    if (/^[ \t\r\n]*$/.test(text)) { result = { deliveryStatus: 'skipped', diagnosticCode: 'input_unavailable', attempts: 0 }; }
     else {
       let record; try { record = JSON.parse(text); } catch { throw new Error('invalid_record'); }
       if (!record || Array.isArray(record) || typeof record !== 'object') throw new Error('invalid_record');

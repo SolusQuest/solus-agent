@@ -53,7 +53,7 @@ internal static class CliApplication
             }
             if (length > TelemetryLimits.MaximumRecordBytes) return Failed("record_too_large");
             var json = new UTF8Encoding(false, true).GetString(bytes, 0, length);
-            if (string.IsNullOrWhiteSpace(json)) return new("skipped", "input_unavailable");
+            if (json.All(c => c is ' ' or '\t' or '\r' or '\n')) return new("skipped", "input_unavailable");
             if (!TelemetryJson.TryDeserialize(json, out var record, out var diagnostic)) return Failed(diagnostic switch
             {
                 TelemetryDiagnostic.RecordTooLarge => "record_too_large",
