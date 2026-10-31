@@ -10,9 +10,14 @@ permissions:
 jobs:
   logging-contracts:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -63,3 +68,13 @@ jobs:
         run: dotnet build SolusAgent.slnx -c Release --no-restore
       - name: Preserve exact Agent boundaries
         run: dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj -c Release --no-build --filter "FullyQualifiedName~SolusAgent.ContractTests.Architecture"
+      - name: Verify actual Agent mapper and both product compositions
+        run: dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj -c Release --no-build --filter "FullyQualifiedName~Telemetry"
+      - name: Prepare exact four-library and installed CLI candidate with isolated source fixture
+        run: node scripts/logging/pack.ts --version 0.1.0-internal.1 --output artifacts/logging-packages
+      - name: Qualify fresh installed consumers and actual Action CLI storage chain (source-baseline-fixture)
+        run: node scripts/logging/verify-consumers.ts --feed artifacts/logging-packages --manifest artifacts/logging-release.json --scenario all --report artifacts/logging-consumer-proof.json
+      - name: Refuse forbidden topology, missing versions, wrong feeds and fixture publication
+        run: node --test scripts/logging/consumption.test.ts
+      - name: Record exact candidate and separated evidence profile
+        run: cat artifacts/logging-release.json artifacts/logging-consumer-proof.json

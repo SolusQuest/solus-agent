@@ -1,6 +1,6 @@
 # Agent telemetry integration
 
-`SolusAgent.Telemetry` converts public `SolusAgent.Api` usage into the [neutral telemetry v1 contract](telemetry-contract.md). It references only Agent.Api and Contracts. Existing Agent libraries do not reference the mapper, and the mapper has no runtime, Logging, Supabase, network, GitHub environment or product dependency. It implements the mapper outcome of the [L1 plan](../90_roadmap/logging-l1-plan.md); installed telemetry packages, Action delivery and storage qualification remain separate outcomes.
+`SolusAgent.Telemetry` converts public `SolusAgent.Api` usage into the [neutral telemetry v1 contract](telemetry-contract.md). It references only Agent.Api and Contracts. Existing Agent libraries do not reference the mapper, and the mapper has no runtime, Logging, Supabase, network, GitHub environment or product dependency. It implements the mapper outcome of the [L1 plan](../90_roadmap/logging-l1-plan.md); the [candidate consumption track](../10_workflow/logging-package-consumption.md) separately exercises installed packages through the real Action/CLI to controlled storage. Published access and hosted qualification remain separate outcomes.
 
 ## Public conversion and current membership
 

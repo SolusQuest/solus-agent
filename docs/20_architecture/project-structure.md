@@ -32,13 +32,14 @@ tests/
     Solus.Logging.Tests/
     SolusAgent.ApiOnlyConsumer/
     SolusAgent.ContractTests/
+    TelemetryConsumers/ # Independent copied installed-package executables
     ConsumerProbes/
         CustomTools/
         CustomProvider/
         ScribeHost/
         AprHost/
 .github/
-    workflows/          # Ordinary CI
+    workflows/          # Ordinary CI and manual release preparation
 docs/
     00_project/
     10_workflow/
@@ -133,11 +134,11 @@ Solus.Logging.Tests -> all three implemented Logging-track libraries and CLI
 
 ## Optional Agent telemetry mapper
 
-[Agent telemetry integration](telemetry-integration.md) describes the implemented `SolusAgent.Telemetry` boundary. It has exactly two production references: Agent.Api and neutral Contracts, with no external packages. The existing Agent libraries have no mapper dependency. Current-run mapping, provider/ledger separation, restored-round lineage and callable synthetic Scribe/APR producers execute in the existing Agent test runner. Its explicit compatible Agent API baseline is `0.1.0-internal.4`; new telemetry package-set qualification is separate.
+[Agent telemetry integration](telemetry-integration.md) describes the implemented `SolusAgent.Telemetry` boundary. It has exactly two production references: Agent.Api and neutral Contracts, with no external packages. The existing Agent libraries have no mapper dependency. Current-run mapping, provider/ledger separation, restored-round lineage and callable synthetic Scribe/APR producers execute in the existing Agent test runner. Its explicit compatible Agent API baseline is `0.1.0-internal.4`; the separate [telemetry candidate track](../10_workflow/logging-package-consumption.md) now qualifies installed mapper consumers against exact dependencies.
 
 ## Future project changes
 
-The [Agent mapper](telemetry-integration.md) and [bounded Supabase path](../10_workflow/logging-supabase.md) implement mapping and callable storage delivery. The [packaged CLI and standalone Action](../10_workflow/logging-action.md) now implement the uploader and candidate payload builder. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains release selection, clean consumption and hosted qualification as later outcomes; no unimplemented project is registered as a placeholder.
+The [Agent mapper](telemetry-integration.md) and [bounded Supabase path](../10_workflow/logging-supabase.md) implement mapping and callable storage delivery. The [packaged CLI and standalone Action](../10_workflow/logging-action.md) now implement the uploader and candidate payload builder. The [telemetry candidate track](../10_workflow/logging-package-consumption.md) now adds independent pack/clean-consumption tooling and preparation-only release metadata. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains credential-bearing publication, consumer access and hosted qualification as later outcomes; no unimplemented project is registered as a placeholder.
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
