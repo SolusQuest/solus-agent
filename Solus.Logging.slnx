@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj" />
+  </Folder>
+</Solution>

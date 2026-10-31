@@ -8,6 +8,7 @@ public sealed class ProductionProjectGraphTests
 {
     private static readonly IReadOnlyList<string> ProductionProjectNames =
     [
+        "Solus.Telemetry.Contracts",
         "SolusAgent.Api",
         "SolusAgent.Tools.Api",
         "SolusAgent.Runtime.Api",
@@ -17,6 +18,7 @@ public sealed class ProductionProjectGraphTests
 
     private static readonly IReadOnlyList<string> IndependentApiProjectNames =
     [
+        "Solus.Telemetry.Contracts",
         "SolusAgent.Api",
         "SolusAgent.Tools.Api",
     ];
