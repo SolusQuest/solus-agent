@@ -15,7 +15,7 @@ The Action source and the downloaded executable have separate identities. Pin th
   id: telemetry
   if: always()
   timeout-minutes: 4
-  uses: SolusQuest/solus-agent/actions/logging@IMPLEMENTATION_COMMIT
+  uses: SolusQuest/solus-agent/actions/logging@0bf9314c892b8322f09d271eb4ba96db9e4225c6
   with:
     telemetry-json: ${{ steps.product.outputs.telemetry-json }}
     adapter: supabase
@@ -42,7 +42,7 @@ Inline `telemetry-json` is bounded to 64 KiB UTF-8. Linux has a smaller per-envi
 # Producer has already written this same-job file; no cross-job artifact transfer.
 - if: always()
   timeout-minutes: 4
-  uses: SolusQuest/solus-agent/actions/logging@IMPLEMENTATION_COMMIT
+  uses: SolusQuest/solus-agent/actions/logging@0bf9314c892b8322f09d271eb4ba96db9e4225c6
   with:
     telemetry-json-file: ${{ runner.temp }}/product-telemetry.json
     supabase-url: ${{ vars.TELEMETRY_SUPABASE_URL }}
