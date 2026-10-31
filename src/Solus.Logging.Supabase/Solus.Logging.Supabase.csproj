@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Fixed authenticated Supabase telemetry ingestion protocol.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Solus.Logging/Solus.Logging.csproj" />
+    <ProjectReference Include="../Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+    <InternalsVisibleTo Include="Solus.Logging.Tests" />
+  </ItemGroup>
+</Project>

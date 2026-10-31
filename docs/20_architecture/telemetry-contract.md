@@ -1,6 +1,6 @@
 # Neutral telemetry v1 contract
 
-`Solus.Telemetry.Contracts` constructs, validates, serializes and reads an immutable terminal observation of one physical product invocation. It has no Agent, database, transport or third-party package dependency. The independent `Solus.Logging.slnx` currently contains this library and `Solus.Logging.Tests`; the same Contracts project is also registered in `SolusAgent.slnx`. The Agent libraries retain their existing references. This implements the neutral foundation of the [L1 plan](../90_roadmap/logging-l1-plan.md), without implementing its Agent mapper, sink, CLI, Action or publication.
+`Solus.Telemetry.Contracts` constructs, validates, serializes and reads an immutable terminal observation of one physical product invocation. It has no Agent, database, transport or third-party package dependency. The independent `Solus.Logging.slnx` contains this library, the callable bounded Logging/Supabase libraries and `Solus.Logging.Tests`; the same Contracts project is also registered in `SolusAgent.slnx`. The Agent libraries retain their existing references. This implements the neutral foundation of the [L1 plan](../90_roadmap/logging-l1-plan.md), with the separate [bounded Supabase delivery path](../10_workflow/logging-supabase.md); Agent mapping, CLI, Action and publication have their own delivery boundaries.
 
 ## Producer and consumer
 
