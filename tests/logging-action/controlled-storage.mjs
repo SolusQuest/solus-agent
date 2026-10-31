@@ -21,7 +21,7 @@ export async function controlledStorage() {
   const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
   const password = randomBytes(24).toString('hex');
   const engine = new EmbeddedPostgres({ databaseDir: join(owned, 'cluster'), user: 'postgres', password, port,
-    persistent: false, createPostgresUser: false, postgresFlags: ['-h', '127.0.0.1', '-c', 'unix_socket_directories='], onLog: () => {}, onError: () => {} });
+    persistent: false, createPostgresUser: false, initdbFlags: ['--encoding=UTF8', '--locale=C'], postgresFlags: ['-h', '127.0.0.1', '-c', 'unix_socket_directories='], onLog: () => {}, onError: () => {} });
   const connections = []; const servers = [];
   const close = async () => {
     for (const server of servers) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
@@ -36,6 +36,8 @@ export async function controlledStorage() {
       connections.push(client); await client.connect(); return client;
     };
     const admin = await connect('postgres');
+    assert.equal((await admin.query('show server_encoding')).rows[0].server_encoding, 'UTF8');
+    assert.equal((await admin.query("select '{\"value\":\"\\u4f60\\u597d\"}'::jsonb->>'value' as text")).rows[0].text, '你好');
     await admin.query(`create role anon nologin; create role authenticated nologin;
       create role synthetic_client login noinherit password '${password}'; grant authenticated to synthetic_client;
       create schema auth; grant usage on schema auth to authenticated;
