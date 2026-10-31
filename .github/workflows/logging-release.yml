@@ -43,7 +43,7 @@ jobs:
           global-json-file: global.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.21.0
       - name: Install disposable controlled storage harness
         run: npm ci --prefix scripts/logging
       - name: Prepare unuploaded candidates with separate never-published API source fixture

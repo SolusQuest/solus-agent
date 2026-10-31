@@ -22,7 +22,9 @@ export function stageProject(stage: string, id: string, selected: string) {
 }
 
 export function setupStage(stage: string) {
-  copyFileSync(join(root, 'Directory.Build.props'), join(stage, 'Directory.Build.props')); copyFileSync(join(root, 'global.json'), join(stage, 'global.json'));
+  copyFileSync(join(root, 'Directory.Build.props'), join(stage, 'Directory.Build.props'));
+  const sdk = JSON.parse(readFileSync(join(root, 'global.json'), 'utf8')); sdk.sdk.rollForward = 'disable';
+  writeFileSync(join(stage, 'global.json'), JSON.stringify(sdk) + '\n');
 }
 export function packageProperties(selected: string, commit: string, stage: string) {
   return [`-p:Version=${selected}`, `-p:PackageVersion=${selected}`, `-p:InformationalVersion=${selected}`, '-p:IncludeSourceRevisionInInformationalVersion=false',

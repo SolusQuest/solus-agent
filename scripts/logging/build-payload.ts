@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { createArchive, inspectArchive, sha256, exactVersion } from '../../actions/logging/archive.mjs';
@@ -14,7 +14,7 @@ export async function buildPayload(output: string, version: string, project = jo
     const publish = join(temporary, 'publish');
     const built = spawnSync('dotnet', ['publish', project, '-c', 'Release', '-r', 'linux-x64', '--self-contained', 'true',
       '-p:PublishAot=false', '-p:PublishTrimmed=false', '-p:PublishSingleFile=false', `-p:Version=${version}`, `-p:InformationalVersion=${version}`,
-      '-p:IncludeSourceRevisionInInformationalVersion=false', ...properties, '-o', publish], { cwd: root, env, stdio: 'inherit', timeout: 180000, killSignal: 'SIGKILL' });
+      '-p:IncludeSourceRevisionInInformationalVersion=false', ...properties, '-o', publish], { cwd: dirname(project), env, stdio: 'inherit', timeout: 180000, killSignal: 'SIGKILL' });
     if (built.error || built.status !== 0) throw new Error('Payload publish failed.');
     const files = new Map();
     for (const entry of await readdir(publish, { withFileTypes: true })) {

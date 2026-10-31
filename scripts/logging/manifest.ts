@@ -9,7 +9,7 @@ export function packageSetDigest(packages: any[]) {
 }
 export function candidateDigest(manifest: any) {
   return sha(JSON.stringify({ source: manifest.source, version: manifest.version, packageSetSha256: manifest.packageSetSha256,
-    agentApi: manifest.agentApi, payload: { version: manifest.payload.version, sha256: manifest.payload.sha256, runtimeIdentifier: manifest.payload.runtimeIdentifier,
+    agentApi: manifest.agentApi, buildTools: manifest.buildTools, payload: { version: manifest.payload.version, sha256: manifest.payload.sha256, runtimeIdentifier: manifest.payload.runtimeIdentifier,
       manifestSha256: manifest.payload.manifestSha256, ociManifestSha256: manifest.payload.ociManifestSha256, ociConfigSha256: manifest.payload.ociConfigSha256 }, action: manifest.action, destinations: manifest.destinations }));
 }
 export function member(directory: string, name: string) {
@@ -42,6 +42,10 @@ export function validateCandidate(feed: string, directory: string, manifest: any
   const archive = readFileSync(member(payloadDirectory, manifest.payload.filename));
   const verified = inspectArchive(archive, manifest.payload.sha256, manifest.payload.version);
   if (sha(verified.files.get('payload-manifest.json')!) !== manifest.payload.manifestSha256) throw new Error('payload_manifest_hash');
+  const payloadFiles = JSON.parse(verified.files.get('payload-manifest.json')!.toString('utf8')).files;
+  if (JSON.stringify(payloadFiles) !== JSON.stringify(manifest.payload.fileSha256) || manifest.buildTools?.node !== '24.21.0'
+    || manifest.buildTools.dotnetSdk !== '10.0.109'
+    || !Object.hasOwn(JSON.parse(verified.files.get('Solus.Logging.Cli.deps.json')!.toString('utf8')).libraries, manifest.buildTools.runtimePack)) throw new Error('manifest_toolchain');
   const ociBytes = readFileSync(member(payloadDirectory, 'oci-manifest.json')); const oci = JSON.parse(ociBytes.toString('utf8'));
   const config = readFileSync(member(payloadDirectory, 'oci-config.json'));
   if (sha(ociBytes) !== manifest.payload.ociManifestSha256 || sha(config) !== manifest.payload.ociConfigSha256

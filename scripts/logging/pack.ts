@@ -16,6 +16,9 @@ export async function pack(selected: string, output: string, apiArchive?: string
   let completed = false;
   try {
     setupStage(stage); const source = selectedSource();
+    const sdk = run('dotnet', ['--version'], stage, cleanEnvironment(join(stage, 'sdk-home'))).toString().trim();
+    const expectedSdk = JSON.parse(readFileSync(join(root, 'global.json'), 'utf8')).sdk.version;
+    if (sdk !== expectedSdk || process.versions.node !== '24.21.0') throw new Error('candidate_toolchain_requires_pinned_SDK_and_Node24.21.0');
     const feed = join(stage, 'feed'); const baseline = join(stage, 'baseline'); const payload = join(stage, 'payload');
     mkdirSync(feed); mkdirSync(baseline);
     const baselineEvidence = apiArchive ? actualApi(resolve(apiArchive), baseline) : fixtureApi(stage, baseline);
@@ -32,8 +35,10 @@ export async function pack(selected: string, output: string, apiArchive?: string
     }
     const manifest: any = {
       format: 1, status: 'prepared-not-published', source, version: selected,
+      buildTools: { dotnetSdk: sdk, node: process.versions.node, zlib: process.versions.zlib,
+        runtimePack: Object.keys(JSON.parse(verified.files.get('Solus.Logging.Cli.deps.json')!.toString('utf8')).libraries).find(name => name.startsWith('runtimepack.Microsoft.NETCore.App.Runtime.linux-x64/')) },
       packageDirectory: basename(output), packages, packageSetSha256: packageSetDigest(packages), agentApi: api,
-      payload: { ...built, directory: basename(payloadPath), manifestSha256: sha(verified.files.get('payload-manifest.json')!) },
+      payload: { ...built, directory: basename(payloadPath), manifestSha256: sha(verified.files.get('payload-manifest.json')!), fileSha256: JSON.parse(verified.files.get('payload-manifest.json')!.toString('utf8')).files },
       action: { sourceCommit: actionSource, files: actionFiles },
       destinations: { nuget: api.registry, cli: { registry: 'ghcr.io', repository: 'solusquest/solus-logging-cli', versionTag: selected,
         blobUrl: `https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:${built.sha256}`, requiredVisibility: 'private', availability: 'unpublished', authentication: 'operator-supplied repository-scoped registry bearer token' } },
