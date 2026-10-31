@@ -73,6 +73,13 @@ internal static class ExtensionValidation
 
     internal static JsonElement AddCaller(JsonElement existing, JsonElement attributes, string product)
     {
+        try { return AddCallerCore(existing, attributes, product); }
+        catch (Exception error) when (error is InvalidOperationException or JsonException)
+        { throw new ArgumentException("Invalid caller JSON is not admitted."); }
+    }
+
+    private static JsonElement AddCallerCore(JsonElement existing, JsonElement attributes, string product)
+    {
         if (attributes.ValueKind != JsonValueKind.Object) throw new ArgumentException("Caller attributes must be a plain JSON object.");
         using var stream = new LimitedMemoryStream(TelemetryLimits.MaximumExtensionBytes, TelemetryDiagnostic.ExtensionsTooLarge);
         using (var writer = new Utf8JsonWriter(stream))

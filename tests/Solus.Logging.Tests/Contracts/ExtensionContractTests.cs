@@ -118,6 +118,31 @@ public sealed class ExtensionContractTests
         if (unicode) Assert.NotEqual(text.Length, Encoding.UTF8.GetByteCount(text));
     }
 
+    [Theory]
+    [InlineData("{\"synthetic-caller-canary\":\"\\ud800\"}")]
+    [InlineData("{\"\\ud800\":\"synthetic-caller-canary\"}")]
+    public void InvalidCallerUnicodeUsesTheUnavailableConstructionBoundary(string input)
+    {
+        var record = SyntheticTelemetry.Produce();
+        var before = SyntheticTelemetry.Wire(record);
+        using var attributes = JsonDocument.Parse(input);
+        var error = Assert.ThrowsAny<ArgumentException>(() => record.WithCallerAttributes(attributes.RootElement));
+        Assert.DoesNotContain("synthetic-caller-canary", error.Message, StringComparison.Ordinal);
+        Assert.True(error.Message.Length < 128);
+        Assert.Equal(before, SyntheticTelemetry.Wire(record));
+    }
+
+    [Fact]
+    public void ExcessCallerWriterDepthUsesTheSameUnavailableBoundary()
+    {
+        var record = SyntheticTelemetry.Produce();
+        var before = SyntheticTelemetry.Wire(record);
+        var input = "{\"nested\":" + new string('[', 1001) + "0" + new string(']', 1001) + "}";
+        using var attributes = JsonDocument.Parse(input, new JsonDocumentOptions { MaxDepth = 2048 });
+        Assert.ThrowsAny<ArgumentException>(() => record.WithCallerAttributes(attributes.RootElement));
+        Assert.Equal(before, SyntheticTelemetry.Wire(record));
+    }
+
     [Fact]
     public void FixedProductNamespaceAndAllUnicodeInputsAreValidated()
     {
