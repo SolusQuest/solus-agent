@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <Description>Bounded neutral telemetry upload executable.</Description>
+    <Version>0.1.0-internal.1</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Solus.Logging/Solus.Logging.csproj" />
+    <ProjectReference Include="../Solus.Logging.Supabase/Solus.Logging.Supabase.csproj" />
+    <ProjectReference Include="../Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+    <InternalsVisibleTo Include="Solus.Logging.Tests" />
+  </ItemGroup>
+</Project>

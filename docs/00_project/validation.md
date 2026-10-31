@@ -308,3 +308,16 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj -c Re
 The Telemetry tests execute callable Scribe-shaped multi-run and APR-shaped restored-round producers through the real mapper and strict JSON reader. They cover nullable per-axis coverage, no-dispatch zero, retries/failure, current membership and predecessor separation, overlapping provider groups, checked numeric and exact decimal aggregation, sparse settlement, provider claims versus finalized run accounting, independent tools and bounded unavailable-output paths. Evaluated and compiled boundaries restrict the mapper to Api and Contracts; existing Agent edges and the five-package legacy selection remain exact. No provider credentials, upload or product-repository effects occur.
 
 The explicit Agent API compatibility baseline is private `SolusAgent.Api` at `0.1.0-internal.4`. Source builds use the current Api project; compatibility evidence must separately compile the mapper against that installed version. This source-level gate does not establish installed new-mapper packages, independent release dependencies, Action output wiring or storage qualification. Those remain separate [L1 delivery outcomes](../90_roadmap/logging-l1-plan.md#delivery-outcomes-and-gates).
+
+## Logging CLI and standalone Action
+
+The [CLI/Action guide](../10_workflow/logging-action.md) owns input/credential/payload/result limits and evidence boundaries. Run from the repository root:
+
+```text
+dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --filter "FullyQualifiedName~Cli"
+node scripts/logging/build-payload.ts --output artifacts/logging-cli
+npm ci --prefix scripts/logging
+node --test tests/logging-action/*.test.ts
+```
+
+The CLI test command generates an admitted exact 256 KiB fixture under ignored `.local/issue-121/fixtures`; the Node suite requires the built payload. The source builder only prepares an unpublished self-contained Linux x64 archive. On Ubuntu 24.04 x64, tests invoke the actual Action entrypoint and downloaded/verified CLI over controlled HTTPS with the actual migration and real disposable low-privilege PostgreSQL. They cover numeric/extension readback, duplicates/collisions/lost responses, failed producer/no replay, masks and credential separation, invalid artifact/configuration, file/env bounds, stalls, cancellation and a stopped child requiring SIGKILL. On other hosts the Linux execution case is explicitly skipped, so local cross-publish is not process proof; exact-head Ubuntu CI must pass. Logging CI also checks real `if: always()` Action outputs after a failed `continue-on-error` producer, retaining its `outcome: failure`. It does not establish a failed job conclusion or hosted service/release qualification.

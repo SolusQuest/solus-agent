@@ -29,6 +29,32 @@ jobs:
         run: dotnet build Solus.Logging.slnx -c Release --no-restore
       - name: Test Logging contracts, delivery, Supabase and architecture
         run: dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --no-build
+      - name: Test CLI acceptance and emit maximum input fixture
+        run: dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Cli"
+      - name: Build Linux x64 managed CLI payload
+        run: node scripts/logging/build-payload.ts --output artifacts/logging-cli
+      - name: Exercise actual Action and CLI over controlled HTTPS and real SQL
+        run: node --test tests/logging-action/*.test.ts
+      - name: Synthetic prior product failure
+        id: prior-product
+        continue-on-error: true
+        run: exit 7
+      - name: Real local Action after failed product step
+        id: logging-after-failure
+        if: always()
+        uses: ./actions/logging
+        with:
+          telemetry-json: ''
+      - name: Verify original product outcome and visible unavailable input
+        if: always()
+        env:
+          PRIOR_OUTCOME: ${{ steps.prior-product.outcome }}
+          DELIVERY_STATUS: ${{ steps.logging-after-failure.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.logging-after-failure.outputs.diagnostic-code }}
+        run: |
+          test "$PRIOR_OUTCOME" = failure
+          test "$DELIVERY_STATUS" = skipped
+          test "$DIAGNOSTIC_CODE" = input_unavailable
       - name: Verify real disposable PostgreSQL storage
         run: node scripts/logging/verify-storage.ts --local
       - name: Restore Agent
