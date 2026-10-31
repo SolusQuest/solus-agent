@@ -21,6 +21,7 @@ src/
     Solus.Logging/
     Solus.Logging.Supabase/
     Solus.Telemetry.Contracts/
+    SolusAgent.Telemetry/
     SolusAgent.Api/
     SolusAgent.Tools.Api/
     SolusAgent.Runtime.Api/
@@ -48,7 +49,7 @@ docs/
 
 Shared engineering guidance and its resources are loaded from the handbook submodule. [Shared handbook adoption](../00_project/shared-handbook.md) owns initialization and the selected revision; the remaining documentation directories retain project requirements.
 
-The XML solution format follows ContractScribe's .NET solution layout. The five Agent production projects and the independent neutral telemetry/Logging projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
+The XML solution format follows ContractScribe's .NET solution layout. The five existing Agent production projects, optional mapper and independent Contracts/Logging projects are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
 
 ## Assembly responsibilities
 
@@ -57,6 +58,7 @@ The XML solution format follows ContractScribe's .NET solution layout. The five 
 | `Solus.Telemetry.Contracts` | Neutral immutable telemetry records, bounded JSON and extension admission. | Agent mechanics, product policy, uploads or database authority. |
 | `Solus.Logging` | Admitted payloads, sink capability, finite delivery policy and safe independent results. | Agent mechanics, product replay, ambient credentials or a durable queue. |
 | `Solus.Logging.Supabase` | Fixed Data API transport and operator-applied writer-scoped schema/RLS/RPC. | Token provisioning, automatic migrations, arbitrary SQL/table selection or Agent dependencies. |
+| `SolusAgent.Telemetry` | Optional public Agent usage mapping, scoped accounting and current-run summaries. | Runtime enforcement, product acceptance, history discovery, upload or storage. |
 | `SolusAgent.Api` | Outer agent execution contracts, requests, results, events, usage, capabilities, and context envelopes. | A concrete runtime, model SDK, provider wire format, or mandatory tool registry. |
 | `SolusAgent.Tools.Api` | Reusable function-tool definitions, metadata, input preparation, invocation, and result contracts. | A specific agent SDK, model provider, execution loop, or product evidence model. |
 | `SolusAgent.Runtime.Api` | Self-owned runtime extension contracts, including model exchange, runtime configuration, and supported integration hooks. | Runtime execution implementation or product-specific review and documentation contracts. |
@@ -72,6 +74,8 @@ Arrows mean a direct project reference:
 ```mermaid
 flowchart TD
     Contracts[Solus.Telemetry.Contracts]
+    Mapper[SolusAgent.Telemetry] --> Contracts
+    Mapper --> AgentApi[SolusAgent.Api]
     Runtime[SolusAgent.Runtime] --> RuntimeApi[SolusAgent.Runtime.Api]
     Runtime --> AgentApi[SolusAgent.Api]
     Runtime --> ToolsApi[SolusAgent.Tools.Api]
@@ -124,9 +128,13 @@ Solus.Logging.Supabase -> Solus.Logging, Solus.Telemetry.Contracts
 Solus.Logging.Tests -> all three implemented Logging-track libraries
 ```
 
+## Optional Agent telemetry mapper
+
+[Agent telemetry integration](telemetry-integration.md) describes the implemented `SolusAgent.Telemetry` boundary. It has exactly two production references: Agent.Api and neutral Contracts, with no external packages. The existing Agent libraries have no mapper dependency. Current-run mapping, provider/ledger separation, restored-round lineage and callable synthetic Scribe/APR producers execute in the existing Agent test runner. Its explicit compatible Agent API baseline is `0.1.0-internal.4`; new telemetry package-set qualification is separate.
+
 ## Future project changes
 
-The [bounded Supabase path](../10_workflow/logging-supabase.md) adds actual delivery, fixed transport, schema/RLS/RPC and disposable PostgreSQL validation. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains the optional Agent mapper and CLI as separate outcomes; no unimplemented project is registered as a placeholder.
+The [Agent mapper](telemetry-integration.md) and [bounded Supabase path](../10_workflow/logging-supabase.md) implement mapping and callable storage delivery. The [L1 plan](../90_roadmap/logging-l1-plan.md) retains CLI as a future project; no unimplemented project is registered as a placeholder.
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 

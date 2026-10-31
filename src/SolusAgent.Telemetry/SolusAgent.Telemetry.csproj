@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>SolusAgent.Telemetry</PackageId>
+        <Description>Optional truthful Agent usage mapping into neutral telemetry records.</Description>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Compatibility baseline for release preparation; source builds use the current projects. -->
+        <SolusAgentApiBaseline>0.1.0-internal.4</SolusAgentApiBaseline>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../SolusAgent.Api/SolusAgent.Api.csproj" />
+        <ProjectReference Include="../Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+    </ItemGroup>
+</Project>

@@ -13,6 +13,8 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/SolusAgent.Api/SolusAgent.Api.csproj" />
+        <ProjectReference Include="../../src/Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+        <ProjectReference Include="../../src/SolusAgent.Telemetry/SolusAgent.Telemetry.csproj" />
         <ProjectReference Include="../SolusAgent.ApiOnlyConsumer/SolusAgent.ApiOnlyConsumer.csproj" />
         <ProjectReference Include="../../src/SolusAgent.Tools.Api/SolusAgent.Tools.Api.csproj" />
         <ProjectReference Include="../ConsumerProbes/CustomTools/CustomTools.csproj" />
