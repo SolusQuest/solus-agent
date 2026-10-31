@@ -19,13 +19,13 @@ internal static class SyntheticTelemetry
     {
         var providers = rich ? Enum.GetValues<TelemetryCounterKind>().SelectMany(kind => Enum.GetValues<TelemetryCounterRelationship>()
             .Where(relationship => kind != TelemetryCounterKind.UncachedInput || relationship != TelemetryCounterRelationship.IncludedInOutput)
-            .Select(relationship => new TelemetryProviderCounter(kind, relationship, Known(1), 2, 2))).ToArray() : [];
+            .Select(relationship => new TelemetryProviderCounter(kind, relationship, new(1, TelemetryMeasurementCoverage.Partial), 2, 2))).ToArray() : [];
         var accounting = rich ? Enum.GetValues<TelemetryAccountingSource>().SelectMany(source => Enum.GetValues<TelemetryAccountingKind>()
             .Select(kind => new TelemetryAccountingObservation(source, kind,
                 new(kind == TelemetryAccountingKind.RemainingAllowance ? -1 : 0, TelemetryAccountingKnowledge.Known),
                 new(0, TelemetryAccountingKnowledge.Known)))).ToArray() : [];
         return new(id ?? Guid.NewGuid(), TelemetryInventoryCoverage.Complete, Known(long.MaxValue), Known(4),
-            1, 2, new(3, 2, 0, 1), providers, accounting, rich ? TelemetrySettlement.Mixed : null,
+            1, rich ? 6 : 2, new(3, 2, 0, 1), providers, accounting, rich ? TelemetrySettlement.Mixed : null,
             rich ? [new(TelemetryAccountingSource.ProviderClaim, "USD", decimal.MaxValue, TelemetryAccountingKnowledge.Provisional)] : []);
     }
 

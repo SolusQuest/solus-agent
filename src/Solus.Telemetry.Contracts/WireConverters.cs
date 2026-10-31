@@ -42,9 +42,19 @@ internal sealed class IdentityConverter : JsonConverter<Guid>
 
 internal sealed class UtcConverter : JsonConverter<DateTimeOffset>
 {
-    public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        reader.TokenType == JsonTokenType.String && reader.TryGetDateTimeOffset(out var value) && value.Offset == TimeSpan.Zero
-            ? value : throw new JsonException("A UTC timestamp is required.");
+    public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("An explicit UTC timestamp is required.");
+        var text = reader.GetString()!;
+        // DateTimeOffset otherwise gives offset-free input the host's local timezone.
+        var utcSuffixLength = text.EndsWith("Z", StringComparison.Ordinal) ? 1 : text.EndsWith("+00:00", StringComparison.Ordinal) ? 6 : 0;
+        var fraction = text.IndexOf('.');
+        // DateTimeOffset has seven fractional digits; do not silently truncate a more precise instant.
+        if (utcSuffixLength == 0 || fraction >= 0 && text.Length - utcSuffixLength - fraction - 1 > 7
+            || !reader.TryGetDateTimeOffset(out var value) || value.Offset != TimeSpan.Zero)
+            throw new JsonException("An explicit UTC timestamp is required.");
+        return value;
+    }
     public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString("O", CultureInfo.InvariantCulture));
 }
 

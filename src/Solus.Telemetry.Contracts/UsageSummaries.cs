@@ -159,6 +159,18 @@ public sealed class TelemetryRunSummary
             throw new ArgumentException("Summary groups must be unique.");
         if (inventoryCoverage == TelemetryInventoryCoverage.Unavailable && ProviderCounters.Count != 0)
             throw new ArgumentException("Unavailable inventory cannot supply provider groups.");
+        if (physicalAttempts is long physicalCount)
+            foreach (var group in ProviderCounters.GroupBy(counter => counter.Kind))
+            {
+                long reported = 0;
+                foreach (var counter in group)
+                {
+                    // One kind can occur at most once per physical attempt, across all relationships.
+                    if (counter.ReportedAttempts > physicalCount - reported)
+                        throw new ArgumentException("Provider kind groups exceed physical inventory.");
+                    reported = checked(reported + counter.ReportedAttempts);
+                }
+            }
         foreach (var counter in ProviderCounters)
         {
             if (counter.ReportedAttempts > physicalAttempts
@@ -171,9 +183,8 @@ public sealed class TelemetryRunSummary
                 TelemetryCounterRelationship.IncludedInOutput => outputTokens,
                 _ => null,
             };
-            if (counter.Observation.Coverage == TelemetryMeasurementCoverage.Complete && parent?.Coverage == TelemetryMeasurementCoverage.Complete
-                && counter.Observation.Value > parent.Value)
-                throw new ArgumentException("Complete provider subset exceeds its complete parent.");
+            if (parent?.Coverage == TelemetryMeasurementCoverage.Complete && counter.Observation.Value > parent.Value)
+                throw new ArgumentException("Known provider subset exceeds its complete parent.");
         }
         if (providerSettlement.HasValue) Validation.Defined(providerSettlement.Value);
         ProviderSettlement = providerSettlement;
