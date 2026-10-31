@@ -4,6 +4,8 @@ Status: M0-M4 implementation is present; the M5 first private publication, indep
 
 ## Target and ownership
 
+The separately planned [L1 telemetry and logging prerelease](logging-l1-plan.md) introduces a neutral telemetry contract and independent Logging solution with an optional Agent mapper. It does not reopen M0-M5 or change their historical acceptance. L1 owns its package/Action delivery and storage qualification; full CS/APR adoption remains downstream.
+
 Deliver a versioned 0.x experimental prerelease that agentic-pr-review (APR) and ContractScribe can pin to begin migration. It includes the application-facing API, reusable tool API, self-owned runtime extension API, the managed runtime, one actual model-provider adapter, budget and usage mechanics, and complete runtime-context saving and restoration.
 
 The release boundary is downstream consumability. Actual migration, product acceptance, product defaults, and downstream releases remain owned by each downstream repository. The first SolusAgent release does not establish that either product has migrated or that the public APIs are stable.
