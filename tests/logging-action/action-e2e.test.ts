@@ -6,6 +6,7 @@ import { readFile, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { controlledStorage } from './controlled-storage.mjs';
 import { createArchive, inspectArchive, sha256 } from '../../actions/logging/archive.mjs';
+import { escapeCommand } from '../../actions/logging/main.mjs';
 import { recordInput, supportedHost } from '../../actions/logging/input.mjs';
 
 const linux = await supportedHost();
@@ -55,7 +56,7 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
         const status = (await backend.writer.query('select public.ingest_telemetry($1::jsonb) as status', [raw])).rows[0].status;
         if (mode === 'lost') { mode = 'normal'; req.socket.destroy(); return; }
         res.end(JSON.stringify(status));
-      } catch (error) { res.writeHead(error.code === '23505' ? 409 : 400); res.end('SYNTHETIC_SERVER_CANARY'); }
+      } catch (error) { t.diagnostic(`Controlled SQL code: ${/^[0-9A-Z]{5}$/.test(error.code) ? error.code : 'unknown'}`); res.writeHead(error.code === '23505' ? 409 : 400); res.end('SYNTHETIC_SERVER_CANARY'); }
     });
     const verified = inspectArchive(archive, report.sha256, report.version);
     const wrong = { ...verified.manifest, version: '0.1.0-internal.2' };
@@ -83,14 +84,16 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
       assert.equal(finished.error, undefined); assert.equal(finished.signal, null); assert.equal(stderr, '');
       const safeOutput = stdout.split('\n').filter(line => !line.startsWith('::add-mask::')).join('\n');
       for (const canary of [key, token, readToken, 'SYNTHETIC_SERVER_CANARY', 'SYNTHETIC_RECORD_CANARY']) assert.ok(!safeOutput.includes(canary), 'No canary outside mask control commands.');
-      assert.ok(stdout.includes(`::add-mask::${key}`)); assert.ok(stdout.includes(`::add-mask::${token}`));
+      for (const name of ['SUPABASE-PUBLISHABLE-KEY', 'SUPABASE-ACCESS-TOKEN', 'ARTIFACT-READ-TOKEN']) {
+        const value = env[`INPUT_${name}`]; if (value && value.length <= 8192) assert.ok(stdout.includes(`::add-mask::${escapeCommand(value)}`));
+      }
       const outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').map(line => line.split('=')));
       assert.deepEqual(Object.keys(outputs).sort(), ['delivery-status', 'diagnostic-code']);
       assert.ok((await readFile(output, 'utf8')).length < 100);
       return { ...finished, stdout: safeOutput, outputs, elapsed: performance.now() - started };
     }
     const expect = (actual, status, code, exit = 0) => {
-      assert.equal(actual.code, exit); assert.equal(actual.outputs['delivery-status'], status); assert.equal(actual.outputs['diagnostic-code'], code);
+      assert.equal(actual.code, exit); assert.equal(actual.outputs['diagnostic-code'], code); assert.equal(actual.outputs['delivery-status'], status);
     };
 
     await t.test('stored/duplicate/collision retain identity and full nested JSONB, Int64, null and partial coverage', async () => {
