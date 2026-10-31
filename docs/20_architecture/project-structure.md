@@ -19,6 +19,7 @@ SolusAgent.slnx
 Solus.Logging.slnx
 src/
     Solus.Telemetry.Contracts/
+    SolusAgent.Telemetry/
     SolusAgent.Api/
     SolusAgent.Tools.Api/
     SolusAgent.Runtime.Api/
@@ -46,13 +47,14 @@ docs/
 
 Shared engineering guidance and its resources are loaded from the handbook submodule. [Shared handbook adoption](../00_project/shared-handbook.md) owns initialization and the selected revision; the remaining documentation directories retain project requirements.
 
-The XML solution format follows ContractScribe's .NET solution layout. The five Agent production projects and neutral Contracts project are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
+The XML solution format follows ContractScribe's .NET solution layout. The five existing Agent production projects, optional mapper and neutral Contracts project are ordinary `net10.0` libraries. Managed execution is the default; the shared build configuration does not require Native AOT or trimming.
 
 ## Assembly responsibilities
 
 | Project / assembly / root namespace | Owns when implemented | Must not own |
 | --- | --- | --- |
 | `Solus.Telemetry.Contracts` | Neutral immutable telemetry records, bounded JSON and extension admission. | Agent mechanics, product policy, uploads or database authority. |
+| `SolusAgent.Telemetry` | Optional public Agent usage mapping, scoped accounting and current-run summaries. | Runtime enforcement, product acceptance, history discovery, upload or storage. |
 | `SolusAgent.Api` | Outer agent execution contracts, requests, results, events, usage, capabilities, and context envelopes. | A concrete runtime, model SDK, provider wire format, or mandatory tool registry. |
 | `SolusAgent.Tools.Api` | Reusable function-tool definitions, metadata, input preparation, invocation, and result contracts. | A specific agent SDK, model provider, execution loop, or product evidence model. |
 | `SolusAgent.Runtime.Api` | Self-owned runtime extension contracts, including model exchange, runtime configuration, and supported integration hooks. | Runtime execution implementation or product-specific review and documentation contracts. |
@@ -68,6 +70,8 @@ Arrows mean a direct project reference:
 ```mermaid
 flowchart TD
     Contracts[Solus.Telemetry.Contracts]
+    Mapper[SolusAgent.Telemetry] --> Contracts
+    Mapper --> AgentApi[SolusAgent.Api]
     Runtime[SolusAgent.Runtime] --> RuntimeApi[SolusAgent.Runtime.Api]
     Runtime --> AgentApi[SolusAgent.Api]
     Runtime --> ToolsApi[SolusAgent.Tools.Api]
@@ -112,9 +116,13 @@ A single downstream project can begin with these source-level responsibilities. 
 
 The [neutral telemetry foundation](telemetry-contract.md) now adds the independently packable `Solus.Telemetry.Contracts` project, with no project/package references, to both solutions. `Solus.Logging.slnx` currently contains only Contracts and its non-packable `tests/Solus.Logging.Tests` runner. That runner references Contracts, evaluates actual solution membership and rejects Agent project, package and direct assembly edges, including imported project references. Original Agent project edges remain exact, and the legacy five-package release selection is unchanged.
 
+## Optional Agent telemetry mapper
+
+[Agent telemetry integration](telemetry-integration.md) describes the implemented `SolusAgent.Telemetry` boundary. It has exactly two production references: Agent.Api and neutral Contracts, with no external packages. The existing Agent libraries have no mapper dependency. Current-run mapping, provider/ledger separation, restored-round lineage and callable synthetic Scribe/APR producers execute in the existing Agent test runner. Its explicit compatible Agent API baseline is `0.1.0-internal.4`; new telemetry package-set qualification is separate.
+
 ## Future project changes
 
-The [L1 plan](../90_roadmap/logging-l1-plan.md) retains four future projects: the optional Agent mapper and Logging, Supabase and CLI boundaries. They are not registered as placeholders. Follow-on work adds actual project membership, tests and independent packaging/CI selection together.
+The [L1 plan](../90_roadmap/logging-l1-plan.md) retains the future Logging, Supabase and CLI boundaries. They are not registered as placeholders. Follow-on work adds actual project membership, tests and independent packaging/CI selection together.
 
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
