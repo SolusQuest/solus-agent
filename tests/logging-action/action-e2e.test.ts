@@ -75,7 +75,8 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
       // Native Action input names retain hyphens; telemetry-json does too.
       env['INPUT_TELEMETRY-JSON'] = text; delete env.INPUT_TELEMETRY_JSON;
       const started = performance.now();
-      child = spawn(process.execPath, ['actions/logging/main.mjs'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      try { child = spawn(process.execPath, ['actions/logging/main.mjs'], { env, stdio: ['ignore', 'pipe', 'pipe'] }); }
+      catch (error) { if (settings.spawnError) return { error }; throw error; }
       let stdout = ''; let stderr = ''; child.stdout.on('data', b => { stdout += b; }); child.stderr.on('data', b => { stderr += b; });
       const timer = setTimeout(() => child.kill('SIGKILL'), 15000);
       const finished = await new Promise(resolve => { child.on('error', error => resolve({ error })); child.on('close', (code, signal) => resolve({ code, signal })); });
