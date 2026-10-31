@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Bounded delivery of admitted neutral telemetry records.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj" />
+  </ItemGroup>
+</Project>

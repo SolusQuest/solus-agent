@@ -194,17 +194,19 @@ The ordinary Linux push/PR job must actually execute these same child-process ch
 
 ## Neutral telemetry and independent Logging foundation
 
-The [neutral telemetry v1 contract](../20_architecture/telemetry-contract.md) is implemented in the shared Contracts project. Logging builds and tests independently without Agent assemblies or credentials:
+The [neutral telemetry v1 contract](../20_architecture/telemetry-contract.md) is implemented in the shared Contracts project. The callable [bounded Supabase path](../10_workflow/logging-supabase.md) adds Logging delivery, fixed transport and operator-applied SQL/RLS/RPC. Logging builds and tests independently without Agent assemblies or production credentials:
 
 ```text
 dotnet restore Solus.Logging.slnx
 dotnet build Solus.Logging.slnx -c Release --no-restore
-dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Contracts|FullyQualifiedName~Architecture"
+dotnet test tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj -c Release --no-build
+npm ci --prefix scripts/logging
+node scripts/logging/verify-storage.ts --local
 ```
 
 Contracts tests exercise actual producer/consumer read/write with distinct current runs, complete/partial/unavailable/overflow measurements, exact Int64/decimal strings, provider/accounting separation, immutable JSON, caller-only composition and strict input rejection. Exact/one-over tests cover record/extension UTF-8 bytes, properties, container depth and run membership. Architecture checks derive Logging solution membership and evaluate project, package, direct assembly and compile items; synthetic direct/imported Agent project edges, Agent package references and Agent assembly references must fail the same assertion. The same Contracts path is registered in both solutions; future L1 projects have no placeholder registrations.
 
-Run the existing Agent restore/build and Architecture filter after solution/discovery changes, then the full Agent runner. Existing Agent edges and the explicit legacy five-package selection remain exact; run the package foundation checks when changing their discovery or packability assertions. `.github/workflows/logging-ci.yml` runs the Logging chain and focused Agent architecture checks on ordinary push/pull_request with read-only contents permission. Existing Agent CI remains complete and independent. Source-level telemetry tests do not prove actual Agent mapping, installed-package consumption, uploader behavior or live storage.
+Run the existing Agent restore/build and Architecture filter after solution/discovery changes, then the full Agent runner. Existing Agent edges and the explicit legacy five-package selection remain exact; run the package foundation checks when changing their discovery or packability assertions. `.github/workflows/logging-ci.yml` runs the Logging chain and focused Agent architecture checks on ordinary push/pull_request with read-only contents permission. Existing Agent CI remains complete and independent. Delivery/Supabase tests exercise the callable HTTP protocol, finite attempts/deadlines/cancellation and safe diagnostics. The local verifier applies the actual migration to disposable native PostgreSQL and proves effective grants/RLS, overlapping duplicate/collision inserts, complete JSONB readback and seventh-digit timestamp fidelity with synthetic identities. Neutral Contracts tests alone do not prove Agent mapping or delivery; their dedicated suites own that evidence. These source-level checks do not prove installed telemetry-package consumption or hosted Supabase authentication/live storage.
 
 ## Continuous integration
 

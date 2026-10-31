@@ -19,6 +19,8 @@ public sealed class LoggingBoundaryTests
     }
 
     private static string Contract => Path.Combine(Root, "src/Solus.Telemetry.Contracts/Solus.Telemetry.Contracts.csproj");
+    private static string Logging => Path.Combine(Root, "src/Solus.Logging/Solus.Logging.csproj");
+    private static string Supabase => Path.Combine(Root, "src/Solus.Logging.Supabase/Solus.Logging.Supabase.csproj");
     private static string Runner => Path.Combine(Root, "tests/Solus.Logging.Tests/Solus.Logging.Tests.csproj");
     private static string[] Membership(string name) => XDocument.Load(Path.Combine(Root, name)).Descendants("Project")
         .Select(p => Path.GetFullPath(p.Attribute("Path")!.Value, Root)).Order(StringComparer.Ordinal).ToArray();
@@ -27,7 +29,7 @@ public sealed class LoggingBoundaryTests
     public void SolutionsShareOneRealNeutralProjectAndLoggingHasOnlyItsImplementedProjects()
     {
         var logging = Membership("Solus.Logging.slnx");
-        Assert.Equal(new[] { Contract, Runner }.Order(StringComparer.Ordinal), logging);
+        Assert.Equal(new[] { Contract, Logging, Supabase, Runner }.Order(StringComparer.Ordinal), logging);
         Assert.Contains(Contract, Membership("SolusAgent.slnx"));
         foreach (var project in logging)
         {
@@ -37,17 +39,21 @@ public sealed class LoggingBoundaryTests
             Assert.Equal("net10.0", properties.GetProperty("TargetFramework").GetString());
             Assert.Equal("false", properties.GetProperty("PublishAot").GetString());
             Assert.Equal("false", properties.GetProperty("PublishTrimmed").GetString());
-            Assert.Equal(project == Contract ? "true" : "false", properties.GetProperty("IsPackable").GetString());
+            Assert.Equal(project == Runner ? "false" : "true", properties.GetProperty("IsPackable").GetString());
             Assert.All(evaluation.RootElement.GetProperty("Items").GetProperty("Compile").EnumerateArray(), item =>
                 Assert.True(Within(item.GetProperty("FullPath").GetString()!, Path.GetDirectoryName(project)!)));
+            var references = evaluation.RootElement.GetProperty("Items").GetProperty("ProjectReference").EnumerateArray()
+                .Select(item => Path.GetFullPath(item.GetProperty("Identity").GetString()!, Path.GetDirectoryName(project)!)).Order(StringComparer.Ordinal);
+            Assert.Equal((project == Contract ? Array.Empty<string>() : project == Logging ? [Contract] : project == Supabase ? [Contract, Logging] : new[] { Contract, Logging, Supabase }).Order(StringComparer.Ordinal), references);
+            if (project != Runner) Assert.Empty(evaluation.RootElement.GetProperty("Items").GetProperty("PackageReference").EnumerateArray());
             if (project == Contract)
             {
                 Assert.Empty(evaluation.RootElement.GetProperty("Items").GetProperty("ProjectReference").EnumerateArray());
                 Assert.Empty(evaluation.RootElement.GetProperty("Items").GetProperty("PackageReference").EnumerateArray());
             }
         }
-        var names = typeof(Solus.Telemetry.Contracts.TelemetryRecord).Assembly.GetReferencedAssemblies();
-        Assert.DoesNotContain(names, n => n.Name?.StartsWith("SolusAgent.", StringComparison.Ordinal) == true);
+        foreach (var assembly in new[] { typeof(Solus.Telemetry.Contracts.TelemetryRecord).Assembly, typeof(TelemetryDelivery).Assembly, typeof(Solus.Logging.Supabase.SupabaseTelemetrySink).Assembly })
+            Assert.DoesNotContain(assembly.GetReferencedAssemblies(), n => n.Name?.StartsWith("SolusAgent.", StringComparison.Ordinal) == true);
     }
 
     [Theory]

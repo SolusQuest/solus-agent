@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "eventId": "20000000-0000-0000-0000-000000000001",
+  "invocationId": "synthetic-invocation",
+  "occurredAt": "2026-01-02T23:59:59.9999997+00:00",
+  "product": "scribe",
+  "productVersion": "1.0-test",
+  "execution": {
+    "repository": "synthetic/repository",
+    "workflowRunId": "9007199254740993",
+    "runAttempt": 2,
+    "job": "test",
+    "invocationKey": "matrix-a"
+  },
+  "outcome": {
+    "kind": "partial",
+    "code": "synthetic.partial"
+  },
+  "usage": {
+    "inventoryCoverage": "complete",
+    "runs": [
+      {
+        "executionId": "30000000-0000-0000-0000-000000000001",
+        "inventoryCoverage": "complete",
+        "inputTokens": {
+          "value": "9223372036854775807",
+          "coverage": "complete"
+        },
+        "outputTokens": {
+          "value": null,
+          "coverage": "unavailable"
+        },
+        "logicalCalls": "1",
+        "physicalAttempts": "2",
+        "tools": {
+          "admitted": "3",
+          "invoked": "2",
+          "reservedUnstarted": null,
+          "releasedUnstarted": "1"
+        },
+        "providerCounters": [
+          {
+            "kind": "reasoning",
+            "relationship": "independent",
+            "observation": {
+              "value": null,
+              "coverage": "overflow"
+            },
+            "reportedAttempts": "2",
+            "measuredAttempts": "2"
+          }
+        ],
+        "accounting": [
+          {
+            "source": "runLedger",
+            "kind": "remainingAllowance",
+            "input": {
+              "value": "-1",
+              "knowledge": "known"
+            },
+            "output": {
+              "value": null,
+              "knowledge": "unavailable"
+            }
+          }
+        ],
+        "providerSettlement": "mixed",
+        "estimatedCosts": [
+          {
+            "source": "providerClaim",
+            "currency": "USD",
+            "amount": "0.12345",
+            "knowledge": "provisional"
+          }
+        ]
+      }
+    ]
+  },
+  "extensions": {
+    "scribe": {
+      "ratio": 0.125,
+      "precise": "9007199254740993",
+      "nested": [
+        true,
+        false,
+        null,
+        {
+          "text": "你好😀",
+          "values": [
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "historicalAccounting": {
+        "inputTokens": "7"
+      }
+    },
+    "caller": {
+      "team": "test",
+      "costCenter": "engineering"
+    }
+  }
+}
