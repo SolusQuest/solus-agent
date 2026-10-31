@@ -183,8 +183,9 @@ public sealed class TelemetryRunSummary
                 TelemetryCounterRelationship.IncludedInOutput => outputTokens,
                 _ => null,
             };
-            if (parent?.Coverage == TelemetryMeasurementCoverage.Complete && counter.Observation.Value > parent.Value)
-                throw new ArgumentException("Known provider subset exceeds its complete parent.");
+            if (parent?.Coverage == TelemetryMeasurementCoverage.Complete
+                && (counter.Observation.Coverage == TelemetryMeasurementCoverage.Overflow || counter.Observation.Value > parent.Value))
+                throw new ArgumentException("Provider subset exceeds its complete parent.");
         }
         if (providerSettlement.HasValue) Validation.Defined(providerSettlement.Value);
         ProviderSettlement = providerSettlement;
