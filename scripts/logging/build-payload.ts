@@ -23,7 +23,11 @@ export async function buildPayload(output: string, version: string, project = jo
     }
     const hashes = Object.fromEntries([...files].sort(([a], [b]) => a.localeCompare(b, 'en')).map(([name, bytes]) => [name, sha256(bytes)]));
     files.set('payload-manifest.json', Buffer.from(JSON.stringify({ format: 1, version, runtimeIdentifier: 'linux-x64', entrypoint: 'Solus.Logging.Cli', files: hashes }) + '\n'));
-    const archive = createArchive(files); const digest = sha256(archive);
+    const archive = createArchive(files);
+    // RFC 1952 OS=255 keeps identical payloads identical across build hosts.
+    // This metadata byte does not change the deflate body or its CRC/size.
+    archive[9] = 255;
+    const digest = sha256(archive);
     inspectArchive(archive, digest, version);
     await mkdir(output, { recursive: true });
     const filename = `solus-logging-cli-${version}-linux-x64.tar.gz`;

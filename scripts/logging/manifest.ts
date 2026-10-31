@@ -40,6 +40,7 @@ export function validateCandidate(feed: string, directory: string, manifest: any
   const payloadDirectory = resolve(directory, manifest.payload.directory);
   if (!inside(payloadDirectory, directory) || lstatSync(payloadDirectory).isSymbolicLink() || manifest.payload.runtimeIdentifier !== 'linux-x64' || manifest.payload.version !== manifest.version) throw new Error('manifest_payload');
   const archive = readFileSync(member(payloadDirectory, manifest.payload.filename));
+  if (archive[9] !== 255) throw new Error('payload_portable_gzip');
   const verified = inspectArchive(archive, manifest.payload.sha256, manifest.payload.version);
   if (sha(verified.files.get('payload-manifest.json')!) !== manifest.payload.manifestSha256) throw new Error('payload_manifest_hash');
   const payloadFiles = JSON.parse(verified.files.get('payload-manifest.json')!.toString('utf8')).files;

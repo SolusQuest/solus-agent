@@ -24,7 +24,7 @@ test('canonical OPC metadata preserves semantic package entries and is idempoten
 });
 
 test('candidate selection, integrity and publication input roles fail closed', async () => {
-  validateCandidate(feed, directory, manifest);
+  assert.equal(validateCandidate(feed, directory, manifest).archive[9], 255);
   const bad = structuredClone(manifest); bad.packages[0].sha256 = '0'.repeat(64);
   assert.throws(() => validateCandidate(feed, directory, bad), /candidate_hash/);
   const range = structuredClone(manifest); range.packages[1].dependencies[api.id] = '0.1.0-internal.3';
