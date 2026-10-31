@@ -26,6 +26,8 @@ Shared links below open the adopted Book commit on GitHub. In an initialized che
 
 ## Architecture
 
+- [L1 telemetry and logging plan](90_roadmap/logging-l1-plan.md): planned independent solutions, shared telemetry contract, Supabase storage and consumer release boundary; not implemented behavior.
+
 - [Architecture](20_architecture/architecture.md).
 - [Project structure](20_architecture/project-structure.md).
 - [Security boundary](20_architecture/security-boundary.md).

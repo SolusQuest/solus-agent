@@ -105,6 +105,8 @@ A single downstream project can begin with these source-level responsibilities. 
 
 ## Future project changes
 
+The [L1 telemetry and logging plan](../90_roadmap/logging-l1-plan.md) proposes five additional projects across two solutions. The neutral Contracts project is shared, the Agent mapper depends on `SolusAgent.Api`, and Logging has no Agent dependency. These are planned optional boundaries, not current project registrations or additions to the existing five-package release set. L1 implementation must update the actual solution membership, architecture tests and separate packaging/CI selection together.
+
 Add a project only for a current independently useful dependency, implementation, or distribution boundary. Explain its classification, allowed references, new dependencies, affected consumers, and relevant validation.
 
 Additional providers, agent implementations, product tool adapters, generators, further test runners and convenience hosting packages remain future work. The five current production assemblies are the selected five internal packages; no new production reference edge or hosting package is added.
