@@ -9,6 +9,7 @@ public sealed class ProductionProjectGraphTests
     private static readonly IReadOnlyList<string> ProductionProjectNames =
     [
         "Solus.Telemetry.Contracts",
+        "SolusAgent.Telemetry",
         "SolusAgent.Api",
         "SolusAgent.Tools.Api",
         "SolusAgent.Runtime.Api",
@@ -127,6 +128,8 @@ public sealed class ProductionProjectGraphTests
         ProjectBoundaryAssertions.AssertExactProjectReferences(evaluation,
         [
             RepositoryLayout.ProductionProjectPath("SolusAgent.Api"),
+            RepositoryLayout.ProductionProjectPath("Solus.Telemetry.Contracts"),
+            RepositoryLayout.ProductionProjectPath("SolusAgent.Telemetry"),
             Path.Combine(RepositoryLayout.Root, "tests", "SolusAgent.ApiOnlyConsumer", "SolusAgent.ApiOnlyConsumer.csproj"),
             RepositoryLayout.ProductionProjectPath("SolusAgent.Tools.Api"),
             CustomToolsProjectPath,

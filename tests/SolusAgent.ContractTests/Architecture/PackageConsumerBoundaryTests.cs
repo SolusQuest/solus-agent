@@ -77,7 +77,7 @@ public sealed class PackageConsumerBoundaryTests
         var sourceProjects = XDocument.Load(RepositoryLayout.SolutionPath).Descendants("Project")
             .Select(element => Path.GetFullPath(element.Attribute("Path")!.Value, RepositoryLayout.Root))
             .Where(path => ProjectBoundaries.IsWithinRoot(path, Path.Combine(RepositoryLayout.Root, "src"))).ToArray();
-        Assert.Equal(legacyNames.Append("Solus.Telemetry.Contracts").Order(StringComparer.Ordinal),
+        Assert.Equal(legacyNames.Concat(["Solus.Telemetry.Contracts", "SolusAgent.Telemetry"]).Order(StringComparer.Ordinal),
             sourceProjects.Select(Path.GetFileNameWithoutExtension).Order(StringComparer.Ordinal));
         var production = sourceProjects.Where(path => legacyNames.Contains(Path.GetFileNameWithoutExtension(path), StringComparer.Ordinal)).ToArray();
         Assert.Equal(5, production.Length);
