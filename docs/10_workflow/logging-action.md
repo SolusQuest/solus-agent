@@ -15,7 +15,7 @@ The Action source and the downloaded executable have separate identities. Pin th
   id: telemetry
   if: always()
   timeout-minutes: 4
-  uses: SolusQuest/solus-agent/actions/logging@0bf9314c892b8322f09d271eb4ba96db9e4225c6
+  uses: SolusQuest/solus-agent/actions/logging@c35f54aa57300152c1ae68d269377e7a4e3f40a9
   with:
     telemetry-json: ${{ steps.product.outputs.telemetry-json }}
     adapter: supabase
@@ -32,7 +32,7 @@ The Action source and the downloaded executable have separate identities. Pin th
 
 `delivery-status` is exactly `stored`, `duplicate`, `skipped` or `failed`. `diagnostic-code` is a fixed bounded code. Empty/JSON-whitespace input produces a visible `skipped` / `input_unavailable` notice with no artifact acquisition or storage request. Missing telemetry is unavailable, never fabricated zero usage. A present malformed record fails. Default delivery failure emits a warning and exits successfully; `strict-delivery: 'true'` fails this logging step. It does not rerun the product or replace its business result. A prior failed job remains failed under normal GitHub workflow rules. The wrapper cannot recover outputs that an earlier killed process never produced.
 
-GitHub renders Action inputs before the JavaScript starts. Supply credentials through the `secrets` context or values already masked by the producer; the wrapper masks them before its own use, which cannot retroactively mask runner pre-start logs. Keep confidential content out of telemetry and follow the neutral extension admission policy. The wrapper emits no record, child output, raw server body, URL or exception. Mask control commands are the only intentional credential-bearing protocol output. Optional artifact-read authority is never forwarded to the CLI/storage; storage credentials never accompany artifact downloads. No ambient `GITHUB_TOKEN`, proxy, cookie, database password or credential refresh is discovered.
+GitHub renders Action inputs before the JavaScript starts. Supply credentials through the `secrets` context or values already masked by the producer; sensitive signed artifact URLs also require that treatment. The wrapper masks credential inputs before its own use, which cannot retroactively mask runner pre-start logs. Keep confidential content out of telemetry and follow the neutral extension admission policy. The wrapper emits no record, child output, raw server body, URL or exception. Mask control commands are the only intentional credential-bearing protocol output. Optional artifact-read authority is never forwarded to the CLI/storage; storage credentials never accompany artifact downloads. No ambient `GITHUB_TOKEN`, proxy, cookie, database password or credential refresh is discovered.
 
 ## Input and finite limits
 
@@ -42,7 +42,7 @@ Inline `telemetry-json` is bounded to 64 KiB UTF-8. Linux has a smaller per-envi
 # Producer has already written this same-job file; no cross-job artifact transfer.
 - if: always()
   timeout-minutes: 4
-  uses: SolusQuest/solus-agent/actions/logging@0bf9314c892b8322f09d271eb4ba96db9e4225c6
+  uses: SolusQuest/solus-agent/actions/logging@c35f54aa57300152c1ae68d269377e7a4e3f40a9
   with:
     telemetry-json-file: ${{ runner.temp }}/product-telemetry.json
     supabase-url: ${{ vars.TELEMETRY_SUPABASE_URL }}
