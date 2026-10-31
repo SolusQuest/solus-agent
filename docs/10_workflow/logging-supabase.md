@@ -48,7 +48,7 @@ The owned production handler disables redirects, cookies, proxies, decompression
 | Recognized bounded auth/schema/conflict error code on `429`/`5xx` | Permanent classified failure |
 | Other status or invalid success protocol | Permanent rejection/protocol failure |
 
-The adapter inspects only fixed machine error codes (`PGRST3*`/authentication SQLSTATEs, `PGRST2*`/missing-schema SQLSTATEs, `23505`); it never returns server message/detail strings. Unexpected sink exceptions become `SinkFailure`. Repeated transient failures end as `AttemptsExhausted`; the deadline and caller cancellation have separate diagnostics. A lost successful response followed by retry returns `Duplicate` when the original immutable event committed.
+Oversized or unparsable transient error bodies cannot establish a permanent machine error and retain the retryable HTTP status; oversized HTTP 200 bodies remain protocol failures. The adapter inspects only fixed machine error codes (`PGRST3*`/authentication SQLSTATEs, `PGRST2*`/missing-schema SQLSTATEs, `23505`); it never returns server message/detail strings. Unexpected sink exceptions become `SinkFailure`. Repeated transient failures end as `AttemptsExhausted`; the deadline and caller cancellation have separate diagnostics. A lost successful response followed by retry returns `Duplicate` when the original immutable event committed.
 
 ## Operator-applied schema and identity
 

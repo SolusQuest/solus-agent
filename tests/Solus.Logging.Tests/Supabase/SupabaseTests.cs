@@ -107,6 +107,26 @@ public sealed class SupabaseTests
     }
 
     [Theory]
+    [InlineData(429, false)]
+    [InlineData(429, true)]
+    [InlineData(503, false)]
+    [InlineData(503, true)]
+    public async Task OversizedTransientErrorBodiesKeepTheStatusRetryable(int status, bool streaming)
+    {
+        var handler = new Handler((_, _) =>
+        {
+            var body = new string('x', 5000);
+            if (!streaming) return Task.FromResult(Response(status, body, "text/html"));
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+                { Content = new UnknownLengthContent(Encoding.UTF8.GetBytes(body)) });
+        });
+        using var sink = new SupabaseTelemetrySink(Options(), handler);
+        var result = await new TelemetryDelivery(sink, Fast()).DeliverAsync(Fixture());
+        Assert.Equal(TelemetryDeliveryDiagnostic.AttemptsExhausted, result.Diagnostic);
+        Assert.Equal(3, result.Attempts); Assert.Equal(3, handler.Calls);
+    }
+
+    [Theory]
     [InlineData(400, TelemetryDeliveryDiagnostic.SchemaRejected)]
     [InlineData(401, TelemetryDeliveryDiagnostic.AuthenticationFailed)]
     [InlineData(403, TelemetryDeliveryDiagnostic.AuthenticationFailed)]

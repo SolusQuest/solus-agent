@@ -71,7 +71,8 @@ public sealed class SupabaseTelemetrySink : ITelemetrySink, IDisposable
             if (status is 400 or 404) return TelemetrySinkStatus.SchemaRejected;
             if (status != 200 && status != 429 && status is not (>= 500 and <= 599)) return TelemetrySinkStatus.Rejected;
             var bytes = await ReadBoundedAsync(response.Content, token).ConfigureAwait(false);
-            if (bytes is null) return TelemetrySinkStatus.ProtocolFailure;
+            if (bytes is null) return status == 200
+                ? TelemetrySinkStatus.ProtocolFailure : TelemetrySinkStatus.TransientFailure;
             if (status == 200)
             {
                 if (!string.Equals(response.Content.Headers.ContentType?.MediaType, "application/json", StringComparison.OrdinalIgnoreCase)) return TelemetrySinkStatus.ProtocolFailure;
