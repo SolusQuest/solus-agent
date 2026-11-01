@@ -14,6 +14,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { githubOperations } from "../release/publish.ts";
+import { readOriginalReport } from "./pack-exact-child.ts";
 
 export const lock = JSON.parse(
     readFileSync(new URL("./accepted-candidate.json", import.meta.url), "utf8"),
@@ -176,7 +177,7 @@ export function tool(
                   ? output.slice(-65_536)
                   : "";
             for (const match of tail.matchAll(
-                /(?<![A-Za-z0-9_])(?:NU|MSB|CS)[0-9]{4}(?![A-Za-z0-9_])/g,
+                /(?<![A-Za-z0-9_])(?:NU|MSB|CS|NETSDK)[0-9]{4}(?![A-Za-z0-9_])/g,
             ))
                 codes.add(match[0]);
         }
@@ -555,23 +556,41 @@ async function execute() {
         );
         const output = join(workspace, "candidate");
         mkdirSync(output);
-        // Build in a child with only the original clean build environment.
-        tool(
-            "original-pack",
-            "node",
-            [
-                join(source, "scripts/logging/pack.ts"),
-                "--version",
-                accepted.version,
-                "--output",
-                join(output, accepted.packageDirectory),
-                "--api-package",
-                api,
-            ],
-            source,
-            cleanEnvironment(join(workspace, "build-home")),
-            900_000,
-        );
+        // Invoke the unchanged exported c96 packer in a credential-free child.
+        // The bridge preserves its exception before the original CLI collapses it.
+        const packReport = join(workspace, "original-pack-report.json");
+        let packFailure: unknown;
+        try {
+            tool(
+                "original-pack",
+                "node",
+                [
+                    join(operationRoot, "scripts/logging/pack-exact-child.ts"),
+                    source,
+                    join(output, accepted.packageDirectory),
+                    api,
+                    packReport,
+                    context.operationHead!,
+                ],
+                source,
+                cleanEnvironment(join(workspace, "build-home")),
+                900_000,
+            );
+        } catch (error) {
+            packFailure = error;
+        }
+        let originalReport;
+        try {
+            originalReport = readOriginalReport(
+                packReport,
+                context.operationHead!,
+            );
+        } catch {
+            fail("original-pack-diagnostic-invalid");
+        }
+        console.log(JSON.stringify(originalReport));
+        if (packFailure) throw packFailure;
+        if (!originalReport.pack.ok) fail("original-pack-diagnostic-failed");
         const manifest = JSON.parse(
             readFileSync(join(output, "logging-release.json"), "utf8"),
         );

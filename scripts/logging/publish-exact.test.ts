@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+    readFileSync,
+    writeFileSync,
+    mkdirSync,
+    mkdtempSync,
+    rmSync,
+    symlinkSync,
+    existsSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { tmpdir, constants as osConstants } from "node:os";
 import {
@@ -14,6 +23,16 @@ import {
     publishNugetMember,
     tool,
 } from "./publish-exact.ts";
+import {
+    classifyOriginalError,
+    validateOriginalReport,
+    readOriginalReport,
+    runOriginalPack,
+} from "./pack-exact-child.ts";
+import { pack as originalPack } from "./pack.ts";
+import { actualApi as originalActualApi } from "./pack-projects.ts";
+import { readPackage as originalReadPackage } from "./package-archive.ts";
+import { ToolFailure as OriginalToolFailure } from "./common.ts";
 const hash = (v: Uint8Array) => createHash("sha256").update(v).digest("hex");
 const manifest = Buffer.from(lock.ociRaw["oci-manifest.json"]);
 const config = Buffer.from(lock.ociRaw["oci-config.json"]);
@@ -787,4 +806,435 @@ test("production default diagnostic sink emits only its closed JSON record", () 
         codes: ["NU1301"],
     });
     assert.ok(!String(logs[0]).includes("secret"));
+});
+
+const sourceRoot = resolve(import.meta.dirname, "../..");
+const reportHead = "a".repeat(40); // Synthetic parser context, never a remote execution SHA.
+function validOriginalReport() {
+    return {
+        event: "original-pack-evidence",
+        source: lock.manifest.source.commit,
+        operationHead: reportHead,
+        node: "24.21.0",
+        zlib: "1.3.2.1-motley-8002e91",
+        sourceVerified: true,
+        sdk: {
+            expected: "10.0.109",
+            selected: "10.0.109",
+            available: ["10.0.109"],
+            failure: null,
+        },
+        api: { verified: true, failure: null },
+        pack: { ok: true, failure: null },
+    };
+}
+test("bridge preserves actual unchanged pack and Api guard exceptions before CLI collapse", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "solus-bridge-guards-"));
+    try {
+        const output = join(dir, "already-exists");
+        mkdirSync(output);
+        let failure: unknown;
+        try {
+            await originalPack("0.1.0-internal.1", output);
+        } catch (error) {
+            failure = error;
+        }
+        const overwrite = classifyOriginalError(
+            failure,
+            sourceRoot,
+            OriginalToolFailure,
+        );
+        assert.equal(overwrite.id, "candidate_overwrite");
+        assert.equal(overwrite.stage, "output-preflight");
+        assert.ok(overwrite.frames.some((f) => f.module === "pack"));
+        const input = join(dir, "private-input.nupkg");
+        writeFileSync(input, "synthetic-invalid-archive");
+        try {
+            originalActualApi(input, dir);
+        } catch (error) {
+            failure = error;
+        }
+        const api = classifyOriginalError(
+            failure,
+            sourceRoot,
+            OriginalToolFailure,
+        );
+        assert.equal(api.id, "genuine_api_archive_required");
+        assert.equal(api.stage, "api-baseline");
+        assert.ok(!JSON.stringify([overwrite, api]).includes(dir));
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+test("bridge reads real original unzip ToolFailure without logging private archive path or output", () => {
+    const dir = mkdtempSync(join(tmpdir(), "solus-bridge-zip-"));
+    try {
+        const secret = "synthetic-private-archive-name";
+        const input = join(dir, secret + ".nupkg");
+        writeFileSync(input, "invalid zip");
+        let failure: unknown;
+        try {
+            originalReadPackage(input, "SolusAgent.Api", "0.1.0-internal.4");
+        } catch (error) {
+            failure = error;
+        }
+        assert.ok(failure instanceof OriginalToolFailure);
+        const record = classifyOriginalError(
+            failure,
+            sourceRoot,
+            OriginalToolFailure,
+        );
+        assert.equal(record.id, "tool_failure");
+        assert.equal(record.tool?.command, "unzip");
+        assert.equal(typeof record.tool?.status, "number");
+        assert.ok(record.frames.some((f) => f.module === "package"));
+        assert.ok(!JSON.stringify(record).includes(secret));
+        assert.ok(!JSON.stringify(record).includes(dir));
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+test("bridge classifies every frozen pack boundary and discards arbitrary message/stack/path data", () => {
+    const cases: [string, number, string][] = [
+        ["pack", 13, "output-preflight"],
+        ["pack", 18, "source-inventory"],
+        ["pack", 19, "toolchain"],
+        ["projects", 48, "api-baseline"],
+        ["projects", 59, "library-pack"],
+        ["payload", 18, "payload-build"],
+        ["archive", 10, "payload-archive"],
+        ["pack", 34, "action-pin"],
+        ["manifest", 34, "manifest"],
+        ["pack", 60, "output-copy"],
+        ["pack", 62, "manifest"],
+        ["pack", 71, "cleanup"],
+    ];
+    const filenames: Record<string, string> = {
+        pack: "scripts/logging/pack.ts",
+        projects: "scripts/logging/pack-projects.ts",
+        payload: "scripts/logging/build-payload.ts",
+        archive: "actions/logging/archive.mjs",
+        manifest: "scripts/logging/manifest.ts",
+    };
+    for (const [module, line, stage] of cases) {
+        const error = new Error("synthetic-secret-not-a-source-id");
+        error.stack = `Error: synthetic-secret\n    at ignored (file://${join(sourceRoot, filenames[module])}:${line}:1)\n    at hidden (/private/secret-value:1:1)`;
+        const result = classifyOriginalError(
+            error,
+            sourceRoot,
+            OriginalToolFailure,
+        );
+        assert.equal(result.stage, stage);
+        assert.equal(result.id, "unclassified");
+        assert.deepEqual(result.frames, [{ module, line }]);
+        assert.ok(!JSON.stringify(result).includes("secret"));
+        assert.ok(!JSON.stringify(result).includes(sourceRoot));
+    }
+    const literal = classifyOriginalError(
+        new Error("Payload publish failed."),
+        sourceRoot,
+        OriginalToolFailure,
+    );
+    assert.equal(literal.id, "payload-publish-failed");
+    assert.equal(literal.stage, "payload-build");
+    const unknown = classifyOriginalError(
+        { message: "secret", stack: "secret", code: "secret" },
+        sourceRoot,
+        OriginalToolFailure,
+    );
+    assert.deepEqual(unknown, {
+        stage: "unknown",
+        id: "unclassified",
+        frames: [],
+        tool: null,
+    });
+});
+test("bridge original ToolFailure keeps bounded numeric/compiler evidence including SDK errors", () => {
+    const error = new OriginalToolFailure(
+        "dotnet",
+        145,
+        "synthetic-secret path=/private/secret NETSDK1045 NU1301 CS2008 MSB1009 Solus.Logging.csproj private-secret.csproj detected dubious ownership",
+    );
+    const record = classifyOriginalError(
+        error,
+        sourceRoot,
+        OriginalToolFailure,
+        "toolchain",
+    );
+    assert.equal(record.stage, "toolchain");
+    assert.deepEqual(record.tool, {
+        command: "dotnet",
+        status: 145,
+        codes: ["CS2008", "MSB1009", "NETSDK1045", "NU1301"],
+        projects: ["Solus.Logging"],
+        hints: ["git-dubious-ownership"],
+    });
+    assert.ok(!JSON.stringify(record).includes("secret"));
+});
+test("parent bridge report parser is closed metadata, never candidate qualification", () => {
+    assert.equal(
+        validateOriginalReport(validOriginalReport(), reportHead).pack.ok,
+        true,
+    );
+    const mutations = [
+        (v: any) => {
+            v.extra = "secret";
+        },
+        (v: any) => {
+            v.source = "b".repeat(40);
+        },
+        (v: any) => {
+            v.operationHead = "b".repeat(40);
+        },
+        (v: any) => {
+            v.node = "secret_value";
+        },
+        (v: any) => {
+            v.sdk.selected = "secret-value";
+        },
+        (v: any) => {
+            v.sdk.available = Array(17).fill("10.0.109");
+        },
+        (v: any) => {
+            v.api.extra = "secret";
+        },
+        (v: any) => {
+            v.sourceVerified = false;
+        },
+        (v: any) => {
+            v.pack.failure = {
+                stage: "secret",
+                id: "unclassified",
+                frames: [],
+                tool: null,
+            };
+        },
+        (v: any) => {
+            v.pack.ok = false;
+        },
+        (v: any) => {
+            v.api.failure = {
+                stage: "api-baseline",
+                id: "secret",
+                frames: [],
+                tool: null,
+            };
+        },
+    ];
+    for (const mutate of mutations) {
+        const v = validOriginalReport();
+        mutate(v);
+        assert.throws(
+            () => validateOriginalReport(v, reportHead),
+            /original_pack_report_invalid/,
+        );
+    }
+});
+test("bridge report filesystem boundary refuses links, oversize, malformed and missing private reports", () => {
+    const dir = mkdtempSync(join(tmpdir(), "solus-bridge-report-"));
+    try {
+        const path = join(dir, "report.json");
+        writeFileSync(path, JSON.stringify(validOriginalReport()));
+        assert.equal(
+            readOriginalReport(path, reportHead).source,
+            lock.manifest.source.commit,
+        );
+        const link = join(dir, "link.json");
+        symlinkSync(path, link);
+        assert.throws(
+            () => readOriginalReport(link, reportHead),
+            /original_pack_report_invalid/,
+        );
+        writeFileSync(path, "synthetic-secret".repeat(900));
+        assert.throws(
+            () => readOriginalReport(path, reportHead),
+            /original_pack_report_invalid/,
+        );
+        writeFileSync(path, "{secret malformed");
+        assert.throws(
+            () => readOriginalReport(path, reportHead),
+            /original_pack_report_invalid/,
+        );
+        assert.throws(
+            () =>
+                readOriginalReport(
+                    join(dir, "missing-secret-path"),
+                    reportHead,
+                ),
+            /original_pack_report_invalid/,
+        );
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+test("real child boundary refuses credentials and wrong original source before loading or packing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "solus-bridge-refusal-"));
+    try {
+        mkdirSync(join(dir, "api-fetch"));
+        mkdirSync(join(dir, "candidate"));
+        const input = {
+            source: sourceRoot,
+            output: join(dir, "candidate", "logging-packages"),
+            api: join(dir, "api-fetch", "input.nupkg"),
+            report: join(dir, "original-pack-report.json"),
+            operationHead: reportHead,
+        };
+        const credential = await runOriginalPack(input, {
+            PATH: process.env.PATH,
+            GITHUB_TOKEN: "synthetic-secret",
+        });
+        assert.equal(
+            credential.pack.failure.id,
+            "credential_environment_refused",
+        );
+        assert.equal(credential.sourceVerified, false);
+        assert.ok(!JSON.stringify(credential).includes("synthetic-secret"));
+        rmSync(input.report);
+        const identity = await runOriginalPack(input, {
+            PATH: process.env.PATH,
+        });
+        assert.equal(identity.pack.failure.id, "original_source_mismatch");
+        assert.equal(identity.sourceVerified, false);
+        assert.equal(identity.pack.ok, false);
+        assert.equal(existsSync(input.output), false);
+        const elsewhere = join(dir, "wrong-report.json");
+        await assert.rejects(
+            runOriginalPack(
+                { ...input, report: elsewhere },
+                { PATH: process.env.PATH },
+            ),
+            /bridge_arguments_refused/,
+        );
+        assert.equal(existsSync(elsewhere), false);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+test("exact operator installs the immutable SDK version without global-json roll-forward selection", () => {
+    const workflow = readFileSync(
+        new URL("../../.github/workflows/logging-release.yml", import.meta.url),
+        "utf8",
+    );
+    const operation = workflow.split("  exact-operation:")[1];
+    assert.match(operation, /dotnet-version: 10\.0\.109/);
+    assert.doesNotMatch(operation, /global-json-file:/);
+    assert.match(
+        workflow.split("  exact-operation:")[0],
+        /global-json-file: global.json/,
+    );
+});
+
+test("bridge failure schema rejects every private nested metadata escape", () => {
+    const base = validOriginalReport();
+    base.pack = {
+        ok: false,
+        failure: {
+            stage: "library-pack",
+            id: "tool_failure",
+            frames: [{ module: "projects", line: 59 }],
+            tool: {
+                command: "dotnet",
+                status: 1,
+                codes: ["CS2008"],
+                projects: [],
+                hints: [],
+            },
+        },
+    } as any;
+    validateOriginalReport(base, reportHead);
+    for (const mutate of [
+        (v: any) => {
+            v.pack.failure.frames[0].module = "/private/secret";
+        },
+        (v: any) => {
+            v.pack.failure.frames[0].line = 1000000;
+        },
+        (v: any) => {
+            v.pack.failure.frames[0].path = "/secret";
+        },
+        (v: any) => {
+            v.pack.failure.tool.command = "secret-command";
+        },
+        (v: any) => {
+            v.pack.failure.tool.status = "secret";
+        },
+        (v: any) => {
+            v.pack.failure.tool.codes = Array(9).fill("NU1301");
+        },
+        (v: any) => {
+            v.pack.failure.tool.codes = ["NU1301-secret"];
+        },
+        (v: any) => {
+            v.pack.failure.tool.hints = [{ toString: "secret" }];
+        },
+        (v: any) => {
+            v.sdk.failure = {
+                stage: "toolchain",
+                id: "secret",
+                frames: [],
+                tool: null,
+            };
+        },
+        (v: any) => {
+            v.pack.failure.stack = "secret";
+        },
+        (v: any) => {
+            v.pack.failure.tool.projects = ["private-secret-project"];
+        },
+        (v: any) => {
+            v.pack.failure.tool.projects = Array(7).fill("Solus.Logging");
+        },
+        (v: any) => {
+            v.zlib = "1-secret-with-unknown-shape";
+        },
+    ]) {
+        const value = structuredClone(base);
+        mutate(value);
+        assert.throws(
+            () => validateOriginalReport(value, reportHead),
+            /original_pack_report_invalid/,
+        );
+    }
+});
+test("real bridge CLI and parent tool/report channel fail closed without exposing data", () => {
+    const dir = mkdtempSync(join(tmpdir(), "solus-bridge-cli-"));
+    try {
+        mkdirSync(join(dir, "api-fetch"));
+        mkdirSync(join(dir, "candidate"));
+        const report = join(dir, "original-pack-report.json");
+        const observations: any[] = [];
+        assert.throws(
+            () =>
+                tool(
+                    "original-pack",
+                    "node",
+                    [
+                        join(sourceRoot, "scripts/logging/pack-exact-child.ts"),
+                        sourceRoot,
+                        join(dir, "candidate", "logging-packages"),
+                        join(dir, "api-fetch", "input.nupkg"),
+                        report,
+                        reportHead,
+                    ],
+                    sourceRoot,
+                    { PATH: process.env.PATH },
+                    10000,
+                    undefined,
+                    (r) => observations.push(r),
+                ),
+            /tool-failed-original-pack/,
+        );
+        const parsed = readOriginalReport(report, reportHead);
+        assert.equal(parsed.sourceVerified, false);
+        assert.equal(parsed.pack.failure.id, "original_source_mismatch");
+        assert.equal(observations.length, 1);
+        assert.equal(observations[0].exitCode, 1);
+        assert.ok(!JSON.stringify([parsed, observations]).includes(dir));
+        assert.equal(
+            existsSync(join(dir, "candidate", "logging-packages")),
+            false,
+        );
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 });
