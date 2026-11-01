@@ -1930,6 +1930,7 @@ test("CLI observation refuses hostile prior state/status/network/auth exactly on
         });
         assert.equal(report.state, "refused");
         assert.equal(calls, failAt);
+        assert.equal(report.uploadSessionCreated, failAt === 4 ? null : false);
         assert.equal(JSON.stringify(report).includes(secret), false);
     }
     for (const response of [
@@ -1959,6 +1960,7 @@ test("CLI observation refuses hostile prior state/status/network/auth exactly on
         });
         assert.equal(report.state, "refused");
         assert.equal(calls, failAt);
+        assert.equal(report.uploadSessionCreated, failAt === 4 ? null : false);
         assert.equal(JSON.stringify(report).includes(secret), false);
     }
 });

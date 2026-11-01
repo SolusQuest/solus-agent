@@ -124,7 +124,8 @@ export async function inspectUpload(
     const context = inspectionContext(env);
     const observations: { stage: string; status: number }[] = [];
     let stage = "bearer";
-    let uploadSessionCreated = false;
+    // A sent POST without a response may already have created a session.
+    let uploadSessionCreated: boolean | null = false;
     const base = {
         event: "cli-upload-location-inspection",
         ...context,
@@ -185,6 +186,7 @@ export async function inspectUpload(
         };
         async function fixedRead(url: string, method: "GET" | "HEAD" | "POST") {
             if (Date.now() + 5000 >= expires) refuse();
+            if (method === "POST") uploadSessionCreated = null;
             const response = await request(url, {
                 method,
                 headers,
@@ -213,7 +215,7 @@ export async function inspectUpload(
             `${origin}${namespace}/blobs/uploads/`,
             "POST",
         );
-        uploadSessionCreated = started.status === 202;
+        if (started.status === 202) uploadSessionCreated = true;
         const projection = projectUploadLocation(
             started.headers.get("location"),
         );
