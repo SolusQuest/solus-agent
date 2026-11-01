@@ -13,6 +13,10 @@ on:
         description: Exact root-reviewed helper and workflow SHA; required for operations
         type: string
         required: false
+      new-package-admission:
+        description: Root-reviewed operator absence receipt for one new non-Contracts NuGet identity; blank means strict read-existing only
+        type: string
+        required: false
       member:
         description: One fixed original member; ignored by preparation
         type: choice

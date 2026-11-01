@@ -20,9 +20,14 @@ import {
     ociTransport,
     registryBearer,
     publishOci,
-    publishNugetMember,
     tool,
 } from "./publish-exact.ts";
+import {
+    readNugetIdentity,
+    creationAdmission,
+    createNugetResource,
+    requireOriginalNugetResources,
+} from "./nuget-resource.ts";
 import {
     classifyOriginalError,
     validateOriginalReport,
@@ -384,59 +389,7 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
     assert.equal((source.match(/packages: write/g) ?? []).length, 1);
 });
 
-test("actual NuGet single-member flow retains equal versions and never retries unknown writes or unreadable/conflicting state", async () => {
-    for (const initial of [true, false]) {
-        let reads = 0,
-            pushes = 0,
-            verifies = 0;
-        const result = await publishNugetMember({
-            exists: async () => {
-                reads++;
-                return initial || pushes === 1;
-            },
-            push: async () => {
-                pushes++;
-            },
-            verify: async () => {
-                verifies++;
-            },
-        });
-        assert.equal(
-            result,
-            initial ? "retained-identical" : "published-readback",
-        );
-        assert.equal(pushes, initial ? 0 : 1);
-        assert.equal(verifies, 1);
-        assert.equal(reads, initial ? 1 : 3);
-    }
-    for (const phase of ["exists", "verify", "push"]) {
-        let pushes = 0;
-        await assert.rejects(
-            publishNugetMember({
-                exists: async () => {
-                    if (phase === "exists") throw new Error("unreadable");
-                    return phase === "verify";
-                },
-                verify: async () => {
-                    throw new Error("whole-byte conflict");
-                },
-                push: async () => {
-                    pushes++;
-                    throw new Error("outcome unknown");
-                },
-            }),
-        );
-        assert.equal(pushes, phase === "push" ? 1 : 0);
-    }
-    await assert.rejects(
-        publishNugetMember({
-            exists: async () => false,
-            push: async () => {},
-            verify: async () => {},
-        }),
-        /nuget-readback-missing/,
-    );
-});
+// Exact NuGet resource/admission production-boundary tests follow below.
 test("OCI wrong blob readback prevents manifest publication; rejected media or ambiguous manifest receipt has no retry", async () => {
     const bytes = {
         "oci-config.json": config,
@@ -1236,5 +1189,561 @@ test("real bridge CLI and parent tool/report channel fail closed without exposin
         );
     } finally {
         rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+const apiSecret = "SYNTHETIC_API_TOKEN_BODY_SECRET";
+const sourceRepo = { id: 1406091678, full_name: "SolusQuest/solus-agent" };
+function resourceFixture(p: any) {
+    const index = lock.manifest.packages.findIndex((v: any) => v.id === p.id);
+    return {
+        package: {
+            id: index === 0 ? 16460732 : 90000 + index,
+            name: p.id,
+            package_type: "nuget",
+            visibility: "private",
+            repository: sourceRepo,
+        },
+        version: {
+            id: index === 0 ? 1481941083 : 80000 + index,
+            name: p.version,
+        },
+    };
+}
+function exactResourceFetch(
+    change: (
+        url: string,
+        fallback: () => Response,
+    ) => Response | Promise<Response> = (_u, f) => f(),
+) {
+    const calls: string[] = [];
+    const fetcher = async (input: any, options: any) => {
+        const url = String(input);
+        calls.push(url);
+        assert.equal(options.method, "GET");
+        assert.equal(options.redirect, "error");
+        assert.equal(options.headers.Authorization, `Bearer ${apiSecret}`);
+        assert.ok(
+            url.startsWith(
+                "https://api.github.com/orgs/SolusQuest/packages/nuget/",
+            ),
+        );
+        const tail = url.split("/packages/nuget/")[1];
+        const id = decodeURIComponent(tail.split("/")[0]);
+        const p = lock.manifest.packages.find((v: any) => v.id === id);
+        assert.ok(p);
+        const fixture = resourceFixture(p);
+        return change(
+            url,
+            () =>
+                new Response(
+                    JSON.stringify(
+                        tail.includes("/versions?")
+                            ? [fixture.version]
+                            : tail.includes("/versions/")
+                              ? fixture.version
+                              : fixture.package,
+                    ),
+                ),
+        );
+    };
+    return { calls, fetcher: fetcher as typeof fetch };
+}
+const creationContext = {
+    mode: "publish-one",
+    member: "Solus.Logging",
+    operationHead: "a".repeat(40),
+    operatorActorId: "16307884",
+    workflowRef:
+        "SolusQuest/solus-agent/.github/workflows/logging-release.yml@refs/heads/codex/l1-123-logging-publication",
+};
+function admissionReceipt(member = "Solus.Logging") {
+    return {
+        kind: "operator-confirmed-new-package",
+        operationHead: creationContext.operationHead,
+        source: lock.manifest.source.commit,
+        candidate: lock.manifest.candidateSha256,
+        member,
+        version: lock.manifest.version,
+        privateFeed: lock.manifest.agentApi.registry,
+        beforeWorkflowRunNumber: 5,
+        expectedWorkflowRunNumber: 6,
+        exclusiveWindow: true,
+        operatorAbsence: {
+            actorId: 16307884,
+            profile: "configured-operator-package-read",
+            status: 200,
+            complete: true,
+            matches: 0,
+            snapshotSha256: "b".repeat(64),
+        },
+    };
+}
+test("exact existing resource GETs admit original identities even when organization inventory is unavailable", async () => {
+    for (const p of lock.manifest.packages) {
+        const t = exactResourceFetch();
+        const v = await readNugetIdentity(p, apiSecret, t.fetcher);
+        assert.deepEqual(v, {
+            id: p.id,
+            version: p.version,
+            packageId: resourceFixture(p).package.id,
+            versionId: resourceFixture(p).version.id,
+        });
+        assert.equal(t.calls.length, 3);
+        assert.ok(t.calls.every((u) => !u.includes("/packages?")));
+    }
+});
+test("missing, forbidden, malformed, conflicting or unknown existing metadata NEVER returns absence or triggers verification", async () => {
+    const p = lock.manifest.packages[0];
+    for (const status of [403, 404, 500]) {
+        let verified = 0;
+        const t = exactResourceFetch(() => new Response(apiSecret, { status }));
+        await assert.rejects(
+            requireOriginalNugetResources(
+                [p],
+                apiSecret,
+                async () => {
+                    verified++;
+                },
+                t.fetcher,
+            ),
+            (e) =>
+                String(e).includes("nuget-resource-unavailable") &&
+                !String(e).includes(apiSecret),
+        );
+        assert.equal(verified, 0);
+        assert.equal(t.calls.length, 1);
+    }
+    for (const mutate of [
+        (v: any) => {
+            v.visibility = "public";
+        },
+        (v: any) => {
+            v.id = 3;
+        },
+        (v: any) => {
+            v.package_type = "container";
+        },
+        (v: any) => {
+            v.name = "other";
+        },
+        (v: any) => {
+            v.repository = { id: 1, full_name: sourceRepo.full_name };
+        },
+        (v: any) => {
+            v.repository = { ...sourceRepo, full_name: "wrong/repo" };
+        },
+    ]) {
+        const t = exactResourceFetch((u, f) => {
+            if (u.includes("/versions")) return f();
+            const x = structuredClone(resourceFixture(p).package);
+            mutate(x);
+            return new Response(JSON.stringify(x));
+        });
+        await assert.rejects(
+            readNugetIdentity(p, apiSecret, t.fetcher),
+            /nuget-resource-identity/,
+        );
+    }
+    for (const response of [
+        () => new Response(apiSecret),
+        () => new Response("x".repeat(1024 * 1024 + 1)),
+        () => {
+            throw Error(apiSecret);
+        },
+    ]) {
+        const t = exactResourceFetch(() => response());
+        await assert.rejects(
+            readNugetIdentity(p, apiSecret, t.fetcher),
+            (e) => !String(e).includes(apiSecret),
+        );
+    }
+});
+test("exact version inventory must be complete, unique and agree with fixed known Contracts ID and direct version", async () => {
+    const p = lock.manifest.packages[0],
+        f = resourceFixture(p);
+    for (const values of [
+        [],
+        [f.version, f.version],
+        [{ ...f.version, id: 2 }],
+        { body: apiSecret },
+    ]) {
+        const t = exactResourceFetch((u, next) =>
+            u.includes("/versions?")
+                ? new Response(JSON.stringify(values))
+                : next(),
+        );
+        await assert.rejects(readNugetIdentity(p, apiSecret, t.fetcher));
+    }
+    const full = Array.from({ length: 100 }, () => ({ id: 1, name: "other" }));
+    const limited = exactResourceFetch((u, next) =>
+        u.includes("/versions?") ? new Response(JSON.stringify(full)) : next(),
+    );
+    await assert.rejects(
+        readNugetIdentity(p, apiSecret, limited.fetcher),
+        /nuget-resource-pagination/,
+    );
+    assert.equal(limited.calls.length, 11);
+    const changed = exactResourceFetch((u, next) =>
+        u.includes("/versions/")
+            ? new Response(
+                  JSON.stringify({ ...f.version, name: "0.1.0-internal.2" }),
+              )
+            : next(),
+    );
+    await assert.rejects(
+        readNugetIdentity(p, apiSecret, changed.fetcher),
+        /nuget-resource-identity/,
+    );
+});
+test("unavailable nested version views remain fatal and cannot be promoted to new creation", async () => {
+    const p = lock.manifest.packages[0];
+    for (const route of ["/versions?", "/versions/"])
+        for (const status of [403, 404, 500]) {
+            const t = exactResourceFetch((u, next) =>
+                u.includes(route)
+                    ? new Response(apiSecret, { status })
+                    : next(),
+            );
+            await assert.rejects(
+                readNugetIdentity(p, apiSecret, t.fetcher),
+                (e) =>
+                    String(e).includes("nuget-resource-unavailable") &&
+                    !String(e).includes(apiSecret),
+            );
+        }
+});
+test("mapper, Logging, Supabase and CLI prerequisites share strict exact metadata plus original whole bytes before admission", async () => {
+    const roles = [
+        [lock.manifest.packages[0]],
+        [lock.manifest.packages[0], lock.manifest.packages[2]],
+        lock.manifest.packages,
+    ];
+    for (const packages of roles) {
+        const t = exactResourceFetch();
+        let verified = 0;
+        const admitted = await requireOriginalNugetResources(
+            packages,
+            apiSecret,
+            async (p) => {
+                assert.deepEqual(
+                    packages.find((v: any) => v.id === p.id),
+                    p,
+                );
+                verified++;
+            },
+            t.fetcher,
+        );
+        assert.equal(verified, packages.length);
+        assert.equal(admitted.length, packages.length);
+    }
+    let downstream = 0;
+    const unavailable = exactResourceFetch((u, next) =>
+        u.includes("SolusAgent.Telemetry")
+            ? new Response("missing", { status: 404 })
+            : next(),
+    );
+    await assert.rejects(
+        (async () => {
+            await requireOriginalNugetResources(
+                lock.manifest.packages,
+                apiSecret,
+                async () => {},
+                unavailable.fetcher,
+            );
+            downstream++;
+        })(),
+    );
+    assert.equal(downstream, 0);
+    const t = exactResourceFetch();
+    await assert.rejects(
+        requireOriginalNugetResources(
+            [lock.manifest.packages[0]],
+            apiSecret,
+            async () => {
+                throw Error("whole original archive mismatch");
+            },
+            t.fetcher,
+        ),
+    );
+});
+test("new creation admission is optional and strict, independently attested, one-member/head/candidate and next actual run-number bound", () => {
+    const raw = JSON.stringify(admissionReceipt());
+    const a = creationAdmission(raw, creationContext, "6");
+    assert.ok(a);
+    assert.match(a.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(creationAdmission(undefined, creationContext, "6"), undefined);
+    for (const change of [
+        (v: any) => {
+            v.kind = "automatic";
+        },
+        (v: any) => {
+            v.member = "Solus.Telemetry.Contracts";
+        },
+        (v: any) => {
+            v.member = "CLI";
+        },
+        (v: any) => {
+            v.operationHead = "c".repeat(40);
+        },
+        (v: any) => {
+            v.source = "c".repeat(40);
+        },
+        (v: any) => {
+            v.candidate = "c".repeat(64);
+        },
+        (v: any) => {
+            v.version = "0.1.0-internal.2";
+        },
+        (v: any) => {
+            v.privateFeed = "https://evil.invalid";
+        },
+        (v: any) => {
+            v.exclusiveWindow = false;
+        },
+        (v: any) => {
+            v.beforeWorkflowRunNumber = 3;
+        },
+        (v: any) => {
+            v.expectedWorkflowRunNumber = 7;
+        },
+        (v: any) => {
+            v.operatorAbsence.profile = "source-list";
+        },
+        (v: any) => {
+            v.operatorAbsence.actorId = 1;
+        },
+        (v: any) => {
+            v.operatorAbsence.status = 404;
+        },
+        (v: any) => {
+            v.operatorAbsence.complete = false;
+        },
+        (v: any) => {
+            v.operatorAbsence.matches = 1;
+        },
+        (v: any) => {
+            v.operatorAbsence.snapshotSha256 = "invalid";
+        },
+        (v: any) => {
+            v.secret = apiSecret;
+        },
+    ]) {
+        const v = admissionReceipt();
+        change(v);
+        assert.throws(
+            () => creationAdmission(JSON.stringify(v), creationContext, "6"),
+            /nuget-creation-admission/,
+        );
+    }
+    assert.throws(
+        () => creationAdmission(raw, creationContext, "7"),
+        /nuget-creation-admission/,
+    );
+    assert.throws(
+        () =>
+            creationAdmission(
+                raw,
+                { ...creationContext, operatorActorId: "1" },
+                "6",
+            ),
+        /nuget-creation-admission/,
+    );
+    assert.throws(
+        () =>
+            creationAdmission(
+                raw,
+                { ...creationContext, workflowRef: "wrong/workflow" },
+                "6",
+            ),
+        /nuget-creation-admission/,
+    );
+    assert.throws(() =>
+        creationAdmission(
+            raw,
+            { ...creationContext, mode: "validate-exact" },
+            "6",
+        ),
+    );
+    assert.throws(
+        () => creationAdmission(apiSecret, creationContext, "6"),
+        (e) => !String(e).includes(apiSecret),
+    );
+});
+test("known Contracts or missing/invalid admission cannot reach any creation read or push", async () => {
+    let push = 0,
+        read = 0;
+    const fetcher = (async () => {
+        read++;
+        throw Error("unexpected");
+    }) as typeof fetch;
+    for (const p of [lock.manifest.packages[0], lock.manifest.packages[2]]) {
+        const ctx = { ...creationContext, member: p.id };
+        const receipt =
+            p.id === "Solus.Telemetry.Contracts"
+                ? JSON.stringify(admissionReceipt(p.id))
+                : "";
+        await assert.rejects(
+            createNugetResource(
+                p,
+                receipt,
+                ctx,
+                "6",
+                apiSecret,
+                async () => {
+                    push++;
+                },
+                async () => {},
+                fetcher,
+            ),
+        );
+    }
+    assert.equal(push, 0);
+    assert.equal(read, 0);
+});
+test("only explicit independently admitted new identity can push once; exact post metadata and complete original bytes are mandatory", async () => {
+    const p = lock.manifest.packages[2];
+    let pushed = 0,
+        verified = 0;
+    const t = exactResourceFetch((_u, next) =>
+        pushed
+            ? next()
+            : new Response("unavailable source view", { status: 404 }),
+    );
+    const v = await createNugetResource(
+        p,
+        JSON.stringify(admissionReceipt()),
+        creationContext,
+        "6",
+        apiSecret,
+        async () => {
+            pushed++;
+        },
+        async () => {
+            verified++;
+        },
+        t.fetcher,
+    );
+    assert.equal(pushed, 1);
+    assert.equal(verified, 1);
+    assert.equal(v.identity.id, p.id);
+    assert.equal(t.calls.length, 5);
+    // Same receipt cannot be replayed in a distinct later workflow run.
+    await assert.rejects(
+        createNugetResource(
+            p,
+            JSON.stringify(admissionReceipt()),
+            creationContext,
+            "7",
+            apiSecret,
+            async () => {
+                pushed++;
+            },
+            async () => {},
+            t.fetcher,
+        ),
+    );
+    assert.equal(pushed, 1);
+});
+test("creation never treats forbidden, unknown or unexpectedly positive resources as an absent slot", async () => {
+    const p = lock.manifest.packages[2];
+    for (const status of [200, 403, 500]) {
+        let pushed = 0;
+        const t = exactResourceFetch((_u, next) =>
+            status === 200 ? next() : new Response(apiSecret, { status }),
+        );
+        await assert.rejects(
+            createNugetResource(
+                p,
+                JSON.stringify(admissionReceipt()),
+                creationContext,
+                "6",
+                apiSecret,
+                async () => {
+                    pushed++;
+                },
+                async () => {},
+                t.fetcher,
+            ),
+        );
+        assert.equal(pushed, 0);
+    }
+    let pushed = 0;
+    const t = exactResourceFetch(() => {
+        throw Error(apiSecret);
+    });
+    await assert.rejects(
+        createNugetResource(
+            p,
+            JSON.stringify(admissionReceipt()),
+            creationContext,
+            "6",
+            apiSecret,
+            async () => {
+                pushed++;
+            },
+            async () => {},
+            t.fetcher,
+        ),
+        (e) => !String(e).includes(apiSecret),
+    );
+    assert.equal(pushed, 0);
+    for (const status of [200, 403, 500]) {
+        let pushes = 0;
+        const mixed = exactResourceFetch((u, next) =>
+            u.includes("/versions?")
+                ? status === 200
+                    ? next()
+                    : new Response(apiSecret, { status })
+                : new Response("missing", { status: 404 }),
+        );
+        await assert.rejects(
+            createNugetResource(
+                p,
+                JSON.stringify(admissionReceipt()),
+                creationContext,
+                "6",
+                apiSecret,
+                async () => {
+                    pushes++;
+                },
+                async () => {},
+                mixed.fetcher,
+            ),
+        );
+        assert.equal(pushes, 0);
+        assert.equal(mixed.calls.length, 2);
+    }
+});
+test("unknown push outcome or post-read/whole-byte failure stops with no automatic retry or rollback", async () => {
+    const p = lock.manifest.packages[2];
+    for (const failure of ["push", "post", "bytes"]) {
+        let pushes = 0,
+            verify = 0;
+        const t = exactResourceFetch((_u, next) =>
+            pushes === 0 || failure === "post"
+                ? new Response("missing", { status: 404 })
+                : next(),
+        );
+        await assert.rejects(
+            createNugetResource(
+                p,
+                JSON.stringify(admissionReceipt()),
+                creationContext,
+                "6",
+                apiSecret,
+                async () => {
+                    pushes++;
+                    if (failure === "push") throw Error("unknown outcome");
+                },
+                async () => {
+                    verify++;
+                    throw Error("wrong original bytes");
+                },
+                t.fetcher,
+            ),
+        );
+        assert.equal(pushes, 1);
+        assert.equal(verify, failure === "bytes" ? 1 : 0);
     }
 });

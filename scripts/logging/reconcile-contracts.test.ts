@@ -441,7 +441,7 @@ test("actual CLI source/context refusal precedes every credential-bearing reques
         rmSync(dir, { recursive: true, force: true });
     }
 });
-test("read-only job is isolated from writer/packer and exact writer code/job remain unchanged", () => {
+test("accepted read-only helper/job and writer job remain frozen while intentional publisher metadata correction stays separate", () => {
     const text = readFileSync("scripts/logging/reconcile-contracts.ts", "utf8");
     assert.doesNotMatch(
         text,
@@ -466,13 +466,27 @@ test("read-only job is isolated from writer/packer and exact writer code/job rem
     assert.match(readJob, /node scripts\/logging\/reconcile-contracts\.ts/);
     const hash = (s: string | Buffer) =>
         createHash("sha256").update(s).digest("hex");
-    // Frozen accepted-ab42 identities; do not depend on an old PR commit surviving a squash.
+    // Freeze unchanged operation surfaces. The publisher's inventory correction is intentional,
+    // so preserve actual behavioral tests instead of silently updating its old whole-file hash.
     assert.equal(
         hash(workflow.split("\n  exact-operation:\n")[1]),
         "39277e6b11b3e3546759f314034247d62e1c6c809bc0ef18198b677b6a6fca07",
     );
     assert.equal(
-        hash(readFileSync("scripts/logging/publish-exact.ts")),
-        "cf03051a838adeb4e61566769bb5c66bbee6879c11049cb21645aca1528fb452",
+        hash(readJob),
+        "fb0823b3abbcd64bb447de8651d09c116f28520e20edb534854bd4547cf1cd87",
     );
+    assert.equal(
+        hash(readFileSync("scripts/logging/reconcile-contracts.ts")),
+        "1314e5c7d6c6a4556fcfe987a03e742915a710643b9ac9e04e4a0e148b08ef4d",
+    );
+    const writer = readFileSync("scripts/logging/publish-exact.ts", "utf8");
+    assert.doesNotMatch(writer, /operations\.(packages|versions)\(/);
+    assert.match(writer, /requireOriginalNugetResources/);
+    assert.match(
+        writer,
+        /admission &&\s*selected\.id !== "Solus\.Telemetry\.Contracts"/,
+    );
+    assert.match(writer, /GITHUB_EVENT_PATH/);
+    assert.doesNotMatch(workflow, /EXACT_NEW_PACKAGE_ADMISSION/);
 });

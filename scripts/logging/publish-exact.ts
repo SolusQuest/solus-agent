@@ -15,6 +15,12 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { githubOperations } from "../release/publish.ts";
 import { readOriginalReport } from "./pack-exact-child.ts";
+import {
+    creationAdmission,
+    requireOriginalNugetResources,
+    createNugetResource,
+    type NugetIdentity,
+} from "./nuget-resource.ts";
 
 export const lock = JSON.parse(
     readFileSync(new URL("./accepted-candidate.json", import.meta.url), "utf8"),
@@ -493,26 +499,6 @@ export async function publishOci(
     return "published-readback";
 }
 
-export async function publishNugetMember(operations: {
-    exists: () => Promise<boolean>;
-    verify: () => Promise<unknown>;
-    push: () => Promise<unknown>;
-}) {
-    if (await operations.exists()) {
-        await operations.verify();
-        return "retained-identical";
-    }
-    // The second authenticated check narrows the exclusive operator collision window.
-    if (await operations.exists()) {
-        await operations.verify();
-        return "retained-identical";
-    }
-    await operations.push();
-    if (!(await operations.exists())) fail("nuget-readback-missing");
-    await operations.verify();
-    return "published-readback";
-}
-
 async function execute() {
     const context = operationContext();
     const operationRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -526,6 +512,26 @@ async function execute() {
         ) !== context.operationHead
     )
         fail("operation-checkout");
+    // Read the nonsecret admission from the event file, never a step env echoed by Actions.
+    const event = JSON.parse(
+        readFileSync(
+            process.env.GITHUB_EVENT_PATH ?? fail("event-path"),
+            "utf8",
+        ),
+    );
+    const rawAdmission = event.inputs?.["new-package-admission"];
+    if (rawAdmission !== undefined && typeof rawAdmission !== "string")
+        fail("nuget-creation-admission");
+    const creationContext = {
+        ...context,
+        operatorActorId: process.env.GITHUB_ACTOR_ID,
+        workflowRef: process.env.GITHUB_WORKFLOW_REF,
+    };
+    const admission = creationAdmission(
+        rawAdmission,
+        creationContext,
+        process.env.GITHUB_RUN_NUMBER,
+    );
     const source = resolve(
         process.env.EXACT_SOURCE_ROOT ?? fail("source-path"),
     );
@@ -620,30 +626,14 @@ async function execute() {
                 ),
             async () => {
                 let result = "validated-original-no-publication";
+                const nugetResources: NugetIdentity[] = [];
+                let creationAdmissionSha256: string | null = null;
                 if (context.mode === "publish-one") {
                     const operations = githubOperations(
                         "SolusQuest",
                         "solus-agent",
                         token,
                     );
-                    async function state(p: any) {
-                        const matches = (await operations.packages()).filter(
-                            (v) => v.name.toLowerCase() === p.id.toLowerCase(),
-                        );
-                        if (
-                            matches.length > 1 ||
-                            (matches.length === 1 &&
-                                (matches[0].visibility !== "private" ||
-                                    matches[0].package_type !== "nuget"))
-                        )
-                            fail("nuget-private-state");
-                        return (
-                            matches.length === 1 &&
-                            (
-                                await operations.versions(matches[0].name)
-                            ).includes(p.version)
-                        );
-                    }
                     async function installed(p: any, suffix: string) {
                         await acquirePackages(
                             source,
@@ -662,25 +652,49 @@ async function execute() {
                             : accepted.packages.filter((p: any) =>
                                   Object.hasOwn(selected.dependencies, p.id),
                               );
-                    for (let i = 0; i < dependencies.length; i++) {
-                        if (!(await state(dependencies[i])))
-                            fail("dependency-not-published");
-                        await installed(dependencies[i], `dependency-${i}`);
-                    }
+                    nugetResources.push(
+                        ...(await requireOriginalNugetResources(
+                            dependencies,
+                            token,
+                            (p, i) => installed(p, `dependency-${i}`),
+                        )),
+                    );
                     if (context.member !== "CLI") {
-                        result = await publishNugetMember({
-                            exists: () => state(selected),
-                            verify: () =>
-                                installed(selected, "member-readback"),
-                            push: () =>
-                                operations.push(
-                                    join(
-                                        output,
-                                        accepted.packageDirectory,
-                                        selected.file,
+                        if (
+                            admission &&
+                            selected.id !== "Solus.Telemetry.Contracts"
+                        ) {
+                            const created = await createNugetResource(
+                                selected,
+                                rawAdmission!,
+                                creationContext,
+                                process.env.GITHUB_RUN_NUMBER,
+                                token,
+                                () =>
+                                    operations.push(
+                                        join(
+                                            output,
+                                            accepted.packageDirectory,
+                                            selected.file,
+                                        ),
                                     ),
-                                ),
-                        });
+                                () => installed(selected, "member-readback"),
+                            );
+                            nugetResources.push(created.identity);
+                            creationAdmissionSha256 =
+                                created.creationAdmissionSha256;
+                            result = "published-readback";
+                        } else {
+                            // Existing members, especially known Contracts, have NO push callback.
+                            nugetResources.push(
+                                ...(await requireOriginalNugetResources(
+                                    [selected],
+                                    token,
+                                    (p) => installed(p, "member-readback"),
+                                )),
+                            );
+                            result = "retained-identical";
+                        }
                     } else {
                         const auth = await registryBearer(actor, token);
                         const { downloadArtifact } = await load(
@@ -759,6 +773,22 @@ async function execute() {
                         mode: context.mode,
                         member: context.member,
                         result,
+                        nugetResources,
+                        creationAdmissionSha256,
+                        creationAuthority: admission
+                            ? {
+                                  profile: "independent-operator-absence",
+                                  actorId:
+                                      admission.receipt.operatorAbsence.actorId,
+                                  workflowRunNumber:
+                                      admission.receipt
+                                          .expectedWorkflowRunNumber,
+                                  snapshotSha256:
+                                      admission.receipt.operatorAbsence
+                                          .snapshotSha256,
+                                  sourceAbsenceProven: false,
+                              }
+                            : null,
                         accessSettingsVerified: false,
                         consumerAccessVerified: false,
                         runId: process.env.GITHUB_RUN_ID,
