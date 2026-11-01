@@ -1,0 +1,8 @@
+{
+  "id": "SolusAgent.Api",
+  "version": "0.1.0-internal.4",
+  "sourceCommit": "cb5f5ef8fc39a24f888065052078d40722e7680b",
+  "packageSha256": "a3a6db2e72b41627a72c6a37512220295d6e72116b75c5b04bff8155e4186137",
+  "dllSha256": "0ca3324b506eb5382dc6c0fb52b2959de946aebcbf2f7ae54cc20b1f5afa931c",
+  "registry": "https://nuget.pkg.github.com/SolusQuest/index.json"
+}

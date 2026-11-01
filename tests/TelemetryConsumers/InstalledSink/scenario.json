@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "kind": "library",
+  "projects": [
+    "InstalledSink.csproj"
+  ],
+  "entrypoint": "InstalledSink.csproj",
+  "packages": [
+    "Solus.Telemetry.Contracts",
+    "Solus.Logging",
+    "Solus.Logging.Supabase"
+  ],
+  "businessExit": 0
+}

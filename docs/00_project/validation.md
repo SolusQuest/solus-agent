@@ -307,7 +307,7 @@ dotnet test tests/SolusAgent.ContractTests/SolusAgent.ContractTests.csproj -c Re
 
 The Telemetry tests execute callable Scribe-shaped multi-run and APR-shaped restored-round producers through the real mapper and strict JSON reader. They cover nullable per-axis coverage, no-dispatch zero, retries/failure, current membership and predecessor separation, overlapping provider groups, checked numeric and exact decimal aggregation, sparse settlement, provider claims versus finalized run accounting, independent tools and bounded unavailable-output paths. Evaluated and compiled boundaries restrict the mapper to Api and Contracts; existing Agent edges and the five-package legacy selection remain exact. No provider credentials, upload or product-repository effects occur.
 
-The explicit Agent API compatibility baseline is private `SolusAgent.Api` at `0.1.0-internal.4`. Source builds use the current Api project; compatibility evidence must separately compile the mapper against that installed version. This source-level gate does not establish installed new-mapper packages, independent release dependencies, Action output wiring or storage qualification. Those remain separate [L1 delivery outcomes](../90_roadmap/logging-l1-plan.md#delivery-outcomes-and-gates).
+The explicit Agent API compatibility baseline is private `SolusAgent.Api` at `0.1.0-internal.4`. Source builds use the current Api project; compatibility evidence must separately compile the mapper against that installed version. This source-level gate is complemented by the independent installed candidate consumption checks below. Hosted access/publication and live storage remain separate [L1 delivery outcomes](../90_roadmap/logging-l1-plan.md#delivery-outcomes-and-gates).
 
 ## Logging CLI and standalone Action
 
@@ -321,3 +321,18 @@ node --test tests/logging-action/*.test.ts
 ```
 
 The CLI test command generates an admitted exact 256 KiB fixture under ignored `.local/issue-121/fixtures`; the Node suite requires the built payload. The source builder only prepares an unpublished self-contained Linux x64 archive. On Ubuntu 24.04 x64, tests invoke the actual Action entrypoint and downloaded/verified CLI over controlled HTTPS with the actual migration and real disposable low-privilege PostgreSQL. They cover numeric/extension readback, duplicates/collisions/lost responses, failed producer/no replay, masks and credential separation, invalid artifact/configuration, file/env bounds, stalls, cancellation and a stopped child requiring SIGKILL. On other hosts the Linux execution case is explicitly skipped, so local cross-publish is not process proof; exact-head Ubuntu CI must pass. Logging CI also checks real `if: always()` Action outputs after a failed `continue-on-error` producer, retaining its `outcome: failure`. It does not establish a failed job conclusion or hosted service/release qualification.
+
+## Telemetry candidate and independent installed consumption
+
+The [candidate guide](../10_workflow/logging-package-consumption.md) owns exact versions, isolated feeds/caches, destination/access and immutable-byte policy. On Ubuntu 24.04 x64 run:
+
+```text
+npm ci --prefix scripts/logging
+node scripts/logging/pack.ts --version 0.1.0-internal.1 --output artifacts/logging-packages
+node scripts/logging/verify-consumers.ts --feed artifacts/logging-packages --manifest artifacts/logging-release.json --scenario all
+node --test scripts/logging/consumption.test.ts
+```
+
+The full verifier fails on unsupported hosts; it never silently skips Linux execution. Logging CI combines existing contracts, real SQL/RLS/RPC and wrapper tests with Agent mapper tests, all three independent cold-installed consumers and the actual candidate Action/CLI-to-SQL chain. Its checkout is the actual push/PR source SHA, not a synthetic merge revision. It prints the exact candidate manifest and separate `source-baseline-fixture` evidence with no registry credential. Negative tests use the same evaluated/restore path to reject outside source/project/import/DLL links, friend identities, missing/extra project inventories, non-exact/missing/wrong versions and wrong feeds. Candidate hash/dependency checks, overwrite refusal and fixture publication guards also run.
+
+Separately run the guide's `--api-package <locked-original-.4-archive> --packages-only` command against the identical new candidate feed, using fresh caches. It proves genuine published Api byte consumption and all executed new package DLLs on the native host; it explicitly does not claim Linux process execution or actual private-registry access. A second preparation with the genuine original archive must yield identical four raw package and CLI archive hashes to the source-fixture profile at the same clean source. Record both profile reports and exact-head Linux CI separately. Manual release preparation performs no upload and cannot replace the genuine-byte or future consumer-access gate. These synthetic consumers do not qualify downstream source migration, model billing, hosted Supabase, public redistribution rights or production durable delivery.

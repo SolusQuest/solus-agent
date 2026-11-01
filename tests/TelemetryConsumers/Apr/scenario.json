@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "kind": "product",
+  "shape": "apr",
+  "projects": [
+    "Apr.csproj"
+  ],
+  "entrypoint": "Apr.csproj",
+  "packages": [
+    "Solus.Telemetry.Contracts",
+    "SolusAgent.Telemetry",
+    "SolusAgent.Api"
+  ],
+  "businessExit": 7
+}

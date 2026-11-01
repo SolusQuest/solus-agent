@@ -1,0 +1,60 @@
+name: Logging release preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source-commit:
+        description: Accepted main commit (full 40-character SHA)
+        required: true
+        type: string
+      version:
+        description: New immutable internal candidate version
+        required: true
+        default: 0.1.0-internal.1
+        type: string
+
+# Preparation only: no packages permission, credentials, registry access or uploads.
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out selected source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require an exact accepted main revision and internal version
+        env:
+          SELECTED_SOURCE: ${{ inputs.source-commit }}
+          SELECTED_VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$SELECTED_SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$SELECTED_VERSION" =~ ^0\.1\.0-internal\.(0|[1-9][0-9]*)$ ]]
+          test "$(git rev-parse HEAD)" = "$SELECTED_SOURCE"
+          git merge-base --is-ancestor "$SELECTED_SOURCE" origin/main
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - name: Install disposable controlled storage harness
+        run: npm ci --prefix scripts/logging
+      - name: Prepare unuploaded candidates with separate never-published API source fixture
+        env:
+          SELECTED_VERSION: ${{ inputs.version }}
+        run: node scripts/logging/pack.ts --version "$SELECTED_VERSION" --output artifacts/logging-packages
+      - name: Qualify fresh installed consumers through actual uploader and SQL
+        run: node scripts/logging/verify-consumers.ts --feed artifacts/logging-packages --manifest artifacts/logging-release.json --scenario all --report artifacts/logging-consumer-proof.json
+      - name: Check input selection and refusal gates
+        run: node --test scripts/logging/consumption.test.ts
+      - name: Print reviewable candidate metadata and explicit evidence boundary
+        run: |
+          cat artifacts/logging-release.json artifacts/logging-consumer-proof.json
+          echo 'PREPARED ONLY. API source fixture is not genuine private .4 byte/access evidence. No package, CLI blob, tag, ACL or release was published.'
