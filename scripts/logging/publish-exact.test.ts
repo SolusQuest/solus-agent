@@ -1,4 +1,10 @@
+import {
+    inspectionContext,
+    projectUploadLocation,
+    inspectUpload,
+} from "./inspect-cli-upload.ts";
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import {
     readFileSync,
@@ -377,7 +383,7 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
     );
     const prepare = source
         .split("  prepare:")[1]
-        .split("  reconcile-contracts:")[0];
+        .split("  inspect-cli-upload:")[0];
     assert.match(prepare, /if: inputs.mode == 'prepare'/);
     assert.doesNotMatch(prepare, /packages: write|GITHUB_TOKEN|secrets\./);
     assert.match(
@@ -386,7 +392,8 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
     );
     assert.match(source, /test "\$GITHUB_RUN_ATTEMPT" = 1/);
     assert.match(source, /test "\$EXPECTED" = "\$WORKFLOW_SHA"/);
-    assert.equal((source.match(/packages: write/g) ?? []).length, 1);
+    // Exactly the existing writer and the fixed one-session observation require write.
+    assert.equal((source.match(/packages: write/g) ?? []).length, 2);
 });
 
 // Exact NuGet resource/admission production-boundary tests follow below.
@@ -1746,4 +1753,297 @@ test("unknown push outcome or post-read/whole-byte failure stops with no automat
         assert.equal(pushes, 1);
         assert.equal(verify, failure === "bytes" ? 1 : 0);
     }
+});
+
+test("CLI incident projection is closed, secret-free and agrees with the unchanged production Location guard", async () => {
+    const secret = "OPAQUE-LOCATION-TOKEN-CANARY";
+    const prefix = "/v2/solusquest/solus-logging-cli/blobs/uploads/";
+    for (const [location, reason, shape] of [
+        [
+            `${prefix}${secret}?opaque=${secret}%2fX`,
+            "admitted",
+            "uploads-session",
+        ],
+        [
+            `https://ghcr.io:443${prefix}${secret}`,
+            "admitted",
+            "uploads-session",
+        ],
+        [`//ghcr.io${prefix}${secret}`, "admitted", "uploads-session"],
+        [`${secret}?state=${secret}`, "admitted", "uploads-session"],
+        [
+            `/v2/solusquest/solus-logging-cli/blobs/upload/${secret}`,
+            "upload-path",
+            "upload-singular-session",
+        ],
+        [
+            `/v2/solusquest/solus-logging-cli/opaque/${secret}`,
+            "upload-path",
+            "namespace-other",
+        ],
+        [`https://different.invalid/${secret}`, "origin", "outside-namespace"],
+        [`https://ghcr.io:444${prefix}${secret}`, "origin", "uploads-session"],
+        [
+            `/v2/other/blobs/uploads/${secret}`,
+            "upload-path",
+            "outside-namespace",
+        ],
+        [
+            `/v2/solusquest/solus-logging-cli/../other/${secret}`,
+            "upload-path",
+            "outside-namespace",
+        ],
+        [`https://${secret}@ghcr.io${prefix}id`, "userinfo", "uploads-session"],
+        [`${prefix}id#${secret}`, "fragment", "uploads-session"],
+        [`${prefix}id?%64igest=${secret}`, "digest-query", "uploads-session"],
+    ]) {
+        const projection = projectUploadLocation(location);
+        assert.equal(projection.reason, reason);
+        assert.equal(projection.pathClass, shape);
+        assert.equal(JSON.stringify(projection).includes(secret), false);
+        let puts = 0;
+        const original = ociTransport(
+            "synthetic",
+            Date.now() + 120000,
+            async (_url, options) => {
+                if (options?.method === "HEAD")
+                    return new Response(null, { status: 404 });
+                if (options?.method === "POST")
+                    return new Response(null, {
+                        status: 202,
+                        headers: { location },
+                    });
+                puts++;
+                return new Response(null, {
+                    status: 201,
+                    headers: {
+                        "docker-content-digest": `sha256:${hash(config)}`,
+                    },
+                });
+            },
+        );
+        if (projection.oldGuardWouldAdmit) await original.blob(config);
+        else
+            await assert.rejects(
+                original.blob(config),
+                /upload-location-origin/,
+            );
+        assert.equal(puts, projection.oldGuardWouldAdmit ? 1 : 0);
+    }
+    for (const raw of [null, "", "https://[bad", secret.repeat(500)]) {
+        const value = projectUploadLocation(raw);
+        assert.equal(value.reason, "invalid");
+        assert.equal(value.oldGuardWouldAdmit, false);
+        assert.equal(JSON.stringify(value).includes(secret), false);
+    }
+});
+const inspectEnv = {
+    ...context,
+    GITHUB_JOB: "inspect-cli-upload",
+    GITHUB_RUN_NUMBER: "10",
+    GITHUB_ACTOR_ID: "16307884",
+    GITHUB_ACTOR: "synthetic-actor",
+    EXACT_MODE: "inspect-cli-upload",
+    EXACT_MEMBER: "CLI",
+};
+test("fixed CLI observation performs only tokenGET/tagGET/configHEAD/ONE sessionPOST, retaining no opaque data", async () => {
+    const secret = "SYNTHETIC-SECRET-CANARY";
+    const calls: any[] = [];
+    const report = await inspectUpload(
+        inspectEnv,
+        secret,
+        async (url, options) => {
+            calls.push([url, options]);
+            assert.equal(new URL(String(url)).origin, "https://ghcr.io");
+            assert.equal(options?.redirect, "error");
+            assert.equal(options?.body, undefined);
+            assert.equal(
+                options?.headers && Object.hasOwn(options.headers, "Cookie"),
+                false,
+            );
+            if (calls.length === 1)
+                return new Response(
+                    JSON.stringify({ token: secret, expires_in: 180 }),
+                );
+            if (calls.length <= 3) return new Response(null, { status: 404 });
+            return new Response(null, {
+                status: 202,
+                headers: {
+                    location: `/v2/solusquest/solus-logging-cli/blobs/upload/${secret}?state=${secret}`,
+                },
+            });
+        },
+    );
+    assert.equal(report.state, "observed");
+    assert.equal(report.uploadSessionCreated, true);
+    assert.equal(report.immutableBytesUploaded, false);
+    assert.equal(report.publicationVerified, false);
+    assert.equal(report.accessVerified, false);
+    assert.equal(JSON.stringify(report).includes(secret), false);
+    assert.deepEqual(
+        calls.map((c) => c[1].method),
+        ["GET", "GET", "HEAD", "POST"],
+    );
+    assert.equal(
+        calls[0][0],
+        "https://ghcr.io/token?service=ghcr.io&scope=repository%3Asolusquest%2Fsolus-logging-cli%3Apull%2Cpush",
+    );
+    assert.equal(
+        calls[1][0],
+        "https://ghcr.io/v2/solusquest/solus-logging-cli/manifests/0.1.0-internal.1",
+    );
+    assert.equal(
+        calls[2][0],
+        "https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    );
+    assert.equal(
+        calls[3][0],
+        "https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/uploads/",
+    );
+});
+test("CLI observation refuses hostile prior state/status/network/auth exactly once without recovery or opaque error output", async () => {
+    const secret = "HOSTILE-BODY-HEADER-CREDENTIAL";
+    for (const [failAt, status] of [
+        [1, 403],
+        [2, 200],
+        [2, 403],
+        [3, 200],
+        [3, 403],
+        [4, 500],
+        [4, 307],
+    ]) {
+        let calls = 0;
+        const report = await inspectUpload(inspectEnv, secret, async () => {
+            calls++;
+            if (calls === failAt)
+                return new Response(secret, {
+                    status,
+                    headers: {
+                        location: `https://elsewhere.invalid/${secret}`,
+                    },
+                });
+            if (calls === 1)
+                return new Response(
+                    JSON.stringify({ token: secret, expires_in: 180 }),
+                );
+            return new Response(null, { status: 404 });
+        });
+        assert.equal(report.state, "refused");
+        assert.equal(calls, failAt);
+        assert.equal(JSON.stringify(report).includes(secret), false);
+    }
+    for (const response of [
+        "{",
+        JSON.stringify({ token: secret, expires_in: 0 }),
+        JSON.stringify({ token: secret, expires_in: 4000 }),
+        secret.repeat(1000),
+    ]) {
+        let calls = 0;
+        const report = await inspectUpload(inspectEnv, secret, async () => {
+            calls++;
+            return new Response(response);
+        });
+        assert.equal(report.state, "refused");
+        assert.equal(calls, 1);
+        assert.equal(JSON.stringify(report).includes(secret), false);
+    }
+    for (let failAt = 1; failAt <= 4; failAt++) {
+        let calls = 0;
+        const report = await inspectUpload(inspectEnv, secret, async () => {
+            if (++calls === failAt) throw new Error(secret);
+            return calls === 1
+                ? new Response(
+                      JSON.stringify({ token: secret, expires_in: 180 }),
+                  )
+                : new Response(null, { status: 404 });
+        });
+        assert.equal(report.state, "refused");
+        assert.equal(calls, failAt);
+        assert.equal(JSON.stringify(report).includes(secret), false);
+    }
+});
+test("CLI observation context and production entry fail before credentials on wrong identity/head/member/run/replay", async () => {
+    for (const [key, value] of Object.entries({
+        GITHUB_JOB: "exact-operation",
+        GITHUB_RUN_NUMBER: "11",
+        GITHUB_RUN_ATTEMPT: "2",
+        GITHUB_ACTOR_ID: "1",
+        GITHUB_REPOSITORY_ID: "1",
+        GITHUB_SHA: "0".repeat(40),
+        WORKFLOW_SHA: "0".repeat(40),
+        EXACT_MEMBER: "Solus.Logging",
+        EXACT_MODE: "publish-one",
+        SELECTED_SOURCE: "0".repeat(40),
+        SELECTED_VERSION: "0.1.0-internal.2",
+        RUNNER_OS: "Darwin",
+        GITHUB_REF: "refs/heads/main",
+    })) {
+        let calls = 0;
+        await assert.rejects(
+            inspectUpload(
+                { ...inspectEnv, [key]: value },
+                "synthetic",
+                async () => {
+                    calls++;
+                    throw new Error();
+                },
+            ),
+        );
+        assert.equal(calls, 0);
+    }
+    assert.equal(inspectionContext(inspectEnv).runNumber, 10);
+    const dir = mkdtempSync(join(tmpdir(), "cli-probe-entry-"));
+    try {
+        const preload = join(dir, "deny.mjs");
+        writeFileSync(
+            preload,
+            'globalThis.fetch=()=>{process.stderr.write("FORBIDDEN_FETCH");throw new Error("SECRET_SENTINEL")};',
+        );
+        for (const env of [
+            process.env,
+            { ...process.env, ...inspectEnv, GITHUB_RUN_ATTEMPT: "2" },
+        ]) {
+            const r = spawnSync(
+                process.execPath,
+                ["--import", preload, "scripts/logging/inspect-cli-upload.ts"],
+                {
+                    encoding: "utf8",
+                    env: { ...env, GITHUB_TOKEN: "SECRET_SENTINEL" },
+                },
+            );
+            assert.equal(r.status, 1);
+            assert.equal(r.stdout, "");
+            assert.equal(r.stderr.trim(), "cli-upload-inspection-refused");
+        }
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+test("isolated fixed probe job preserves accepted writer/read jobs and cannot reach blob/tag upload", () => {
+    const code = readFileSync("scripts/logging/inspect-cli-upload.ts", "utf8");
+    assert.doesNotMatch(
+        code,
+        /from ["'][^"']*(?:publish|pack)|method:\s*["'](?:PUT|PATCH|DELETE)["']/,
+    );
+    assert.doesNotMatch(
+        code,
+        /writeFile|appendFile|console\.(?:log|error)\([^\n]*(?:raw|headers|token|bearer)/,
+    );
+    const workflow = readFileSync(
+        ".github/workflows/logging-release.yml",
+        "utf8",
+    );
+    const job = workflow
+        .split("\n  inspect-cli-upload:\n")[1]
+        .split("\n  reconcile-contracts:\n")[0];
+    assert.match(job, /if: inputs.mode == 'inspect-cli-upload'/);
+    assert.match(job, /contents: read\n      packages: write/);
+    assert.match(job, /logging-original-c96-publisher/);
+    assert.match(job, /1:10:16307884/);
+    assert.match(job, /persist-credentials: false/);
+    assert.doesNotMatch(job, /dotnet|publish-exact|pack\.ts|upload-artifact/);
+    assert.equal(
+        hash(readFileSync("scripts/logging/publish-exact.ts")),
+        "f8591b8b4e60acc1d61b8471163533d0dec11f141c4f5442df5cb913a69cb089",
+    );
 });
