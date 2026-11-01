@@ -1755,7 +1755,7 @@ test("unknown push outcome or post-read/whole-byte failure stops with no automat
     }
 });
 
-test("CLI incident projection is closed, secret-free and agrees with the unchanged production Location guard", async () => {
+test("historical CLI incident projection stays frozen while the current writer admits only the observed additional route", async () => {
     const secret = "OPAQUE-LOCATION-TOKEN-CANARY";
     const prefix = "/v2/solusquest/solus-logging-cli/blobs/uploads/";
     for (const [location, reason, shape] of [
@@ -1803,7 +1803,7 @@ test("CLI incident projection is closed, secret-free and agrees with the unchang
         assert.equal(projection.pathClass, shape);
         assert.equal(JSON.stringify(projection).includes(secret), false);
         let puts = 0;
-        const original = ociTransport(
+        const current = ociTransport(
             "synthetic",
             Date.now() + 120000,
             async (_url, options) => {
@@ -1823,13 +1823,16 @@ test("CLI incident projection is closed, secret-free and agrees with the unchang
                 });
             },
         );
-        if (projection.oldGuardWouldAdmit) await original.blob(config);
+        const currentAdmits =
+            reason === "admitted" ||
+            (reason === "upload-path" && shape === "upload-singular-session");
+        if (currentAdmits) await current.blob(config);
         else
             await assert.rejects(
-                original.blob(config),
+                current.blob(config),
                 /upload-location-origin/,
             );
-        assert.equal(puts, projection.oldGuardWouldAdmit ? 1 : 0);
+        assert.equal(puts, currentAdmits ? 1 : 0);
     }
     for (const [raw, status] of [
         [null, "missing"],
@@ -1864,7 +1867,7 @@ const inspectEnv = {
     EXACT_MODE: "inspect-cli-upload",
     EXACT_MEMBER: "CLI",
 };
-test("projection limit is unknown, not a rejection by the original guard or a lost session receipt", async () => {
+test("projection limit stays unknown while canonical route admission and session receipts are preserved", async () => {
     const secret = "LONG-OPAQUE-CANARY";
     const location =
         "/v2/solusquest/solus-logging-cli/blobs/uploads/id?opaque=" +
@@ -1889,7 +1892,7 @@ test("projection limit is unknown, not a rejection by the original guard or a lo
             });
         },
     ).blob(config);
-    assert.equal(puts, 1); // The unchanged original guard admits this valid oversized Location.
+    assert.equal(puts, 1); // Preserve the original plural route's valid oversized Location admission.
     const projection = projectUploadLocation(location);
     assert.equal(projection.projectionStatus, "over-limit");
     assert.equal(projection.oldGuardWouldAdmit, null);
@@ -2088,7 +2091,7 @@ test("CLI observation context and production entry fail before credentials on wr
         rmSync(dir, { recursive: true, force: true });
     }
 });
-test("isolated fixed probe job preserves accepted writer/read jobs and cannot reach blob/tag upload", () => {
+test("isolated historical probe stays frozen and cannot reach blob/tag upload during the intentional writer correction", () => {
     const code = readFileSync("scripts/logging/inspect-cli-upload.ts", "utf8");
     assert.doesNotMatch(
         code,
@@ -2112,7 +2115,174 @@ test("isolated fixed probe job preserves accepted writer/read jobs and cannot re
     assert.match(job, /persist-credentials: false/);
     assert.doesNotMatch(job, /dotnet|publish-exact|pack\.ts|upload-artifact/);
     assert.equal(
-        hash(readFileSync("scripts/logging/publish-exact.ts")),
-        "f8591b8b4e60acc1d61b8471163533d0dec11f141c4f5442df5cb913a69cb089",
+        hash(readFileSync("scripts/logging/inspect-cli-upload.ts")),
+        "a85c0f034653f0db9f208c28cd262e72081194997947cdd894cc09888b9a47a6",
     );
+});
+
+test("both admitted OCI session routes preserve opaque URL bytes, exactly one digest and redacted observers", async () => {
+    const secret = "SYNTHETIC-SESSION-AND-QUERY-CANARY";
+    for (const route of ["uploads", "upload"]) {
+        const prefix = `/v2/solusquest/solus-logging-cli/blobs/${route}/`;
+        for (const location of [
+            `${prefix}${secret}`,
+            `https://ghcr.io:443${prefix}${secret}?opaque=a%20b%2fc+z&state=${secret}`,
+            `//ghcr.io${prefix}${secret}?opaque=${secret}&`,
+            `${prefix}${secret}?`,
+            `../${route}/${secret}?opaque=${secret}%2fX`,
+        ]) {
+            const calls: any[] = [],
+                observations: any[] = [];
+            const transport = ociTransport(
+                "synthetic-bearer",
+                Date.now() + 120000,
+                async (url, options) => {
+                    calls.push([url, options]);
+                    assert.equal(
+                        new URL(String(url)).origin,
+                        "https://ghcr.io",
+                    );
+                    assert.equal(options?.redirect, "error");
+                    assert.equal(
+                        options?.headers.Authorization,
+                        "Bearer synthetic-bearer",
+                    );
+                    if (options?.method === "HEAD")
+                        return new Response(null, { status: 404 });
+                    if (options?.method === "POST")
+                        return new Response(null, {
+                            status: 202,
+                            headers: { location },
+                        });
+                    return new Response(null, {
+                        status: 201,
+                        headers: {
+                            "docker-content-digest": `sha256:${hash(config)}`,
+                        },
+                    });
+                },
+                (entry) => observations.push(entry),
+            );
+            await transport.blob(config);
+            assert.deepEqual(
+                calls.map((c) => c[1].method),
+                ["HEAD", "POST", "PUT"],
+            );
+            const supplied = new URL(
+                location,
+                "https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/uploads/",
+            ).href;
+            assert.ok(calls[2][0].startsWith(supplied)); // Opaque path/query prefix is never reserialized.
+            assert.deepEqual(
+                new URL(calls[2][0]).searchParams.getAll("digest"),
+                [`sha256:${hash(config)}`],
+            );
+            assert.equal(calls[2][1].body, config);
+            assert.equal(
+                calls[2][1].headers["Content-Type"],
+                "application/octet-stream",
+            );
+            assert.equal(observations[2].endpoint, prefix + "<session>");
+            assert.equal(JSON.stringify(observations).includes(secret), false);
+            assert.equal(
+                JSON.stringify(observations).includes("opaque"),
+                false,
+            );
+        }
+    }
+});
+
+test("both OCI session routes refuse unsafe destinations and uncertain/expired writes without retry or opaque logging", async () => {
+    const secret = "HOSTILE-OPAQUE-CANARY";
+    for (const route of ["uploads", "upload"]) {
+        const path = `/v2/solusquest/solus-logging-cli/blobs/${route}/${secret}`;
+        for (const location of [
+            `https://other.invalid${path}`,
+            `http://ghcr.io${path}`,
+            `https://ghcr.io:444${path}`,
+            `https://${secret}:password@ghcr.io${path}`,
+            `${path}#${secret}`,
+            `${path}?digest=`,
+            `${path}?%64igest=${secret}`,
+            `/v2/other/blobs/${route}/${secret}`,
+            `/v2/solusquest/solus-logging-cli-other/blobs/${route}/${secret}`,
+            `/v2/solusquest/solus-logging-cli/blobs/${route}-other/${secret}`,
+            `${path}/../../../../../../other/${secret}`,
+        ]) {
+            const calls: string[] = [],
+                observations: any[] = [];
+            const transport = ociTransport(
+                "synthetic",
+                Date.now() + 120000,
+                async (_url, options) => {
+                    calls.push(options?.method ?? "GET");
+                    if (options?.method === "HEAD")
+                        return new Response(null, { status: 404 });
+                    return new Response(null, {
+                        status: 202,
+                        headers: { location },
+                    });
+                },
+                (entry) => observations.push(entry),
+            );
+            await assert.rejects(
+                transport.blob(config),
+                /upload-location-origin/,
+            );
+            assert.deepEqual(calls, ["HEAD", "POST"]);
+            assert.equal(JSON.stringify(observations).includes(secret), false);
+        }
+        for (const failure of ["POST", "PUT"]) {
+            const calls: string[] = [],
+                observations: any[] = [];
+            const transport = ociTransport(
+                "synthetic",
+                Date.now() + 120000,
+                async (_url, options) => {
+                    const method = options?.method ?? "GET";
+                    calls.push(method);
+                    if (method === failure)
+                        throw new Error("SYNTHETIC_UNKNOWN_OUTCOME");
+                    if (method === "HEAD")
+                        return new Response(null, { status: 404 });
+                    return new Response(null, {
+                        status: 202,
+                        headers: { location: path + "?opaque=" + secret },
+                    });
+                },
+                (entry) => observations.push(entry),
+            );
+            await assert.rejects(transport.blob(config));
+            assert.equal(calls.filter((m) => m === failure).length, 1);
+            assert.equal(JSON.stringify(observations).includes(secret), false);
+        }
+        const clock = Date.now,
+            start = clock();
+        let now = start;
+        const calls: string[] = [];
+        try {
+            Date.now = () => now;
+            const transport = ociTransport(
+                "synthetic",
+                start + 6000,
+                async (_url, options) => {
+                    calls.push(options?.method ?? "GET");
+                    if (options?.method === "HEAD")
+                        return new Response(null, { status: 404 });
+                    now += 2000;
+                    return new Response(null, {
+                        status: 202,
+                        headers: { location: path },
+                    });
+                },
+            );
+            await assert.rejects(
+                transport.blob(config),
+                /registry-bearer-expiry/,
+            );
+            assert.deepEqual(calls, ["HEAD", "POST"]);
+        } finally {
+            Date.now = clock;
+        }
+    }
 });

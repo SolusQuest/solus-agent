@@ -29,6 +29,14 @@ const accepted = lock.manifest;
 const origin = "https://ghcr.io";
 const namespace = "/v2/solusquest/solus-logging-cli";
 const manifestType = "application/vnd.oci.image.manifest.v1+json";
+// Canonical route plus the same-namespace route observed in actual run10.
+// Reuse the exact admission set for redaction so no admitted session path escapes.
+const uploadPrefixes = [
+    namespace + "/blobs/uploads/",
+    namespace + "/blobs/upload/",
+];
+const uploadSessionPrefix = (pathname: string) =>
+    uploadPrefixes.find((prefix) => pathname.startsWith(prefix));
 const hash = (bytes: Uint8Array) =>
     createHash("sha256").update(bytes).digest("hex");
 const fail = (code: string): never => {
@@ -360,10 +368,9 @@ export function ociTransport(
             signal: AbortSignal.timeout(90_000),
         });
         // Never retain an opaque upload session path, query or Location header.
-        const endpoint = parsed.pathname.startsWith(
-            namespace + "/blobs/uploads/",
-        )
-            ? namespace + "/blobs/uploads/<session>"
+        const sessionPrefix = uploadSessionPrefix(parsed.pathname);
+        const endpoint = sessionPrefix
+            ? sessionPrefix + "<session>"
             : parsed.pathname;
         observe({ method, endpoint, status: response.status });
         return response;
@@ -408,7 +415,7 @@ export function ociTransport(
             // Preserve opaque upload query parameters. No forwarding to a different origin.
             if (
                 location.origin !== origin ||
-                !location.pathname.startsWith(namespace + "/blobs/uploads/") ||
+                !uploadSessionPrefix(location.pathname) ||
                 location.username ||
                 location.password ||
                 location.hash ||
@@ -417,7 +424,7 @@ export function ociTransport(
                 fail("upload-location-origin");
             const uploadUrl =
                 location.href +
-                (location.search ? "&" : "?") +
+                (location.href.includes("?") ? "&" : "?") +
                 "digest=" +
                 encodeURIComponent(digest);
             const uploaded = await send(
