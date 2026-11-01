@@ -104,9 +104,9 @@ type ToolPhase = keyof typeof toolCommands;
 type ToolResult = {
     status: number | null;
     signal: string | null;
-    error?: { code?: unknown };
-    stdout: Buffer | string;
-    stderr: Buffer | string;
+    error?: unknown;
+    stdout: Buffer | string | null;
+    stderr: Buffer | string | null;
 };
 type ToolDiagnostic = {
     event: "exact-tool-failure";
@@ -204,14 +204,16 @@ export function tool(
                 signal <= 128
                     ? signal
                     : null,
-            timedOut: result.error?.code === "ETIMEDOUT",
+            timedOut:
+                (result.error as { code?: unknown } | null | undefined)
+                    ?.code === "ETIMEDOUT",
             spawnFailed: Boolean(result.error),
             timeoutMs: timeout,
             codes: [...codes].sort().slice(0, 8),
         });
         fail(`tool-failed-${phase}`);
     }
-    return result.stdout.toString().trim();
+    return result.stdout!.toString().trim();
 }
 
 // Cold restore authenticates via an in-memory NuGet environment credential, never a login file.
