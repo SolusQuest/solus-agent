@@ -1798,6 +1798,7 @@ test("CLI incident projection is closed, secret-free and agrees with the unchang
         [`${prefix}id?%64igest=${secret}`, "digest-query", "uploads-session"],
     ]) {
         const projection = projectUploadLocation(location);
+        assert.equal(projection.projectionStatus, "parsed");
         assert.equal(projection.reason, reason);
         assert.equal(projection.pathClass, shape);
         assert.equal(JSON.stringify(projection).includes(secret), false);
@@ -1830,10 +1831,27 @@ test("CLI incident projection is closed, secret-free and agrees with the unchang
             );
         assert.equal(puts, projection.oldGuardWouldAdmit ? 1 : 0);
     }
-    for (const raw of [null, "", "https://[bad", secret.repeat(500)]) {
+    for (const [raw, status] of [
+        [null, "missing"],
+        ["", "missing"],
+        ["https://[bad", "malformed"],
+        [secret.repeat(500), "over-limit"],
+    ]) {
         const value = projectUploadLocation(raw);
-        assert.equal(value.reason, "invalid");
-        assert.equal(value.oldGuardWouldAdmit, false);
+        assert.equal(value.projectionStatus, status);
+        assert.equal(value.form, "unparsed");
+        for (const key of [
+            "reason",
+            "originMatch",
+            "namespaceMatch",
+            "userinfo",
+            "fragment",
+            "digestQuery",
+            "queryPresent",
+            "oldGuardWouldAdmit",
+        ]) {
+            assert.equal(value[key], null);
+        }
         assert.equal(JSON.stringify(value).includes(secret), false);
     }
 });
@@ -1846,6 +1864,55 @@ const inspectEnv = {
     EXACT_MODE: "inspect-cli-upload",
     EXACT_MEMBER: "CLI",
 };
+test("projection limit is unknown, not a rejection by the original guard or a lost session receipt", async () => {
+    const secret = "LONG-OPAQUE-CANARY";
+    const location =
+        "/v2/solusquest/solus-logging-cli/blobs/uploads/id?opaque=" +
+        secret.repeat(250);
+    assert.ok(location.length > 4096);
+    let puts = 0;
+    await ociTransport(
+        "synthetic",
+        Date.now() + 120000,
+        async (_url, options) => {
+            if (options?.method === "HEAD")
+                return new Response(null, { status: 404 });
+            if (options?.method === "POST")
+                return new Response(null, {
+                    status: 202,
+                    headers: { location },
+                });
+            puts++;
+            return new Response(null, {
+                status: 201,
+                headers: { "docker-content-digest": `sha256:${hash(config)}` },
+            });
+        },
+    ).blob(config);
+    assert.equal(puts, 1); // The unchanged original guard admits this valid oversized Location.
+    const projection = projectUploadLocation(location);
+    assert.equal(projection.projectionStatus, "over-limit");
+    assert.equal(projection.oldGuardWouldAdmit, null);
+    let calls = 0;
+    const report = await inspectUpload(inspectEnv, secret, async () => {
+        calls++;
+        return calls === 1
+            ? new Response(
+                  JSON.stringify({ token: "synthetic", expires_in: 180 }),
+              )
+            : calls < 4
+              ? new Response(null, { status: 404 })
+              : new Response(null, { status: 202, headers: { location } });
+    });
+    assert.equal(calls, 4);
+    assert.equal(report.state, "observed");
+    assert.equal(report.uploadSessionCreated, true);
+    assert.equal(report.location?.projectionStatus, "over-limit");
+    assert.equal(report.location?.reason, null);
+    assert.equal(report.location?.oldGuardWouldAdmit, null);
+    assert.equal(report.immutableBytesUploaded, false);
+    assert.equal(JSON.stringify(report).includes(secret), false);
+});
 test("fixed CLI observation performs only tokenGET/tagGET/configHEAD/ONE sessionPOST, retaining no opaque data", async () => {
     const secret = "SYNTHETIC-SECRET-CANARY";
     const calls: any[] = [];

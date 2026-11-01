@@ -48,19 +48,23 @@ export function inspectionContext(env = process.env) {
 
 // Only a closed projection escapes this function. Never return an opaque URL, path or query.
 export function projectUploadLocation(raw: string | null) {
-    const invalid = {
-        form: "invalid",
-        reason: "invalid",
-        originMatch: false,
-        namespaceMatch: false,
-        userinfo: false,
-        fragment: false,
-        digestQuery: false,
-        queryPresent: false,
+    const unparsed = (
+        projectionStatus: "missing" | "over-limit" | "malformed",
+    ) => ({
+        projectionStatus,
+        form: "unparsed",
+        reason: null,
+        originMatch: null,
+        namespaceMatch: null,
+        userinfo: null,
+        fragment: null,
+        digestQuery: null,
+        queryPresent: null,
         pathClass: "unparsed",
-        oldGuardWouldAdmit: false,
-    };
-    if (!raw || raw.length > 4096) return invalid;
+        oldGuardWouldAdmit: null,
+    });
+    if (!raw) return unparsed("missing");
+    if (raw.length > 4096) return unparsed("over-limit");
     try {
         const url = new URL(raw, `${origin}${namespace}/blobs/uploads/`);
         const originMatch = url.origin === origin;
@@ -93,6 +97,7 @@ export function projectUploadLocation(raw: string | null) {
                       ? "namespace-other"
                       : "outside-namespace";
         return {
+            projectionStatus: "parsed",
             form: /^[A-Za-z][A-Za-z0-9+.-]*:/.test(raw)
                 ? "absolute"
                 : raw.startsWith("//")
@@ -111,7 +116,7 @@ export function projectUploadLocation(raw: string | null) {
             oldGuardWouldAdmit: reason === "admitted",
         };
     } catch {
-        return invalid;
+        return unparsed("malformed");
     }
 }
 
