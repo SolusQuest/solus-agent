@@ -75,6 +75,6 @@ jobs:
       - name: Qualify fresh installed consumers and actual Action CLI storage chain (source-baseline-fixture)
         run: node scripts/logging/verify-consumers.ts --feed artifacts/logging-packages --manifest artifacts/logging-release.json --scenario all --report artifacts/logging-consumer-proof.json
       - name: Refuse forbidden topology, missing versions, wrong feeds and fixture publication
-        run: node --test scripts/logging/consumption.test.ts
+        run: node --test scripts/logging/consumption.test.ts scripts/logging/publish-exact.test.ts
       - name: Record exact candidate and separated evidence profile
         run: cat artifacts/logging-release.json artifacts/logging-consumer-proof.json

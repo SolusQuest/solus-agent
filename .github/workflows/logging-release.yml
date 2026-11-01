@@ -3,6 +3,22 @@ name: Logging release preparation
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Preparation or separately reviewed original-byte operator action
+        type: choice
+        default: prepare
+        options: [prepare, validate-exact, publish-one]
+        required: true
+      expected-operation-head:
+        description: Exact root-reviewed helper and workflow SHA; required for operations
+        type: string
+        required: false
+      member:
+        description: One fixed original member; ignored by preparation
+        type: choice
+        default: Solus.Telemetry.Contracts
+        options: [Solus.Telemetry.Contracts, SolusAgent.Telemetry, Solus.Logging, Solus.Logging.Supabase, CLI]
+        required: true
       source-commit:
         description: Accepted main commit (full 40-character SHA)
         required: true
@@ -13,12 +29,13 @@ on:
         default: 0.1.0-internal.1
         type: string
 
-# Preparation only: no packages permission, credentials, registry access or uploads.
+# Default preparation remains read-only. Exact operator authority is isolated below.
 permissions:
   contents: read
 
 jobs:
   prepare:
+    if: inputs.mode == 'prepare'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -58,3 +75,69 @@ jobs:
         run: |
           cat artifacts/logging-release.json artifacts/logging-consumer-proof.json
           echo 'PREPARED ONLY. API source fixture is not genuine private .4 byte/access evidence. No package, CLI blob, tag, ACL or release was published.'
+
+  exact-operation:
+    if: inputs.mode == 'validate-exact' || inputs.mode == 'publish-one'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: logging-original-c96-publisher
+      cancel-in-progress: false
+    steps:
+      - name: Bind exact operator source before credential access
+        shell: bash
+        env:
+          EXPECTED: ${{ inputs.expected-operation-head }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          SELECTED_SOURCE: ${{ inputs.source-commit }}
+          SELECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REPOSITORY:$GITHUB_REPOSITORY_ID" = SolusQuest/solus-agent:1406091678
+          test "$GITHUB_REF" = refs/heads/codex/l1-123-logging-publication
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          [[ "$EXPECTED" =~ ^[a-f0-9]{40}$ ]]
+          test "$EXPECTED" = "$GITHUB_SHA"
+          test "$EXPECTED" = "$WORKFLOW_SHA"
+          test "$SELECTED_SOURCE" = c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          test "$SELECTED_VERSION" = 0.1.0-internal.1
+          test "$(uname -m)" = x86_64
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          path: accepted-source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify original candidate and Api history
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C accepted-source rev-parse HEAD)" = c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          git -C accepted-source cat-file -e cb5f5ef8fc39a24f888065052078d40722e7680b^{commit}
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: accepted-source/global.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24.21.0
+          architecture: x64
+      - name: Validate all original bytes then execute only the selected operation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXPECTED_OPERATION_HEAD: ${{ inputs.expected-operation-head }}
+          EXACT_MODE: ${{ inputs.mode }}
+          EXACT_MEMBER: ${{ inputs.member }}
+          SELECTED_SOURCE: ${{ inputs.source-commit }}
+          SELECTED_VERSION: ${{ inputs.version }}
+          EXACT_SOURCE_ROOT: ${{ github.workspace }}/accepted-source
+        run: node scripts/logging/publish-exact.ts
