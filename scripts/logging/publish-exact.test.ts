@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir, constants as osConstants } from "node:os";
 import {
     lock,
     operationContext,
@@ -11,6 +12,7 @@ import {
     registryBearer,
     publishOci,
     publishNugetMember,
+    tool,
 } from "./publish-exact.ts";
 const hash = (v: Uint8Array) => createHash("sha256").update(v).digest("hex");
 const manifest = Buffer.from(lock.ociRaw["oci-manifest.json"]);
@@ -457,4 +459,332 @@ test("OCI wrong blob readback prevents manifest publication; rejected media or a
         );
         assert.equal(puts, 1);
     }
+});
+
+test("tool failure diagnostics close every hardcoded phase without exposing child data", () => {
+    const secret = "synthetic-secret-never-log-92a7";
+    const phases = [
+        ["operation-checkout", "git"],
+        ["registry-restore", "dotnet"],
+        ["original-pack", "node"],
+    ] as const;
+    for (const [phase, command] of phases) {
+        const records: any[] = [];
+        let calls = 0;
+        const fake = () => {
+            calls++;
+            return {
+                status: 23,
+                signal: null,
+                stdout: Buffer.from(
+                    `path=/private/${secret} auth=${secret} NU1301 MSB1009`,
+                ),
+                stderr: Buffer.from(
+                    `${secret}: CS2008 NU1301 nu1302 xNU1000 NU12345 _CS1001 CS1002_suffix`,
+                ),
+            };
+        };
+        assert.throws(
+            () =>
+                tool(
+                    phase,
+                    command,
+                    [secret],
+                    `/private/${secret}`,
+                    { TOKEN: secret },
+                    180000,
+                    fake,
+                    (r) => records.push(r),
+                ),
+            new RegExp(`tool-failed-${phase}`),
+        );
+        assert.equal(calls, 1);
+        assert.deepEqual(records, [
+            {
+                event: "exact-tool-failure",
+                phase,
+                exitCode: 23,
+                signal: null,
+                timedOut: false,
+                spawnFailed: false,
+                timeoutMs: 180000,
+                codes: ["CS2008", "MSB1009", "NU1301"],
+            },
+        ]);
+        const serialized = JSON.stringify(records);
+        assert.ok(
+            !serialized.includes(secret) &&
+                !serialized.includes("/private/") &&
+                !serialized.includes("auth="),
+        );
+    }
+});
+test("tool diagnostics bound scanned tails and codes, and never serialize error or malformed fields", () => {
+    const secret = "synthetic-secret-not-an-error-record";
+    const records: any[] = [];
+    const fake = () => ({
+        status: secret as any,
+        signal: secret,
+        error: { code: secret, message: secret, stack: secret, cause: secret },
+        stdout: Buffer.from(
+            "NU0000 " +
+                "x".repeat(70000) +
+                " NU1009 NU1008 NU1007 NU1006 NU1005 NU1004 NU1003 NU1002 NU1001 NU1000",
+        ),
+        stderr: {
+            toString: () => {
+                throw new Error(secret);
+            },
+        } as any,
+    });
+    assert.throws(
+        () =>
+            tool(
+                "registry-restore",
+                "dotnet",
+                [secret],
+                tmpdir(),
+                {},
+                180000,
+                fake,
+                (r) => records.push(r),
+            ),
+        /tool-failed-registry-restore/,
+    );
+    assert.deepEqual(records[0].codes, [
+        "NU1000",
+        "NU1001",
+        "NU1002",
+        "NU1003",
+        "NU1004",
+        "NU1005",
+        "NU1006",
+        "NU1007",
+    ]);
+    assert.equal(records[0].exitCode, null);
+    assert.equal(records[0].signal, null);
+    assert.equal(records[0].timedOut, false);
+    assert.ok(!JSON.stringify(records).includes(secret));
+    assert.deepEqual(Object.keys(records[0]).sort(), [
+        "codes",
+        "event",
+        "exitCode",
+        "phase",
+        "signal",
+        "spawnFailed",
+        "timedOut",
+        "timeoutMs",
+    ]);
+});
+test("tool success stays quiet and invalid callsite/command/timeout cannot spawn", () => {
+    let calls = 0,
+        observations = 0;
+    const fake = () => {
+        calls++;
+        return {
+            status: 0,
+            signal: null,
+            stdout: Buffer.from("  expected-sha\n"),
+            stderr: Buffer.from("synthetic-secret"),
+        };
+    };
+    assert.equal(
+        tool(
+            "operation-checkout",
+            "git",
+            ["rev-parse", "HEAD"],
+            tmpdir(),
+            {},
+            180000,
+            fake,
+            () => {
+                observations++;
+            },
+        ),
+        "expected-sha",
+    );
+    assert.equal(calls, 1);
+    assert.equal(observations, 0);
+    for (const [phase, command, timeout] of [
+        ["bad-secret", "git", 180000],
+        ["__proto__", "git", 180000],
+        ["operation-checkout", "node", 180000],
+        ["original-pack", "node", 0],
+        ["original-pack", "node", 900001],
+    ]) {
+        assert.throws(
+            () =>
+                tool(
+                    phase as any,
+                    command as string,
+                    [],
+                    tmpdir(),
+                    {},
+                    timeout as number,
+                    fake,
+                    () => {
+                        observations++;
+                    },
+                ),
+            /diagnostic-callsite/,
+        );
+    }
+    assert.equal(calls, 1);
+    assert.equal(observations, 0);
+});
+test("real Node failure and timeout use numeric termination data and redact synthetic child credentials", () => {
+    const secret = "synthetic-token-in-child-output-keep-private";
+    const env = { PATH: process.env.PATH, TOKEN: secret };
+    const records: any[] = [];
+    assert.throws(
+        () =>
+            tool(
+                "original-pack",
+                "node",
+                [
+                    "-e",
+                    'process.stdout.write(process.env.TOKEN);process.stderr.write("\\nCS2008 " + process.env.TOKEN);process.exit(23)',
+                ],
+                tmpdir(),
+                env,
+                10000,
+                undefined,
+                (r) => records.push(r),
+            ),
+        /tool-failed-original-pack/,
+    );
+    assert.equal(records[0].exitCode, 23);
+    assert.deepEqual(records[0].codes, ["CS2008"]);
+    assert.ok(!JSON.stringify(records).includes(secret));
+    assert.throws(
+        () =>
+            tool(
+                "original-pack",
+                "node",
+                ["-e", "setTimeout(() => {}, 5000)"],
+                tmpdir(),
+                env,
+                50,
+                undefined,
+                (r) => records.push(r),
+            ),
+        /tool-failed-original-pack/,
+    );
+    assert.equal(records[1].exitCode, null);
+    assert.equal(records[1].signal, osConstants.signals.SIGTERM);
+    assert.equal(records[1].timedOut, true);
+    assert.equal(records[1].spawnFailed, true);
+    assert.throws(
+        () =>
+            tool(
+                "original-pack",
+                "node",
+                ["-e", 'process.kill(process.pid, "SIGTERM")'],
+                tmpdir(),
+                env,
+                10000,
+                undefined,
+                (r) => records.push(r),
+            ),
+        /tool-failed-original-pack/,
+    );
+    assert.equal(records[2].signal, osConstants.signals.SIGTERM);
+    assert.equal(records[2].timedOut, false);
+});
+test("real missing executable and checkout failure plus thrown spawn exception remain bounded", () => {
+    const records: any[] = [];
+    assert.throws(
+        () =>
+            tool(
+                "registry-restore",
+                "dotnet",
+                ["restore"],
+                tmpdir(),
+                { PATH: "/nonexistent-diagnostic-tool-path" },
+                1000,
+                undefined,
+                (r) => records.push(r),
+            ),
+        /tool-failed-registry-restore/,
+    );
+    assert.equal(records[0].spawnFailed, true);
+    assert.equal(records[0].exitCode, null);
+    assert.equal(records[0].timedOut, false);
+    assert.throws(
+        () =>
+            tool(
+                "operation-checkout",
+                "git",
+                ["rev-parse", "HEAD"],
+                tmpdir(),
+                { PATH: process.env.PATH },
+                1000,
+                undefined,
+                (r) => records.push(r),
+            ),
+        /tool-failed-operation-checkout/,
+    );
+    assert.equal(records[1].exitCode, 128);
+    assert.throws(
+        () =>
+            tool(
+                "original-pack",
+                "node",
+                [],
+                tmpdir(),
+                {},
+                1000,
+                () => {
+                    throw new Error("synthetic-secret-in-exception");
+                },
+                (r) => records.push(r),
+            ),
+        /tool-failed-original-pack/,
+    );
+    assert.equal(records[2].spawnFailed, true);
+    assert.equal(records[2].exitCode, null);
+    assert.deepEqual(records[2].codes, []);
+    assert.ok(!JSON.stringify(records).includes("synthetic-secret"));
+});
+test("production default diagnostic sink emits only its closed JSON record", () => {
+    const logs: unknown[] = [];
+    const original = console.error;
+    console.error = (value) => {
+        logs.push(value);
+    };
+    try {
+        assert.throws(
+            () =>
+                tool(
+                    "registry-restore",
+                    "dotnet",
+                    ["secret-arg"],
+                    "/secret-cwd",
+                    { TOKEN: "secret-env" },
+                    1000,
+                    () => ({
+                        status: 1,
+                        signal: null,
+                        stdout: Buffer.from("NU1301 secret-out"),
+                        stderr: Buffer.from("secret-err"),
+                    }),
+                ),
+            /tool-failed-registry-restore/,
+        );
+    } finally {
+        console.error = original;
+    }
+    assert.equal(logs.length, 1);
+    const record = JSON.parse(logs[0] as string);
+    assert.deepEqual(record, {
+        event: "exact-tool-failure",
+        phase: "registry-restore",
+        exitCode: 1,
+        signal: null,
+        timedOut: false,
+        spawnFailed: false,
+        timeoutMs: 1000,
+        codes: ["NU1301"],
+    });
+    assert.ok(!String(logs[0]).includes("secret"));
 });

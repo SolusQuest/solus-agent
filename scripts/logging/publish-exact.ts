@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { resolve, join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { tmpdir, constants as osConstants } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -95,22 +95,122 @@ export async function guardOriginalOperation(
     return operation();
 }
 
-function tool(
+const toolCommands = {
+    "operation-checkout": "git",
+    "registry-restore": "dotnet",
+    "original-pack": "node",
+} as const;
+type ToolPhase = keyof typeof toolCommands;
+type ToolResult = {
+    status: number | null;
+    signal: string | null;
+    error?: { code?: unknown };
+    stdout: Buffer | string;
+    stderr: Buffer | string;
+};
+type ToolDiagnostic = {
+    event: "exact-tool-failure";
+    phase: ToolPhase;
+    exitCode: number | null;
+    signal: number | null;
+    timedOut: boolean;
+    spawnFailed: boolean;
+    timeoutMs: number;
+    codes: string[];
+};
+
+// Exported for tests of this production boundary. Never emit child output,
+// arguments, paths, environment, error messages/causes/stacks or arbitrary codes.
+export function tool(
+    phase: ToolPhase,
     command: string,
     args: string[],
     cwd: string,
     env: NodeJS.ProcessEnv,
     timeout = 180_000,
+    spawn: (
+        command: string,
+        args: string[],
+        options: any,
+    ) => ToolResult = spawnSync,
+    observe: (record: ToolDiagnostic) => void = (record) =>
+        console.error(JSON.stringify(record)),
 ) {
-    const result = spawnSync(command, args, {
-        cwd,
-        env,
-        timeout,
-        maxBuffer: 16 * 1024 ** 2,
-    });
-    // Never serialize arbitrary subprocess output or environment, including restore credentials.
-    if (result.error || result.signal || result.status !== 0)
-        fail("tool-or-outcome-unknown");
+    if (
+        !Object.hasOwn(toolCommands, phase) ||
+        toolCommands[phase] !== command ||
+        !Number.isSafeInteger(timeout) ||
+        timeout < 1 ||
+        timeout > 900_000
+    )
+        fail("diagnostic-callsite");
+    let result: ToolResult;
+    try {
+        result = spawn(command, args, {
+            cwd,
+            env,
+            timeout,
+            maxBuffer: 16 * 1024 ** 2,
+        });
+    } catch {
+        // A thrown spawn exception is equally untrusted; no exception data is logged.
+        observe({
+            event: "exact-tool-failure",
+            phase,
+            exitCode: null,
+            signal: null,
+            timedOut: false,
+            spawnFailed: true,
+            timeoutMs: timeout,
+            codes: [],
+        });
+        return fail(`tool-failed-${phase}`);
+    }
+    if (result.error || result.signal || result.status !== 0) {
+        const codes = new Set<string>();
+        for (const output of [result.stdout, result.stderr]) {
+            // Bound scanning too: the existing subprocess buffer cap remains unchanged.
+            const tail = Buffer.isBuffer(output)
+                ? output.subarray(-65_536).toString("utf8")
+                : typeof output === "string"
+                  ? output.slice(-65_536)
+                  : "";
+            for (const match of tail.matchAll(
+                /(?<![A-Za-z0-9_])(?:NU|MSB|CS)[0-9]{4}(?![A-Za-z0-9_])/g,
+            ))
+                codes.add(match[0]);
+        }
+        const signal =
+            typeof result.signal === "string" &&
+            Object.hasOwn(osConstants.signals, result.signal)
+                ? osConstants.signals[
+                      result.signal as keyof typeof osConstants.signals
+                  ]
+                : null;
+        observe({
+            event: "exact-tool-failure",
+            phase,
+            exitCode:
+                Number.isInteger(result.status) &&
+                result.status !== null &&
+                result.status >= 0 &&
+                result.status <= 255
+                    ? result.status
+                    : null,
+            signal:
+                Number.isInteger(signal) &&
+                signal !== null &&
+                signal > 0 &&
+                signal <= 128
+                    ? signal
+                    : null,
+            timedOut: result.error?.code === "ETIMEDOUT",
+            spawnFailed: Boolean(result.error),
+            timeoutMs: timeout,
+            codes: [...codes].sort().slice(0, 8),
+        });
+        fail(`tool-failed-${phase}`);
+    }
     return result.stdout.toString().trim();
 }
 
@@ -141,6 +241,7 @@ async function acquirePackages(
     );
     try {
         tool(
+            "registry-restore",
             "dotnet",
             [
                 "restore",
@@ -413,8 +514,13 @@ async function execute() {
     const context = operationContext();
     const operationRoot = fileURLToPath(new URL("../../", import.meta.url));
     if (
-        tool("git", ["rev-parse", "HEAD"], operationRoot, process.env) !==
-        context.operationHead
+        tool(
+            "operation-checkout",
+            "git",
+            ["rev-parse", "HEAD"],
+            operationRoot,
+            process.env,
+        ) !== context.operationHead
     )
         fail("operation-checkout");
     const source = resolve(
@@ -449,6 +555,7 @@ async function execute() {
         mkdirSync(output);
         // Build in a child with only the original clean build environment.
         tool(
+            "original-pack",
             "node",
             [
                 join(source, "scripts/logging/pack.ts"),
