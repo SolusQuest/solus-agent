@@ -7,7 +7,7 @@ on:
         description: Preparation or separately reviewed original-byte operator action
         type: choice
         default: prepare
-        options: [prepare, validate-exact, publish-one]
+        options: [prepare, validate-exact, publish-one, reconcile-contracts]
         required: true
       expected-operation-head:
         description: Exact root-reviewed helper and workflow SHA; required for operations
@@ -75,6 +75,64 @@ jobs:
         run: |
           cat artifacts/logging-release.json artifacts/logging-consumer-proof.json
           echo 'PREPARED ONLY. API source fixture is not genuine private .4 byte/access evidence. No package, CLI blob, tag, ACL or release was published.'
+
+  reconcile-contracts:
+    if: inputs.mode == 'reconcile-contracts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: logging-original-c96-publisher
+      cancel-in-progress: false
+    steps:
+      - name: Bind fixed read-only incident source before credential access
+        shell: bash
+        env:
+          EXPECTED: ${{ inputs.expected-operation-head }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          SELECTED_SOURCE: ${{ inputs.source-commit }}
+          SELECTED_VERSION: ${{ inputs.version }}
+          SELECTED_MEMBER: ${{ inputs.member }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REPOSITORY:$GITHUB_REPOSITORY_ID" = SolusQuest/solus-agent:1406091678
+          test "$GITHUB_REF" = refs/heads/codex/l1-123-logging-publication
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          [[ "$EXPECTED" =~ ^[a-f0-9]{40}$ ]]
+          test "$EXPECTED" = "$GITHUB_SHA"
+          test "$EXPECTED" = "$WORKFLOW_SHA"
+          test "$SELECTED_SOURCE" = c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          test "$SELECTED_VERSION" = 0.1.0-internal.1
+          test "$SELECTED_MEMBER" = Solus.Telemetry.Contracts
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          path: .tmp/reconcile-c96
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24.21.0
+          architecture: x64
+      - name: Read fixed existing Contracts identity and original bytes without a writer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXPECTED_OPERATION_HEAD: ${{ inputs.expected-operation-head }}
+          EXACT_MODE: ${{ inputs.mode }}
+          EXACT_MEMBER: ${{ inputs.member }}
+          SELECTED_SOURCE: ${{ inputs.source-commit }}
+          SELECTED_VERSION: ${{ inputs.version }}
+          EXACT_SOURCE_ROOT: ${{ github.workspace }}/.tmp/reconcile-c96
+        run: node scripts/logging/reconcile-contracts.ts
 
   exact-operation:
     if: inputs.mode == 'validate-exact' || inputs.mode == 'publish-one'

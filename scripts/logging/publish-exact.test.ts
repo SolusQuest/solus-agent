@@ -372,7 +372,7 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
     );
     const prepare = source
         .split("  prepare:")[1]
-        .split("  exact-operation:")[0];
+        .split("  reconcile-contracts:")[0];
     assert.match(prepare, /if: inputs.mode == 'prepare'/);
     assert.doesNotMatch(prepare, /packages: write|GITHUB_TOKEN|secrets\./);
     assert.match(
