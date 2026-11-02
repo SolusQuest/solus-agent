@@ -3,6 +3,14 @@ import {
     projectUploadLocation,
     inspectUpload,
 } from "./inspect-cli-upload.ts";
+import {
+    readbackContext,
+    projectReadbackResponse,
+    readConfigNode,
+    inspectReadback,
+} from "./inspect-cli-readback.ts";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
@@ -66,6 +74,335 @@ const context = {
     EXACT_MODE: "validate-exact",
     EXACT_MEMBER: "CLI",
 };
+const readbackEnv = {
+    ...context,
+    EXACT_MODE: "inspect-cli-readback",
+    GITHUB_JOB: "inspect-cli-readback",
+    GITHUB_RUN_NUMBER: "12",
+    GITHUB_ACTOR_ID: "16307884",
+    GITHUB_ACTOR: "operator",
+};
+function nodeReadMock(
+    status = 200,
+    headers: Record<string, string> = {},
+    chunks = [Buffer.from("{}\n")],
+    error?: string,
+) {
+    const calls: any[] = [];
+    const get = (url: any, options: any, callback: any) => {
+        calls.push({ url: String(url), options });
+        const request = new EventEmitter();
+        queueMicrotask(() => {
+            if (error) {
+                request.emit(
+                    "error",
+                    Object.assign(new Error("PRIVATE_BODY_CANARY"), {
+                        code: error,
+                    }),
+                );
+                return;
+            }
+            const response = Readable.from(chunks) as any;
+            response.statusCode = status;
+            response.headers = headers;
+            callback(response);
+        });
+        return request;
+    };
+    return { calls, get: get as any };
+}
+test("fixed readback context refuses every changed binding before a request", async () => {
+    assert.equal(readbackContext(readbackEnv).runNumber, 12);
+    for (const key of Object.keys(readbackEnv).filter(
+        (k) => k !== "GITHUB_ACTOR",
+    )) {
+        let requests = 0;
+        await assert.rejects(
+            inspectReadback(
+                { ...readbackEnv, [key]: "wrong" },
+                "secret",
+                async () => {
+                    requests++;
+                    throw new Error();
+                },
+            ),
+        );
+        assert.equal(requests, 0);
+    }
+});
+test("GET-only source readback exercises actual Node and fetch boundaries without redirect follow, secret or mutation", async () => {
+    const secret = "TOKEN_LOCATION_BODY_CANARY";
+    const node = nodeReadMock(307, {
+        location: `https://other.invalid/${secret}?sig=${secret}`,
+        "content-type": secret,
+    });
+    const calls: any[] = [];
+    const fetcher = async (url: any, options: any) => {
+        calls.push({ url: String(url), options });
+        assert.equal(new URL(url).origin, "https://ghcr.io");
+        assert.equal(options.method, "GET");
+        assert.equal(options.redirect, "manual");
+        if (String(url).includes("/token?"))
+            return new Response(
+                JSON.stringify({ token: secret, expires_in: 60 }),
+            );
+        assert.equal(options.headers.Authorization, `Bearer ${secret}`);
+        return new Response(null, {
+            status: 307,
+            headers: {
+                location: `https://another.invalid/${secret}?secret=${secret}`,
+                "content-type": secret,
+            },
+        });
+    };
+    const result = await inspectReadback(
+        readbackEnv,
+        secret,
+        fetcher as any,
+        node.get,
+    );
+    assert.equal(result.state, "observed");
+    assert.equal(result.registryMutation, false);
+    assert.equal(calls.length, 3);
+    assert.equal(node.calls.length, 1);
+    assert.equal(
+        node.calls[0].url,
+        "https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:" +
+            hash(config),
+    );
+    assert.equal(node.calls[0].options.agent, false);
+    assert.equal(node.calls[0].options.maxHeaderSize, 16384);
+    assert.equal(
+        node.calls[0].options.headers.Authorization,
+        `Bearer ${secret}`,
+    );
+    assert.equal(
+        calls[2].url,
+        "https://ghcr.io/v2/solusquest/solus-logging-cli/manifests/0.1.0-internal.1",
+    );
+    assert.equal(JSON.stringify(result).includes(secret), false);
+    assert.equal(result.observations[1].redirect.originClass, "other-https");
+});
+test("readback direct200 proves whole original config and rawmanifest independently without publishing", async () => {
+    const node = nodeReadMock();
+    const result = await inspectReadback(
+        readbackEnv,
+        "synthetic",
+        async (url: any) =>
+            String(url).includes("/token?")
+                ? new Response(
+                      JSON.stringify({ token: "synthetic", expires_in: 60 }),
+                  )
+                : new Response(
+                      String(url).includes("/blobs/") ? config : manifest,
+                  ),
+        node.get,
+    );
+    assert.equal(result.state, "observed");
+    for (const row of result.observations.slice(1))
+        assert.equal(row.body.originalEqual, true);
+    assert.equal(result.publicationVerified, false);
+    assert.equal(result.accessVerified, false);
+    assert.deepEqual(result.observations[1].body, {
+        length: 3,
+        sha256: hash(config),
+        originalEqual: true,
+    });
+});
+test("Node response, fixed request errors, size and encoding failures remain distinct and redacted", async () => {
+    for (const [status, headers, chunks, error, expect] of [
+        [404, {}, [], undefined, "status"],
+        [200, { "content-encoding": "gzip" }, [], undefined, "refused"],
+        [200, { "content-length": "4" }, [], undefined, "refused"],
+        [200, {}, [Buffer.from("FOUR")], undefined, "unavailable"],
+        [200, {}, [Buffer.from("BAD")], undefined, "mismatch"],
+        [0, {}, [], "ECONNRESET", "ECONNRESET"],
+        [0, {}, [], "PRIVATE_CANARY", "other"],
+    ] as any[]) {
+        const node = nodeReadMock(status, headers, chunks, error);
+        const row = await readConfigNode("synthetic", node.get);
+        assert.equal(node.calls.length, 1);
+        if (expect === "status") assert.equal(row.status, 404);
+        else if (expect === "mismatch")
+            assert.equal(row.body.originalEqual, false);
+        else if (expect === "refused" || expect === "unavailable")
+            assert.equal(row.body, expect);
+        else assert.equal(row.errorCode, expect);
+        assert.equal(JSON.stringify(row).includes("PRIVATE"), false);
+    }
+});
+test("unparsed or hostile redirect projections never invent origin or expose data", () => {
+    for (const [raw, status] of [
+        ["x".repeat(4097), "over-limit"],
+        ["https://[bad", "malformed"],
+        [null, "missing"],
+    ]) {
+        const result = projectReadbackResponse(307, (k) =>
+            k === "location" ? raw : null,
+        );
+        assert.deepEqual(result.redirect, { status });
+    }
+    const secret = "SECRET_CANARY";
+    const result = projectReadbackResponse(
+        307,
+        (k) =>
+            ({
+                location: `http://${secret}@other.invalid/${secret}?sig=${secret}#${secret}`,
+                "content-type": secret,
+                "content-encoding": secret,
+                "content-length": secret,
+            })[k] ?? null,
+    );
+    assert.equal(result.redirect.originClass, "other");
+    assert.equal(result.redirect.userinfo, true);
+    assert.equal(result.redirect.fragment, true);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+    assert.equal(result.declaredLength, "invalid-or-over-limit");
+});
+test("readback bearer and later fetch failures stop without fallback or retries; large/mismatching bodies are bounded", async () => {
+    for (const kind of [
+        "auth-redirect",
+        "large-token",
+        "invalid-lifetime",
+        "token-exception",
+        "config-exception",
+        "large-config",
+        "wrong-config",
+        "large-manifest",
+    ]) {
+        let calls = 0;
+        const node = nodeReadMock();
+        const secret = "PRIVATE_CANARY";
+        const result = await inspectReadback(
+            readbackEnv,
+            secret,
+            async (url: any) => {
+                calls++;
+                if (calls === 1) {
+                    if (kind === "auth-redirect")
+                        return new Response(null, {
+                            status: 307,
+                            headers: {
+                                location: `https://other.invalid/${secret}`,
+                            },
+                        });
+                    if (kind === "large-token")
+                        return new Response(secret.repeat(2000));
+                    if (kind === "token-exception") throw new Error(secret);
+                    return new Response(
+                        JSON.stringify({
+                            token: secret,
+                            expires_in: kind === "invalid-lifetime" ? 3601 : 60,
+                        }),
+                    );
+                }
+                if (calls === 2 && kind === "config-exception")
+                    throw new Error(secret);
+                return new Response(
+                    calls === 2
+                        ? kind === "large-config"
+                            ? "FOUR"
+                            : kind === "wrong-config"
+                              ? "BAD"
+                              : config
+                        : kind === "large-manifest"
+                          ? "x".repeat(711)
+                          : manifest,
+                );
+            },
+            node.get,
+        );
+        assert.equal(JSON.stringify(result).includes(secret), false);
+        if (
+            [
+                "auth-redirect",
+                "large-token",
+                "invalid-lifetime",
+                "token-exception",
+            ].includes(kind)
+        ) {
+            assert.equal(calls, 1);
+            assert.equal(node.calls.length, 0);
+            assert.equal(result.state, "refused");
+        } else if (kind === "config-exception") {
+            assert.equal(calls, 2);
+            assert.equal(result.state, "refused");
+        } else {
+            assert.equal(calls, 3);
+            assert.equal(result.state, "observed");
+            assert.notEqual(
+                result.observations[kind === "large-manifest" ? 3 : 2].body
+                    .originalEqual,
+                true,
+            );
+        }
+    }
+});
+test("readback job is fixed source/get-only and leaves writer and original candidate untouched", () => {
+    const code = readFileSync(
+        "scripts/logging/inspect-cli-readback.ts",
+        "utf8",
+    );
+    assert.doesNotMatch(
+        code,
+        /from ["'][^"']*(?:publish|pack)|method:\s*["'](?:POST|PUT|PATCH|DELETE)["']|writeFile|appendFile/,
+    );
+    const workflow = readFileSync(
+        ".github/workflows/logging-release.yml",
+        "utf8",
+    );
+    const job = workflow.split("\n  inspect-cli-readback:\n")[1];
+    assert.match(job, /1:12:16307884/);
+    assert.match(job, /contents: read\n      packages: write/);
+    assert.match(job, /logging-original-c96-publisher/);
+    assert.match(job, /persist-credentials: false/);
+    assert.doesNotMatch(job, /dotnet|publish-exact|pack\.ts|upload-artifact/);
+    assert.match(code, /d19a8f3153f540664c21296a96d77bf3221acc25/);
+    assert.equal(
+        hash(readFileSync("scripts/logging/inspect-cli-upload.ts")),
+        "a85c0f034653f0db9f208c28cd262e72081194997947cdd894cc09888b9a47a6",
+    );
+    assert.equal(
+        hash(readFileSync("scripts/logging/publish-exact.ts")),
+        "a43f0490ffd846bb89820d1d253b77fa66f50483e36b0b15f5299a1e456f0d7f",
+    );
+});
+test("real readback entry refuses dirty/mismatched source and replay before any credential-bearing request", () => {
+    const dir = mkdtempSync(join(tmpdir(), "readback-entry-"));
+    try {
+        const preload = join(dir, "preload.mjs");
+        writeFileSync(
+            preload,
+            'import https from "node:https"; globalThis.fetch=()=>{throw new Error("NETWORK_REQUEST_CANARY")}; https.get=()=>{throw new Error("NODE_REQUEST_CANARY")};',
+        );
+        for (const env of [
+            process.env,
+            { ...process.env, ...readbackEnv },
+            { ...process.env, ...readbackEnv, GITHUB_RUN_ATTEMPT: "2" },
+        ]) {
+            const result = spawnSync(
+                process.execPath,
+                [
+                    "--import",
+                    preload,
+                    "scripts/logging/inspect-cli-readback.ts",
+                ],
+                {
+                    env: { ...env, GITHUB_TOKEN: "SECRET_SENTINEL" },
+                    encoding: "utf8",
+                },
+            );
+            assert.equal(result.status, 1);
+            assert.equal(result.stdout, "");
+            assert.equal(
+                result.stderr.trim(),
+                "cli-readback-inspection-refused",
+            );
+        }
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
 test("operator context admits only the fixed first-attempt exact source/head operation", () => {
     assert.equal(operationContext(context).mode, "validate-exact");
     for (const key of Object.keys(context))
@@ -392,8 +729,8 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
     );
     assert.match(source, /test "\$GITHUB_RUN_ATTEMPT" = 1/);
     assert.match(source, /test "\$EXPECTED" = "\$WORKFLOW_SHA"/);
-    // Exactly the existing writer and the fixed one-session observation require write.
-    assert.equal((source.match(/packages: write/g) ?? []).length, 2);
+    // Existing writer, historical session probe, and GET-only writer-principal readback probe.
+    assert.equal((source.match(/packages: write/g) ?? []).length, 3);
 });
 
 // Exact NuGet resource/admission production-boundary tests follow below.

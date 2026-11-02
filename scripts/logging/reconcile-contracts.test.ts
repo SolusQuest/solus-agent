@@ -469,7 +469,8 @@ test("accepted read-only helper/job and writer job remain frozen while intention
     // Freeze unchanged operation surfaces. The publisher's inventory correction is intentional,
     // so preserve actual behavioral tests instead of silently updating its old whole-file hash.
     assert.equal(
-        hash(workflow.split("\n  exact-operation:\n")[1]),
+        // The newly appended read-only diagnostic is a separate job, not part of the writer.
+        hash(workflow.split("\n  exact-operation:\n")[1].split("\n  inspect-cli-readback:\n")[0]),
         "39277e6b11b3e3546759f314034247d62e1c6c809bc0ef18198b677b6a6fca07",
     );
     assert.equal(
