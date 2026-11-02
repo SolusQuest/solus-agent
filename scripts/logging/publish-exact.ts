@@ -466,18 +466,10 @@ export async function publishOci(
         await verifyBlobs();
         return "retained-identical";
     }
-    for (const name of ["oci-config.json", accepted.payload.filename]) {
+    // Stage both original blobs, then commit the original manifest. Full cold
+    // body verification below is mandatory; a failed read leaves partial state.
+    for (const name of ["oci-config.json", accepted.payload.filename])
         await transport.blob(bytes[name]);
-        // Read each immutable blob before progressing to the manifest.
-        const actual = await download(
-            `${origin}${namespace}/blobs/sha256:${hash(bytes[name])}`,
-        );
-        if (
-            actual.length !== bytes[name].length ||
-            hash(actual) !== hash(bytes[name])
-        )
-            fail("blob-readback");
-    }
     // Exclusive external publisher window is an operator gate; this is not CAS.
     if (await transport.readManifest(accepted.version)) {
         await verifyBlobs();

@@ -338,7 +338,7 @@ test("readback bearer and later fetch failures stop without fallback or retries;
         }
     }
 });
-test("readback job is fixed source/get-only and leaves writer and original candidate untouched", () => {
+test("readback job and historical helpers remain fixed during the explicit publication-sequence amendment", () => {
     const code = readFileSync(
         "scripts/logging/inspect-cli-readback.ts",
         "utf8",
@@ -363,8 +363,8 @@ test("readback job is fixed source/get-only and leaves writer and original candi
         "a85c0f034653f0db9f208c28cd262e72081194997947cdd894cc09888b9a47a6",
     );
     assert.equal(
-        hash(readFileSync("scripts/logging/publish-exact.ts")),
-        "a43f0490ffd846bb89820d1d253b77fa66f50483e36b0b15f5299a1e456f0d7f",
+        hash(readFileSync("scripts/logging/inspect-cli-readback.ts")),
+        "a71aa8ab80177f420024d12afdb3edcd8c52a8d4a43f96cd68ddf09f62d0bbeb",
     );
 });
 test("real readback entry refuses dirty/mismatched source and replay before any credential-bearing request", () => {
@@ -656,7 +656,7 @@ test("ambiguous blob start/upload is never retried; expired bearer makes no requ
     );
     assert.equal(called, false);
 });
-test("OCI protocol retains identical tag without mutation and writes raw original manifest only after both blob readbacks", async () => {
+test("OCI stages original blobs then raw manifest and requires both complete final body readbacks; identical tag has no mutation", async () => {
     // Tiny synthetic archive exercises protocol sequencing only, never candidate qualification.
     const bytes = {
         "oci-config.json": config,
@@ -706,11 +706,24 @@ test("OCI protocol retains identical tag without mutation and writes raw origina
             events.filter((v) => v === "manifest-put").length,
             existing ? 0 : 1,
         );
-        if (!existing)
+        assert.equal(events.filter((v) => v === "blob-read").length, 2);
+        if (!existing) {
+            const put = events.indexOf("manifest-put");
             assert.equal(
-                events.slice(0, 6).filter((v) => v === "blob-read").length,
+                events.slice(0, put).filter((v) => v === "blob-read").length,
+                0,
+            );
+            assert.equal(
+                events.slice(put + 1).filter((v) => v === "blob-read").length,
                 2,
             );
+            assert.equal(
+                events.slice(0, put).filter((v) => v.startsWith("blob:"))
+                    .length,
+                2,
+            );
+        } else
+            assert.equal(events.filter((v) => v.startsWith("blob:")).length, 0);
     }
 });
 test("workflow job isolation and permission guards keep ordinary preparation credential-free", () => {
@@ -734,7 +747,7 @@ test("workflow job isolation and permission guards keep ordinary preparation cre
 });
 
 // Exact NuGet resource/admission production-boundary tests follow below.
-test("OCI wrong blob readback prevents manifest publication; rejected media or ambiguous manifest receipt has no retry", async () => {
+test("OCI final wrong-body proof leaves failed partial manifest; rejected media or unknown manifest receipt never retries", async () => {
     const bytes = {
         "oci-config.json": config,
         "oci-manifest.json": manifest,
@@ -744,18 +757,21 @@ test("OCI wrong blob readback prevents manifest publication; rejected media or a
     };
     let puts = 0;
     const transport = {
-        readManifest: async () => undefined,
+        readManifest: async () => (puts ? manifest : undefined),
         blob: async () => ({ base: "", digest: "" }),
         send: async () => {
             puts++;
-            return new Response(null, { status: 400 });
+            return new Response(null, {
+                status: 201,
+                headers: { "docker-content-digest": digest },
+            });
         },
     };
     await assert.rejects(
         publishOci(bytes, transport as any, async () => Buffer.from("wrong")),
         /blob-readback/,
     );
-    assert.equal(puts, 0);
+    assert.equal(puts, 1); // Explicit new partial state: manifest exists, verification failed.
     for (const unknown of [false, true]) {
         puts = 0;
         const actual = {
@@ -775,6 +791,213 @@ test("OCI wrong blob readback prevents manifest publication; rejected media or a
         );
         assert.equal(puts, 1);
     }
+});
+
+test("Plan-v7 actual OCI transport enforces final proof and partial-state refusal across canonical publication states", async () => {
+    // Protocol-only tiny payload: candidate qualification is independently guarded before this function.
+    const payload = Buffer.from("synthetic protocol payload");
+    const bytes = {
+        "oci-config.json": config,
+        "oci-manifest.json": manifest,
+        [lock.manifest.payload.filename]: payload,
+    };
+    for (const mode of [
+        "new",
+        "existing",
+        "conflict",
+        "race-equal",
+        "race-conflict",
+        "bad-blob-receipt",
+        "unknown-manifest",
+        "bad-media",
+        "bad-digest-manifest",
+        "wrong-config",
+        "wrong-archive",
+        "missing-config",
+        "missing-archive",
+    ]) {
+        let committed = mode === "existing" || mode === "conflict",
+            puts = 0,
+            reads = 0;
+        const calls: {
+            method: string;
+            resource: string;
+            afterManifest: boolean;
+        }[] = [];
+        const stored = new Map<string, Uint8Array>();
+        if (committed) {
+            stored.set(hash(config), config);
+            stored.set(hash(payload), payload);
+        }
+        const transport = ociTransport(
+            "synthetic",
+            Date.now() + 120000,
+            async (input, options) => {
+                const url = new URL(String(input)),
+                    method = String(options?.method);
+                calls.push({
+                    method,
+                    resource: url.pathname.includes("/manifests/")
+                        ? "manifest"
+                        : "blob",
+                    afterManifest: committed,
+                });
+                assert.equal(url.origin, "https://ghcr.io");
+                assert.equal(options?.redirect, "error");
+                if (method === "GET") {
+                    reads++;
+                    if (reads === 2 && mode.startsWith("race-"))
+                        committed = true;
+                    if (!committed) return new Response(null, { status: 404 });
+                    const conflict =
+                        mode === "conflict" ||
+                        mode === "race-conflict" ||
+                        (mode === "bad-digest-manifest" &&
+                            url.pathname.includes("/sha256:"));
+                    return new Response(
+                        conflict ? Buffer.from("wrong") : manifest,
+                        {
+                            status: 200,
+                            headers: {
+                                "content-type":
+                                    mode === "bad-media"
+                                        ? "application/json"
+                                        : "application/vnd.oci.image.manifest.v1+json",
+                                "docker-content-digest": digest,
+                            },
+                        },
+                    );
+                }
+                if (method === "HEAD")
+                    return new Response(null, {
+                        status: stored.has(url.pathname.split(":").at(-1)!)
+                            ? 200
+                            : 404,
+                    });
+                if (method === "POST")
+                    return new Response(null, {
+                        status: 202,
+                        headers: {
+                            location:
+                                "/v2/solusquest/solus-logging-cli/blobs/upload/synthetic",
+                        },
+                    });
+                assert.equal(method, "PUT");
+                if (url.pathname.includes("/blobs/upload/")) {
+                    const body = options?.body as Uint8Array;
+                    assert.ok(body === config || body === payload);
+                    assert.equal(
+                        url.searchParams.get("digest"),
+                        "sha256:" + hash(body),
+                    );
+                    stored.set(hash(body), body);
+                    return new Response(null, {
+                        status: 201,
+                        headers: {
+                            "docker-content-digest":
+                                mode === "bad-blob-receipt"
+                                    ? "sha256:wrong"
+                                    : "sha256:" + hash(body),
+                        },
+                    });
+                }
+                puts++;
+                committed = true;
+                assert.equal(options?.body, manifest);
+                assert.equal(
+                    (options?.headers as any)["Content-Type"],
+                    "application/vnd.oci.image.manifest.v1+json",
+                );
+                assert.equal(
+                    calls.filter((v) => v.method === "COLD-GET").length,
+                    0,
+                );
+                if (mode === "unknown-manifest")
+                    throw new Error("synthetic lost receipt after commit");
+                return new Response(null, {
+                    status: 201,
+                    headers: { "docker-content-digest": digest },
+                });
+            },
+        );
+        const run = () =>
+            publishOci(bytes, transport, async (url) => {
+                const isConfig = url.endsWith(hash(config));
+                calls.push({
+                    method: "COLD-GET",
+                    resource: isConfig ? "config" : "archive",
+                    afterManifest: committed,
+                });
+                assert.equal(committed, true); // Never use an unavailable precommit read as a staging gate.
+                if (
+                    (mode === "missing-config" && isConfig) ||
+                    (mode === "missing-archive" && !isConfig)
+                )
+                    throw new Error("synthetic unavailable");
+                if (
+                    (mode === "wrong-config" && isConfig) ||
+                    (mode === "wrong-archive" && !isConfig)
+                )
+                    return Buffer.from("wrong");
+                return stored.get(isConfig ? hash(config) : hash(payload))!;
+            });
+        if (["new", "existing", "race-equal"].includes(mode)) {
+            assert.equal(
+                await run(),
+                mode === "new" ? "published-readback" : "retained-identical",
+            );
+            assert.deepEqual(
+                calls
+                    .filter((v) => v.method === "COLD-GET")
+                    .map((v) => v.resource),
+                ["config", "archive"],
+            );
+        } else await assert.rejects(run());
+        assert.equal(
+            puts,
+            [
+                "existing",
+                "conflict",
+                "race-equal",
+                "race-conflict",
+                "bad-blob-receipt",
+            ].includes(mode)
+                ? 0
+                : 1,
+        );
+        if (mode === "existing" || mode === "conflict")
+            assert.equal(
+                calls.some((v) => ["POST", "PUT"].includes(v.method)),
+                false,
+            );
+        if (
+            [
+                "wrong-config",
+                "wrong-archive",
+                "missing-config",
+                "missing-archive",
+                "unknown-manifest",
+                "bad-media",
+                "bad-digest-manifest",
+            ].includes(mode)
+        )
+            assert.equal(committed, true); // Failed proof retains actual private-partial effects, never rollback.
+        assert.equal(
+            calls.some((v) => ["PATCH", "DELETE"].includes(v.method)),
+            false,
+        );
+    }
+});
+
+test("Plan-v7 changes only publishOci while transport, original-byte admission and historical workflow/helpers remain frozen", () => {
+    const code = readFileSync("scripts/logging/publish-exact.ts", "utf8");
+    const start = code.indexOf("export async function publishOci("),
+        end = code.indexOf("\nasync function execute()", start);
+    assert.ok(start > 0 && end > start);
+    assert.equal(
+        hash(Buffer.from(code.slice(0, start) + code.slice(end))),
+        "3dd1d69b773b83e99ee60f9151cdc84bd4726a56b15ef513c5b7f8113b9f8f90",
+    );
 });
 
 test("tool failure diagnostics close every hardcoded phase without exposing child data", () => {
