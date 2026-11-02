@@ -938,7 +938,11 @@ test("Plan-v7 actual OCI transport enforces final proof and partial-state refusa
                     (mode === "wrong-config" && isConfig) ||
                     (mode === "wrong-archive" && !isConfig)
                 )
-                    return Buffer.from("wrong");
+                    // Same length: only whole-body SHA equality can admit it.
+                    return Buffer.alloc(
+                        isConfig ? config.length : payload.length,
+                        0x5a,
+                    );
                 return stored.get(isConfig ? hash(config) : hash(payload))!;
             });
         if (["new", "existing", "race-equal"].includes(mode)) {
