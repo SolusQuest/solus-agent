@@ -1,6 +1,6 @@
 # L1 published Action live qualification
 
-Status: **PREPARED — NOT EXECUTED**. [Issue #124](https://github.com/SolusQuest/solus-agent/issues/124) remains open. This record describes the bounded source preparation; it contains no hosted Supabase result, actual qualification run ID or qualification acceptance. The [release record](logging-l1-release-record.md) separately owns the completed private publication, package access and actual repository-token acquisition proofs from #123.
+Hosted qualification: **PREPARED — NOT EXECUTED**. Real local Docker Supabase qualification: **PASS**, as recorded below. [Issue #124](https://github.com/SolusQuest/solus-agent/issues/124) remains open: local success does not establish the frozen GitHub-hosted/cloud outcome. The [release record](logging-l1-release-record.md) separately owns completed private publication, package access and actual repository-token acquisition proofs from #123.
 
 The selected caller is `SolusQuest/solus-agent` (repository ID `1406091678`), using the existing registered `logging-release.yml` workflow (`403167763`) on `codex/l1-124-live-qualification`, with the isolated `qualify-live` job. Its token has `contents: read` and `packages: read`. Existing preparation, publication and diagnostic jobs remain unchanged and are excluded by mode. No downstream repository write or repeated publication is part of this qualification.
 
@@ -14,7 +14,7 @@ Every delivery invokes `SolusQuest/solus-agent/actions/logging@9d2f3777401d71fde
 
 ## External prerequisites still missing
 
-Scoped preparation found no configured Supabase target, project reference, deployed-schema evidence or existing ordinary A/B writer credential bindings. The source repository has no configured repository secrets or environments at the preparation snapshot. No private target endpoint has been contacted. Names/availability inspection did not read secret values or search unrelated credential stores.
+Scoped hosted preparation found no configured Supabase target, project reference, deployed-schema evidence or existing ordinary A/B writer credential bindings. The source repository has no configured repository secrets or environments at the preparation snapshot. No cloud target endpoint has been contacted. Names/availability inspection did not read secret values or search unrelated credential stores. The later explicit local-test authority permitted fresh disposable Auth identities, keys and schema in a task-owned Docker database; it grants no cloud equivalent.
 
 Before execution, the operator must identify an **existing** HTTPS project origin, deployed `public.telemetry_events` and `public.ingest_telemetry(event jsonb)` matching the accepted migration, and two distinct existing ordinary authenticated writer identities. Their existing values must be supplied through an explicitly accepted credential binding mechanism. This implementation names four step-scoped repository secret bindings: `TELEMETRY_L1_SUPABASE_ORIGIN`, `TELEMETRY_L1_PUBLISHABLE_KEY`, `TELEMETRY_L1_WRITER_A_JWT`, `TELEMETRY_L1_WRITER_B_JWT`. Configuring these bindings is a separate settings operation; their absence is not permission to create credentials, users, a project or a schema. No values belong in chat, dispatch inputs, commits or proof artifacts.
 
@@ -54,6 +54,57 @@ Registry acquisition is separate from the 17 target requests. Five archives allo
 
 Run `node --test scripts/logging/live-qualification.test.ts` for credential-free admission, transport isolation, full-row oracle, fail-stop state, real child exit-7 handling and workflow isolation/freeze tests. Local synthetic transport and child fixtures prove source behavior only. The tests freeze all five prior jobs and accepted helpers/locks; no publisher or packer is imported by the new helper. Logging CI selects this test file alongside the existing tests on the actual new source head.
 
-No actual #124 run, target authentication, stored row, duplicate, collision, isolation result, cleanup or live acceptance is recorded yet. The future metadata-only proof must bind the actual repository/run/attempt/source, original archive acquisitions, installed DLL/package identities, producer exits/once counts, seven exact Action outcomes and ten complete read comparisons. Original private inputs, raw headers/bodies/logs, endpoints, JWTs, writer subject IDs and binary archives stay outside commits and proof artifacts.
+No GitHub-hosted #124 run, cloud authentication, cloud row or hosted acceptance is recorded yet. The future hosted metadata-only proof must bind the actual repository/run/attempt/source, original archive acquisitions, installed DLL/package identities, producer exits/once counts, seven exact Action outcomes and ten complete read comparisons. Original private inputs, raw headers/bodies/logs, endpoints, JWTs, writer subject IDs and binary archives stay outside commits and public proof artifacts.
 
-The successful #123 outer repository-token acquisition proofs remain distinct from their inner local verifier's `registryAccessVerified: false` and `execution: null` fields. Neither those prior proofs nor this preparation establishes full product adoption, model requests/billing, an Action live-storage result, a durable product pipeline or hosted Supabase qualification. Final #124 acceptance requires the actual bounded operation and reviewed readback evidence.
+The successful #123 outer repository-token acquisition proofs remain distinct from their inner local verifier's `registryAccessVerified: false` and `execution: null` fields. Neither those prior proofs nor the local result below establishes full product adoption, model requests/billing, a durable product pipeline or hosted Supabase qualification. Final #124 acceptance still requires the selected hosted outcome and reviewed evidence.
+
+## Observed real local Docker qualification
+
+On 2026-11-03 the explicitly authorized local test used a fresh, isolated Docker network with **no published ports**. Actual Supabase Postgres supplied its original Auth schema, roles and `auth.uid()`; the exact `001_telemetry.sql` was applied only to the new task database. Real GoTrue email/password grants issued ES256 JWTs for two distinct ordinary users. The official Envoy key-translation configuration routed a correctly generated `sb_publishable_` key and those user JWTs to PostgREST. No fake identity function, replacement RPC, administrator insert or storage-response fixture supplied the proof.
+
+The Docker host was Linux arm64; Node `v24.21.0`, SDK `10.0.109` and the actual CLI ran inside a Linux amd64 container under emulation. The unavailable SDK Docker tag was replaced by the **same** official SDK archive, SHA-512 `5648e8edbdd8127452828964ca8be631ba19b75aa4020bc3352f3ab861b8b5982d823fd6a3bb3b741ec4e3fdc6c0de9ec8a52e8dcedacccf9e8754250579dc2d`, verified against Microsoft's release metadata. No package/CLI was rebuilt or substituted.
+
+| Image | Exact pulled digest |
+| --- | --- |
+| `supabase/postgres:17.6.1.136` | `sha256:f371b5f3f2ac0a05703f33d6e6134515fb2498cab708fb948a0aeb7481467c00` |
+| `supabase/gotrue:v2.197.0` | `sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b` |
+| `postgrest/postgrest:v14.18` | `sha256:c7cd7e265a85b05248abf53f4473fcec7e327c282d0bd0cf60f1551996d09fcf` |
+| `envoyproxy/envoy:v1.39.1` | `sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4` |
+| `caddy:2.10.2` | `sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb` |
+| `node:24.21.0-bookworm-slim` | `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20` |
+| `mcr.microsoft.com/dotnet/runtime-deps:10.0-noble` | `sha256:62028293921f5bd6db3d9f9119cd29cd926dfd3c2336da23b09f425e40c3c832` |
+
+Official gateway files came from Supabase commit `831d6302c7361c0a5115a91e953bdf084eb85330` and were hash-verified unchanged. Studio, Storage, Realtime and Analytics were omitted. Only the native Auth/PostgREST role passwords were configured; omitted components' role dependencies were not fabricated. A private task CA signed the gateway certificate. Node and the original .NET child trusted that CA explicitly; certificate-chain and hostname checks remained enabled. No host/browser trust or security setting changed. Bootstrap signing/DB keys were excluded from the ordinary runner's mounts; ingest and readback used ordinary credentials only.
+
+All five archived original NuGet archives were whole-hash checked before inspection/MSBuild. Unchanged c96 `installed.ts` cold-installed the independent products using exact package/DLL checks. Actual Scribe and Apr child processes ran once each, with exit **0** and **7** respectively and usable original telemetry. A small local bridge invoked the unchanged published `runAction` function and captured its bounded returned result; the original Action downloaded the exact archived CLI over real HTTPS, checked its hash/version, then invoked the real CLI/adapter through Envoy/PostgREST to the database. This is local Action-entrypoint execution, not a GitHub Actions step or job result, and it is not new private-registry acquisition proof.
+
+| Real case | Observed result |
+| --- | --- |
+| Original A/Scribe and A/Apr | Both `stored`; failed Apr business exit remained 7 |
+| Repeat both original records | Both `duplicate`; complete rows and `received_at` unchanged |
+| Same IDs, changed productVersion | Both `failed / identity_conflict`; no overwrite |
+| B stores original Scribe ID | B's own row stored; both users' exact cross-writer queries returned zero |
+| Additional synthetic timestamp derivative | Stored/read back `.1234567Z` as microseconds plus residual tick 7 |
+| Invalid JWT signature, wrong publishable key | Action `authentication_failed`, one attempt each |
+| Anonymous GET/RPC, missing key and invalid-key/JWT GETs | HTTP 401; no administrator substitute |
+| Real GoTrue short-lived JWT | Valid before expiry; rejected after actual `exp+35.010s`, Action `authentication_failed` and GET 401 |
+| Only task REST backend stopped | Action `attempts_exhausted`, one attempt; after restart all full rows and timestamps unchanged |
+
+The successful final entry run had 12 actual Action calls, 35 target REST requests, five Auth bootstrap requests and two explicit HTTP health checks. Final ordinary views contained three A rows and one B row. Full readback compared all 14 columns and complete JSON, including null/coverage facts, unsafe-integer decimal strings, nested caller/product extensions, Unicode and array order. The extra timestamp record was a **local synthetic derivative**, not a second product invocation. Denial/outage POSTs reused already stored A/S so an unexpected acceptance could only duplicate, not create a fifth row.
+
+Earlier attempts remain failures: native LibreSSL lacked a hostname-check option; full roles wiring referenced an omitted component; a signing JWK lacked official `key_ops`; and an expiry assertion ran inside PostgREST's documented 30-second skew allowance. That last failed attempt actually created a fifth synthetic row and was not relabeled passed. Its entire owned database was removed. Corrected expiry testing waits beyond the documented allowance without changing tokens, server policy or clocks. [PostgREST v14 authentication](https://docs.postgrest.org/en/v14/references/auth.html#time-based-claims-validation) defines that tolerance.
+
+Across all retained attempts, cumulative target business traffic was **98/100**: 35 Action POSTs, 60 direct REST GETs and three direct RPC denial POSTs. Auxiliary traffic was recorded separately: 15 Auth bootstrap requests, 36 HTTP health checks, 35 local archive GETs and 48 PostgreSQL readiness CLI invocations; automatic service health and initial dependency setup are not claimed inside a universal 100-network-request cap. Thirteen synthetic telemetry rows were created across disposed databases, including the failed fifth row; none remain. Final owned cleanup completed at `04:42:40Z`, 42m30.8s after the recorded cycle start, with 548.32 seconds of summed recorded stack execution. No fresh stack reset the aggregate business/time budget. No further Docker business test was run after this window closed.
+
+Both corrected core and durable-entry runs passed. The final private proof SHA-256 is `905870569d8dc8b91aacdb39bf49a26a17c0e13c2b58312896c8c8e7230138ef`. The ignored operator packet retains per-attempt raw logs, full synthetic readbacks, source fingerprints, configuration/image digests and exact ownership/cleanup receipts. Every recorded task container, network, volume and custom runner image was removed; unrelated resources and official image caches were retained. Final source-only changes clarify report labels, complete-cleanup reporting and required explicit budgets; request/auth/row/Action logic remains the executed logic, with offline guard validation and no post-window rerun.
+
+### Reproduce deliberately, locally
+
+The opt-in [local orchestrator](../../scripts/logging/local-supabase.py) and [driver](../../scripts/logging/local-supabase-driver.mjs) have no import-time effects. Supply a clean accepted c96 checkout, the six flat original archives, the official SDK archive above and a private cache/output directory. Pull the seven exact `IMAGE_PINS` digests first (Node/runtime-deps select `linux/amd64`); the remaining services use the host platform. The orchestrator fetches only the four hash-pinned official gateway files, refuses remote Docker endpoints and checks every source/archive/SDK identity before creating resources. Setup/interruption failures require inspection of the task ownership record before any label-checked recovery; a partial proof is never acceptance.
+
+```text
+python3 scripts/logging/local-supabase.py --help
+python3 scripts/logging/local-supabase.py --source <clean-c96> --inputs <original-flat-archives> --sdk <sdk109-linux-x64.tar.gz> --cache <private-cache> --output <new-private-output> --deadline-epoch <original-batch-deadline> --target-budget-remaining <measured-remaining> --health-budget-remaining <measured-remaining>
+```
+
+The three budget flags are mandatory; use the original batch deadline and measured remaining counts across attempts. Reusing an output directory is refused. Private files use mode 0600 and the network is internal with no public listener. Offline admission tests run with `python3 scripts/logging/local-supabase.test.py` and in Logging CI; they do not start Docker or contact a service. A successful local run establishes real self-hosted component interoperability for these exact synthetic cases. Cloud deployment settings, hosted-runner networking/trust, actual GitHub job failure handling, registry access and final hosted qualification remain separate.
