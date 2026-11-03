@@ -7,10 +7,14 @@ on:
         description: Preparation or separately reviewed original-byte operator action
         type: choice
         default: prepare
-        options: [prepare, validate-exact, publish-one, reconcile-contracts, inspect-cli-upload, inspect-cli-readback]
+        options: [prepare, validate-exact, publish-one, reconcile-contracts, inspect-cli-upload, inspect-cli-readback, qualify-live]
         required: true
       expected-operation-head:
         description: Exact root-reviewed helper and workflow SHA; required for operations
+        type: string
+        required: false
+      live-qualification-admission:
+        description: Nonsecret root-reviewed one-run live qualification metadata; never credentials
         type: string
         required: false
       new-package-admission:
@@ -38,6 +42,440 @@ permissions:
   contents: read
 
 jobs:
+  qualify-live:
+    if: inputs.mode == 'qualify-live'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: logging-l1-live-qualification
+      cancel-in-progress: false
+    env:
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+    steps:
+      - name: Reject wrong actor, head, run number or missing admission before credential-use steps
+        shell: bash
+        run: |
+          python3 - <<'PYGUARD'
+          import os,json,re,time,sys
+          try:
+              e=os.environ
+              assert e['GITHUB_EVENT_NAME']=='workflow_dispatch' and e['GITHUB_REPOSITORY']=='SolusQuest/solus-agent' and e['GITHUB_REPOSITORY_ID']=='1406091678'
+              assert e['GITHUB_REF']=='refs/heads/codex/l1-124-live-qualification' and e['GITHUB_RUN_ATTEMPT']=='1'
+              assert e['GITHUB_WORKFLOW_REF']=='SolusQuest/solus-agent/.github/workflows/logging-release.yml@'+e['GITHUB_REF']
+              assert os.path.getsize(e['GITHUB_EVENT_PATH'])<=131072
+              i=json.load(open(e['GITHUB_EVENT_PATH']))['inputs']; wire=i['live-qualification-admission']
+              assert isinstance(wire,str) and len(wire.encode())<=8192
+              a=json.loads(wire)
+              assert i['mode']=='qualify-live' and i['member']=='CLI' and not i.get('new-package-admission')
+              assert i['source-commit']=='c96a1b5cf9746a7fa569a339c583e07e3e103ee6' and i['version']=='0.1.0-internal.1'
+              assert re.fullmatch('[a-f0-9]{40}',i['expected-operation-head'])
+              assert i['expected-operation-head']==a['operationHead']==e['GITHUB_SHA']==e['WORKFLOW_SHA']
+              assert type(a['actorId']) is int and str(a['actorId'])==e['GITHUB_ACTOR_ID']
+              assert type(a['beforeWorkflowRunNumber']) is int and a['beforeWorkflowRunNumber']>0
+              assert a['expectedWorkflowRunNumber']==a['beforeWorkflowRunNumber']+1 and str(a['expectedWorkflowRunNumber'])==e['GITHUB_RUN_NUMBER']
+              assert a['budget']=={'posts':7,'gets':10,'rows':3}
+              for k in ['originSHA256','issuerSHA256','writerASHA256','writerBSHA256','schemaEvidenceSHA256','cleanupOwnerSHA256']:
+                  assert isinstance(a[k],str) and re.fullmatch('[a-f0-9]{64}',a[k])
+              assert a['writerASHA256']!=a['writerBSHA256']
+              assert a['notBeforeEpochMs']<=time.time()*1000<=a['expiresAtEpochMs'] and 0<a['expiresAtEpochMs']-a['notBeforeEpochMs']<=3600000
+          except Exception:
+              sys.exit('LIVE124_ENTRY_REFUSED')
+          PYGUARD
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: SolusQuest/solus-agent
+          ref: c96a1b5cf9746a7fa569a339c583e07e3e103ee6
+          path: .tmp/qualification-c96
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.109
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24.21.0
+          architecture: x64
+      - name: Bind the complete one-run admission and initialize exclusive local state
+        id: live_guard
+        run: node scripts/logging/live-qualification.ts guard
+      - name: Cold acquire original archives and install unchanged independent consumers
+        id: prepare
+        timeout-minutes: 8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts prepare
+      - name: Emit one synthetic Scribe result and telemetry
+        id: scribe
+        run: node scripts/logging/live-qualification.ts emit scribe
+      - name: Preserve actual APR business exit 7 and usable telemetry
+        id: apr
+        continue-on-error: true
+        run: node scripts/logging/live-qualification.ts emit apr
+      - name: Verify both immutable outputs and once-only producers independently of business conclusion
+        id: records
+        if: ${{ always() && !cancelled() && steps.live_guard.outcome == 'success' && steps.prepare.outcome == 'success' && steps.scribe.outcome == 'success' && steps.apr.outcome == 'failure' }}
+        run: node scripts/logging/live-qualification.ts validate
+      - name: Validate target and ordinary writer metadata without a Supabase request
+        id: credentials
+        if: ${{ always() && !cancelled() && steps.records.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts credentials
+      - name: Fixed authenticated readback 1 of 10
+        id: read_1
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.credentials.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 1
+      - name: Fixed authenticated readback 2 of 10
+        id: read_2
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_1.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 2
+      - name: Obtain finite pull bearer for only Action 1
+        id: pull_1
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_2.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 1
+      - name: Published logging Action 1 of 7
+        id: send_1
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_1.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.scribe.outputs.telemetry-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_1.outputs.bearer }}
+      - name: Require exact Action 1 status and preserve expected collision failure
+        id: verify_1
+        if: ${{ always() && !cancelled() && steps.send_1.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_1.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_1.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 1
+      - name: Obtain finite pull bearer for only Action 2
+        id: pull_2
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_1.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 2
+      - name: Published logging Action 2 of 7
+        id: send_2
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_2.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.apr.outputs.telemetry-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_2.outputs.bearer }}
+      - name: Require exact Action 2 status and preserve expected collision failure
+        id: verify_2
+        if: ${{ always() && !cancelled() && steps.send_2.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_2.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_2.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 2
+      - name: Fixed authenticated readback 3 of 10
+        id: read_3
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_2.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 3
+      - name: Fixed authenticated readback 4 of 10
+        id: read_4
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_3.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 4
+      - name: Obtain finite pull bearer for only Action 3
+        id: pull_3
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_4.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 3
+      - name: Published logging Action 3 of 7
+        id: send_3
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_3.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.scribe.outputs.telemetry-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_3.outputs.bearer }}
+      - name: Require exact Action 3 status and preserve expected collision failure
+        id: verify_3
+        if: ${{ always() && !cancelled() && steps.send_3.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_3.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_3.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 3
+      - name: Obtain finite pull bearer for only Action 4
+        id: pull_4
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_3.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 4
+      - name: Published logging Action 4 of 7
+        id: send_4
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_4.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.apr.outputs.telemetry-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_4.outputs.bearer }}
+      - name: Require exact Action 4 status and preserve expected collision failure
+        id: verify_4
+        if: ${{ always() && !cancelled() && steps.send_4.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_4.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_4.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 4
+      - name: Fixed authenticated readback 5 of 10
+        id: read_5
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_4.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 5
+      - name: Obtain finite pull bearer for only Action 5
+        id: pull_5
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_5.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 5
+      - name: Published logging Action 5 of 7
+        id: send_5
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_5.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.scribe.outputs.collision-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_5.outputs.bearer }}
+      - name: Require exact Action 5 status and preserve expected collision failure
+        id: verify_5
+        if: ${{ always() && !cancelled() && steps.send_5.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_5.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_5.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 5
+      - name: Obtain finite pull bearer for only Action 6
+        id: pull_6
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_5.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 6
+      - name: Published logging Action 6 of 7
+        id: send_6
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_6.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.apr.outputs.collision-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_6.outputs.bearer }}
+      - name: Require exact Action 6 status and preserve expected collision failure
+        id: verify_6
+        if: ${{ always() && !cancelled() && steps.send_6.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_6.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_6.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 6
+      - name: Fixed authenticated readback 6 of 10
+        id: read_6
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_6.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 6
+      - name: Obtain finite pull bearer for only Action 7
+        id: pull_7
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_6.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/logging/live-qualification.ts pull 7
+      - name: Published logging Action 7 of 7
+        id: send_7
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.pull_7.outcome == 'success' }}
+        uses: SolusQuest/solus-agent/actions/logging@9d2f3777401d71fdea84ce350dd5bd6240acb7a8
+        with:
+          telemetry-json: ${{ steps.scribe.outputs.telemetry-json }}
+          adapter: supabase
+          supabase-url: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          supabase-publishable-key: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          supabase-access-token: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+          strict-delivery: 'false'
+          maximum-attempts: '1'
+          timeout-ms: '10000'
+          retry-delay-ms: '0'
+          cli-version: 0.1.0-internal.1
+          cli-artifact-url: https://ghcr.io/v2/solusquest/solus-logging-cli/blobs/sha256:656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          cli-artifact-sha256: 656957224f9e81ad16ba882c103eeaef51989deb77a2541ae0cab93d5f653339
+          artifact-read-token: ${{ steps.pull_7.outputs.bearer }}
+      - name: Require exact Action 7 status and preserve expected collision failure
+        id: verify_7
+        if: ${{ always() && !cancelled() && steps.send_7.outcome == 'success' }}
+        env:
+          DELIVERY_STATUS: ${{ steps.send_7.outputs.delivery-status }}
+          DIAGNOSTIC_CODE: ${{ steps.send_7.outputs.diagnostic-code }}
+        run: node scripts/logging/live-qualification.ts verify 7
+      - name: Fixed authenticated readback 7 of 10
+        id: read_7
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.verify_7.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 7
+      - name: Fixed authenticated readback 8 of 10
+        id: read_8
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_7.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 8
+      - name: Fixed authenticated readback 9 of 10
+        id: read_9
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_8.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 9
+      - name: Fixed authenticated readback 10 of 10
+        id: read_10
+        timeout-minutes: 2
+        if: ${{ always() && !cancelled() && steps.read_9.outcome == 'success' }}
+        env:
+          SUPABASE_ORIGIN: ${{ secrets.TELEMETRY_L1_SUPABASE_ORIGIN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TELEMETRY_L1_PUBLISHABLE_KEY }}
+          SUPABASE_A_JWT: ${{ secrets.TELEMETRY_L1_WRITER_A_JWT }}
+          SUPABASE_B_JWT: ${{ secrets.TELEMETRY_L1_WRITER_B_JWT }}
+        run: node scripts/logging/live-qualification.ts read 10
+      - name: Seal complete bounded metadata proof without raw secrets or state
+        id: report
+        if: ${{ always() && !cancelled() && steps.read_10.outcome == 'success' }}
+        run: node scripts/logging/live-qualification.ts report
+      - name: Retain metadata only
+        if: ${{ steps.report.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: solus-logging-live-proof
+          path: ${{ runner.temp }}/solus-logging-live-proof.json
+          if-no-files-found: error
+          retention-days: 3
+
   prepare:
     if: inputs.mode == 'prepare'
     runs-on: ubuntu-24.04
