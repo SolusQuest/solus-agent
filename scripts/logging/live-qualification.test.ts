@@ -131,6 +131,80 @@ test('finite pull scope and mask-before-same-job-output are concrete; stale/host
     } finally { f.close(); }
 });
 
+test('Distribution optional fields and opaque aliases accept finite standard profiles without decoding', async () => {
+    const instant = Date.parse('2026-11-03T12:00:00Z');
+    const token = 'opaque.not-a-jwt~+/=';
+    const values = [{ token }, { access_token: token }, { token, access_token: token },
+        { token, expires_in: 60 }, { token, expires_in: 3600 },
+        { token, issued_at: '2026-11-03T12:00:00Z' },
+        { token, issued_at: '2026-11-03T13:00:00+01:00', expires_in: 60 }];
+    for (const value of values) {
+        let calls = 0;
+        assert.equal(await pullBearer('synthetic', 'SYNTHETIC_GITHUB', async (url, headers, cap, timeout) => {
+            calls++; assert.equal(new URL(url).origin, 'https://ghcr.io');
+            assert.equal(new URL(url).searchParams.get('scope'), 'repository:solusquest/solus-logging-cli:pull');
+            assert.deepEqual(Object.keys(headers).sort(), ['Accept', 'Authorization']);
+            assert.equal(cap, 16384); assert.equal(timeout, 10000);
+            return { status: 200, bytes: Buffer.from(JSON.stringify(value)) };
+        }, () => instant), token);
+        assert.equal(calls, 1);
+    }
+    // Receipt time is after the awaited exchange; transport time is not charged twice.
+    let clock = instant;
+    assert.equal(await pullBearer('synthetic', 'SYNTHETIC_GITHUB', async () => {
+        clock += 120000; return { status: 200, bytes: Buffer.from(JSON.stringify({ token })) };
+    }, () => clock), token);
+});
+
+test('finite pull expiry uses explicit issue time and strictly greater than five seconds at handoff', async () => {
+    const instant = Date.parse('2026-11-03T12:00:00Z');
+    async function check(issued: number, accepted: boolean, elapsed = 0) {
+        const value = { token: 'synthetic', expires_in: 60, issued_at: new Date(issued).toISOString() };
+        let clockCalls = 0;
+        const call = pullBearer('synthetic', 'SYNTHETIC_GITHUB', async () => ({ status: 200, bytes: Buffer.from(JSON.stringify(value)) }),
+            () => instant + (clockCalls++ === 0 ? 0 : elapsed));
+        if (accepted) assert.equal(await call, 'synthetic');
+        else await assert.rejects(call, /pull-(?:expiry|issued-at)$/);
+    }
+    await check(instant - 54999, true);
+    await check(instant - 55000, false);
+    await check(instant - 60000, false);
+    await check(instant - 54999, false, 1);
+    await check(instant + 60000, true);
+    await check(instant + 60001, false);
+});
+
+test('all pull parser refusals are closed and secret-safe with no fallback or retry', async () => {
+    const canary = 'PRIVATE_RESPONSE_CANARY_NEVER_PRINT';
+    const instant = Date.parse('2026-11-03T12:00:00Z');
+    const invalid = [null, [], false, 1, canary, {}, { token: '' }, { token: 1 },
+        { token: null, access_token: 'valid' }, { token: 'valid', access_token: canary },
+        { token: 'valid', access_token: null }, { token: canary + '\n' }, { token: canary + '\u2028' },
+        { token: canary + '\x00' }, { token: canary.repeat(300) },
+        ...[null, '60', 0, 59, 60.1, -1, 3601, Number.MAX_SAFE_INTEGER + 1].map(expires_in => ({ token: canary, expires_in })),
+        ...[null, 0, canary, '2026-02-30T00:00:00Z', '2026-11-03', '2026-11-03T24:00:00Z',
+            '2026-11-03T12:00:00+99:00', '1970-01-01T00:00:00Z'].map(issued_at => ({ token: canary, issued_at }))];
+    for (const value of invalid) {
+        let calls = 0;
+        await assert.rejects(pullBearer('synthetic', 'SYNTHETIC_GITHUB', async () => {
+            calls++; return { status: 200, bytes: Buffer.from(JSON.stringify(value)) };
+        }, () => instant), (error: any) => {
+            assert.match(error.message, /^pull-(json|bearer|lifetime|issued-at|expiry)$/);
+            assert.ok(!String(error.stack).includes(canary));
+            const safe = JSON.stringify(safeFailure(error)); assert.ok(!safe.includes(canary));
+            assert.equal(safeFailure(error).reason, error.message); return true;
+        });
+        assert.equal(calls, 1);
+    }
+    for (const body of [Buffer.from(canary + '{'), Buffer.alloc(16385, 'x')]) {
+        let calls = 0;
+        await assert.rejects(pullBearer('synthetic', 'SYNTHETIC_GITHUB', async () => {
+            calls++; return { status: 200, bytes: body };
+        }, () => instant), /pull-(?:json|response)$/);
+        assert.equal(calls, 1);
+    }
+});
+
 test('complete row oracle preserves decimal strings/null/missing/arrays/extensions/time residual and typed identity', () => {
     const v = record('scribe', S), r = row(v, A);
     equivalentRow(r, v, A);

@@ -112,19 +112,35 @@ export async function originalArchive(url: string, digest: string, cap: number, 
     return r.bytes;
 }
 
-export async function pullBearer(actor: string, token: string, get = requestBytes) {
+export async function pullBearer(actor: string, token: string, get = requestBytes, now = Date.now) {
     requireThat(/^[A-Za-z0-9_-]{1,64}$/.test(actor) && !!token && token.length <= 8192 && !/[\x00-\x20\x7f]/.test(token), 'pull-input');
     const r = await get('https://ghcr.io/token?service=ghcr.io&scope=repository%3Asolusquest%2Fsolus-logging-cli%3Apull',
         { Authorization: 'Basic ' + Buffer.from(actor + ':' + token).toString('base64'), Accept: 'application/json' }, 16384, 10000);
+    const receivedAt = now();
     if (r.status !== 200) throw Object.assign(new Error('pull-http'), { httpStatus: r.status });
     requireThat(r.bytes.length <= 16384, 'pull-response');
-    let v: any; try { v = JSON.parse(r.bytes.toString('utf8')); } catch { fail('pull-response'); }
-    const bearer = v.token ?? v.access_token;
-    const issued = Date.parse(v.issued_at);
-    requireThat(typeof bearer === 'string' && bearer.length > 0 && bearer.length <= 8192 && !/[\x00-\x20\x7f]/.test(bearer)
-        && Number.isSafeInteger(v.expires_in) && v.expires_in >= 120 && v.expires_in <= 3600
-        && Number.isFinite(issued) && issued <= Date.now() + 60000 && issued + v.expires_in * 1000 >= Date.now() + 65000, 'pull-response');
-    return bearer as string;
+    let v: any; try { v = JSON.parse(r.bytes.toString('utf8')); } catch { fail('pull-json'); }
+    requireThat(v && typeof v === 'object' && !Array.isArray(v), 'pull-json');
+    const hasToken = Object.hasOwn(v, 'token'), hasAccess = Object.hasOwn(v, 'access_token');
+    const valid = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 8192
+        && !/[\s\x00-\x1f\x7f]/.test(value);
+    requireThat((hasToken || hasAccess) && (!hasToken || valid(v.token)) && (!hasAccess || valid(v.access_token))
+        && (!hasToken || !hasAccess || v.token === v.access_token), 'pull-bearer');
+    const seconds = Object.hasOwn(v, 'expires_in') ? v.expires_in : 60;
+    requireThat(Number.isSafeInteger(seconds) && seconds >= 60 && seconds <= 3600, 'pull-lifetime');
+    let issued = receivedAt;
+    if (Object.hasOwn(v, 'issued_at')) {
+        const fields = typeof v.issued_at === 'string' && v.issued_at.length <= 64
+            ? /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.exec(v.issued_at) : null;
+        requireThat(fields && +fields[2] >= 1 && +fields[2] <= 12 && +fields[3] >= 1
+            && +fields[3] <= new Date(Date.UTC(+fields[1], +fields[2], 0)).getUTCDate()
+            && +fields[4] <= 23 && +fields[5] <= 59 && +fields[6] <= 59, 'pull-issued-at');
+        issued = Date.parse(v.issued_at);
+        requireThat(Number.isFinite(issued) && issued <= receivedAt + 60000, 'pull-issued-at');
+    }
+    // Distribution defaults are finite; this margin does not guarantee download completion.
+    requireThat(issued + seconds * 1000 > now() + 5000, 'pull-expiry');
+    return (hasToken ? v.token : v.access_token) as string;
 }
 
 export const actions = [
@@ -362,6 +378,7 @@ export function safeFailure(value: any) {
         'one-run-admission', 'identity-admission', 'target-admission', 'operation-window', 'effect-budget',
         'target-origin', 'publishable-key', 'writer-token', 'writer-claims', 'writer-identity-expiry', 'distinct-writers',
         'bounded-network-read', 'archive-input', 'archive-redirect', 'archive-http', 'original-archive', 'pull-input', 'pull-http', 'pull-response',
+        'pull-json', 'pull-bearer', 'pull-lifetime', 'pull-issued-at', 'pull-expiry',
         'row-time', 'row-scalars', 'row-json', 'read-filter', 'source-git', 'checkout', 'candidate-source', 'state-file',
         'state-binding', 'step-output', 'producer-process', 'producer-json', 'producer-envelope', 'producer-limit',
         'producer-shape', 'command', 'event-limit', 'previous-read-incomplete', 'archive-size', 'package-dll', 'shape',
