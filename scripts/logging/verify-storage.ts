@@ -70,6 +70,7 @@ try {
             select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
         grant execute on function auth.uid() to anon, authenticated;
         alter default privileges in schema public grant all on tables to anon, authenticated;
+        alter default privileges in schema public grant all on sequences to public, anon, authenticated;
         alter default privileges in schema public grant execute on functions to public, anon, authenticated;`);
     await admin.query(await readFile(path.join(root, 'database/logging/001_telemetry.sql'), 'utf8'));
     const writerA = await connect('authenticated', a), writerB = await connect('authenticated', b);
@@ -79,7 +80,7 @@ try {
         assert.equal(fn.prosecdef, false); assert.equal(fn.provolatile, 'v'); assert.deepEqual(fn.proconfig, ['search_path=""']);
         const table = (await admin.query("select relrowsecurity, relforcerowsecurity from pg_class where oid='public.telemetry_events'::regclass")).rows[0];
         assert.equal(table.relrowsecurity, true); assert.equal(table.relforcerowsecurity, true);
-        for (const column of ['writer_id', 'received_at']) {
+        for (const column of ['id', 'writer_id', 'received_at']) {
             const privilege = (await writerA.query("select has_column_privilege(current_user,'public.telemetry_events',$1,'SELECT') as read, has_column_privilege(current_user,'public.telemetry_events',$1,'INSERT') as write", [column])).rows[0];
             assert.equal(privilege.read, true); assert.equal(privilege.write, false);
         }
@@ -88,21 +89,37 @@ try {
             assert.equal(privileges.update, false); assert.equal(privileges.delete, false); assert.equal(privileges.execute, role === 'authenticated');
         }
     });
+    await check('database-owned bigint identity is unique alongside the writer/event primary key', async () => {
+        const identity = await admin.query(`select data_type, identity_generation from information_schema.columns
+            where table_schema='public' and table_name='telemetry_events' and column_name='id'`);
+        assert.deepEqual(identity.rows, [{ data_type: 'bigint', identity_generation: 'ALWAYS' }]);
+        const keys = await admin.query(`select pg_get_constraintdef(oid) as definition from pg_constraint
+            where conrelid='public.telemetry_events'::regclass and contype in ('p','u') order by contype`);
+        assert.deepEqual(keys.rows.map(key => key.definition), ['PRIMARY KEY (writer_id, event_id)', 'UNIQUE (id)']);
+        for (const client of [anonymous, writerA]) {
+            await denied(client, "select last_value from public.telemetry_events_id_seq");
+            await denied(client, "select nextval('public.telemetry_events_id_seq')");
+            await denied(client, "select setval('public.telemetry_events_id_seq', 1)");
+        }
+        await denied(writerA, 'insert into public.telemetry_events(id) overriding system value values (42)');
+        await denied(writerA, 'update public.telemetry_events set id=default');
+        await denied(writerA, 'select public.ingest_telemetry($1::jsonb)', [JSON.stringify({ ...fixture, id: 42 })], '22023');
+    });
     await check('first insertion and complete own-row readback retain every typed and JSONB value', async () => {
         assert.equal(await ingest(writerA, fixture), 'stored');
         const row = (await writerA.query(`select *, to_char(occurred_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US') || occurred_at_residual_tick || '+00:00' as exact_time from public.telemetry_events`)).rows[0];
-        assert.equal(row.writer_id, a); assert.equal(row.event_id, fixture.eventId); assert.equal(row.schema_version, 1);
+        assert.match(row.id, /^[0-9]+$/); assert.equal(row.writer_id, a); assert.equal(row.event_id, fixture.eventId); assert.equal(row.schema_version, 1);
         assert.equal(row.product, fixture.product); assert.equal(row.product_version, fixture.productVersion); assert.equal(row.invocation_id, fixture.invocationId);
         assert.equal(row.exact_time, fixture.occurredAt); assert.ok(row.received_at instanceof Date);
         for (const field of ['execution', 'outcome', 'usage', 'extensions']) assert.deepEqual(row[field], fixture[field]);
     });
-    const original = (await writerA.query('select received_at::text, usage, extensions from public.telemetry_events')).rows[0];
+    const original = (await writerA.query('select id, received_at::text, usage, extensions from public.telemetry_events')).rows[0];
     await check('duplicate and retry after ignored committed success retain first row and server receipt', async () => {
         assert.equal(await ingest(writerA, fixture), 'duplicate');
         const lost = { ...fixture, eventId: randomUUID() };
         await ingest(writerA, lost); // The successful return is deliberately discarded, as after response loss.
         assert.equal(await ingest(writerA, lost), 'duplicate');
-        assert.deepEqual((await writerA.query('select received_at::text, usage, extensions from public.telemetry_events where event_id=$1', [fixture.eventId])).rows[0], original);
+        assert.deepEqual((await writerA.query('select id, received_at::text, usage, extensions from public.telemetry_events where event_id=$1', [fixture.eventId])).rows[0], original);
     });
     await check('semantic key order/numeric spelling and normalized UTC timestamp are duplicate', async () => {
         const text = JSON.stringify(fixture).replace('0.125', '0.1250').replace('+00:00', 'Z');
@@ -117,13 +134,18 @@ try {
             ['usage', { inventoryCoverage: 'unavailable', runs: [] }], ['extensions', { scribe: { nested: [null] } }],
             ['extensions', { ...fixture.extensions, caller: { ...fixture.extensions.caller, absent: null } }] ];
         for (const [field, value] of changes) await denied(writerA, 'select public.ingest_telemetry($1::jsonb)', [JSON.stringify({ ...fixture, [field as string]: value })], '23505');
-        assert.deepEqual((await writerA.query('select received_at::text, usage, extensions from public.telemetry_events where event_id=$1', [fixture.eventId])).rows[0], original);
+        assert.deepEqual((await writerA.query('select id, received_at::text, usage, extensions from public.telemetry_events where event_id=$1', [fixture.eventId])).rows[0], original);
     });
     await check('writer-scoped same-event insertion and read isolation', async () => {
         assert.equal((await writerB.query('select count(*)::int as n from public.telemetry_events')).rows[0].n, 0);
         assert.equal(await ingest(writerB, fixture), 'stored');
         assert.equal((await writerA.query('select count(*)::int as n from public.telemetry_events where writer_id=$1', [b])).rows[0].n, 0);
-        assert.equal((await writerB.query('select count(*)::int as n from public.telemetry_events')).rows[0].n, 1);
+        const ownRows = (await writerB.query('select id from public.telemetry_events')).rows;
+        assert.equal(ownRows.length, 1);
+        assert.match(ownRows[0].id, /^[0-9]+$/);
+        assert.notEqual(ownRows[0].id, original.id);
+        assert.equal((await writerA.query('select id from public.telemetry_events where id=$1', [ownRows[0].id])).rowCount, 0);
+        assert.equal((await writerB.query('select id from public.telemetry_events where id=$1', [original.id])).rowCount, 0);
     });
     await check('anonymous, missing subject, forged writer, server receipt and update/delete are denied', async () => {
         await denied(anonymous, 'select public.ingest_telemetry($1::jsonb)', [JSON.stringify(fixture)]);
@@ -148,6 +170,8 @@ try {
         const first = await connect('authenticated', a), second = await connect('authenticated', a);
         const event = { ...fixture, eventId: randomUUID() };
         await first.query('begin'); assert.equal(await ingest(first, event), 'stored');
+        const winner = (await first.query('select id, product_version from public.telemetry_events where event_id=$1', [event.eventId])).rows;
+        assert.equal(winner.length, 1);
         const pid = (await second.query('select pg_backend_pid() as pid')).rows[0].pid;
         // Capture rejection immediately; do not leave a temporarily unhandled rejected promise.
         const pending = ingest(second, collision ? { ...event, productVersion: 'collision' } : event)
@@ -162,8 +186,9 @@ try {
         await first.query('commit');
         const result = await pending;
         assert.deepEqual(result, collision ? { status: null, code: '23505' } : { status: 'duplicate', code: null });
-        const rows = (await writerA.query('select product_version from public.telemetry_events where event_id=$1', [event.eventId])).rows;
-        assert.deepEqual(rows, [{ product_version: fixture.productVersion }]);
+        const rows = (await writerA.query('select id, product_version from public.telemetry_events where event_id=$1', [event.eventId])).rows;
+        assert.equal(winner[0].product_version, fixture.productVersion);
+        assert.deepEqual(rows, winner);
     });
     await check('timestamp last tick and day rollover reconstruct exact UTC without rounding', async () => {
         for (const instant of ['2026-01-02T23:59:59.9999999+00:00', '2026-01-03T00:00:00.0000001+00:00', '2026-01-03T00:00:00.0000000+00:00']) {

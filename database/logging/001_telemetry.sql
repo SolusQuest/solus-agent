@@ -3,6 +3,7 @@
 begin;
 
 create table public.telemetry_events (
+    id bigint generated always as identity unique,
     writer_id uuid not null default auth.uid(),
     event_id uuid not null check (event_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     schema_version integer not null check (schema_version = 1),
@@ -23,6 +24,7 @@ create index telemetry_events_product_time on public.telemetry_events (writer_id
 
 -- Override Supabase-style default grants on these new objects explicitly.
 revoke all on public.telemetry_events from public, anon, authenticated;
+revoke all on sequence public.telemetry_events_id_seq from public, anon, authenticated;
 grant usage on schema public to authenticated;
 grant select on public.telemetry_events to authenticated;
 grant insert (event_id, schema_version, product, product_version, invocation_id,
