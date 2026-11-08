@@ -114,7 +114,8 @@ public sealed class ConfigurationAttempt(RuntimeStop admissionStop, RuntimeStop 
     public RuntimeSettlement? Settlement { get; } = settlement;
     public RuntimeAttemptDiagnostic Diagnostic { get; } = new(observation.ExecutionId, observation.LogicalCallId, observation.PhysicalAttemptId,
         observation.AttemptNumber, admissionStop, settlementStop, observation.Exposure, observation.Usage.Completeness,
-        settlement?.ProviderOutcome ?? provider?.Outcome, settlement?.ProviderError ?? provider?.Error);
+        settlement?.ProviderOutcome ?? provider?.Outcome, settlement?.ProviderError ?? provider?.Error,
+        settlement?.ProviderLimitKind ?? provider?.LimitKind ?? ProviderLimitKind.Unknown);
     public override string ToString() => nameof(ConfigurationAttempt);
 }
 
@@ -162,6 +163,7 @@ public sealed class ConfigurationConsumer
         var observation = initial;
         ProviderOutcome? outcome = null;
         ProviderError? error = null;
+        var limitKind = ProviderLimitKind.Unknown;
         RuntimeStop settlementStop;
         RuntimeSettlement settlement;
         try
@@ -201,11 +203,12 @@ public sealed class ConfigurationConsumer
                     }
                     else
                     {
+                        limitKind = provider.LimitKind;
                         try { provider.ValidateFor(request); }
                         catch (ProviderContractException exception)
                         {
                             // Current-attempt usage survives payload rejection; its response and retry metadata do not.
-                            provider = null; outcome = ProviderOutcome.Rejected; error = exception.Error;
+                            provider = null; outcome = ProviderOutcome.Rejected; error = exception.Error; limitKind = exception.LimitKind;
                         }
                         if (provider?.Outcome == ProviderOutcome.Cancelled) stop = RuntimeStop.Cancelled;
                     }
@@ -214,10 +217,10 @@ public sealed class ConfigurationConsumer
                 {
                     // Invoked trusted extension failed without an observation: dispatch remains unknown.
                     observation = new(attempt.ExecutionId, attempt.LogicalCallId, attempt.PhysicalAttemptId, attempt.AttemptNumber, DispatchExposure.Unknown, new());
-                    outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed;
+                    outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed; limitKind = ProviderLimitKind.Unknown;
                 }
             }
-            settlement = new(exposure, observation, stop, outcome.HasValue, outcome, error);
+            settlement = new(exposure, observation, stop, outcome.HasValue, outcome, error, null, limitKind);
             try
             {
                 var pending = Configuration.Hooks is null ? Task.FromResult<SettlementAcknowledgement?>(null)

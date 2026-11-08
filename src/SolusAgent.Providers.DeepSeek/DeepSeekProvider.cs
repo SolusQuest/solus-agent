@@ -106,7 +106,7 @@ public sealed partial class DeepSeekProvider : ModelProvider, IProviderContextPe
     };
     private static async Task<byte[]> ReadBodyAsync(HttpContent content, int cap, CancellationToken token)
     {
-        if (content.Headers.ContentLength is long length && length > cap) throw new ProviderContractException(ProviderError.LimitExceeded);
+        if (content.Headers.ContentLength is long length && length > cap) throw new ProviderContractException(ProviderError.LimitExceeded, ProviderLimitKind.ResponseDeclaredBodyBytes);
         using var stream = await content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var output = new MemoryStream(Math.Min(cap, 4096));
         var buffer = new byte[Math.Min(cap + 1, 4096)];
@@ -114,7 +114,7 @@ public sealed partial class DeepSeekProvider : ModelProvider, IProviderContextPe
         {
             var count = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, cap - output.Length + 1)), token).ConfigureAwait(false);
             if (count == 0) break;
-            if (count > cap - output.Length) throw new ProviderContractException(ProviderError.LimitExceeded);
+            if (count > cap - output.Length) throw new ProviderContractException(ProviderError.LimitExceeded, ProviderLimitKind.ResponseStreamBodyBytes);
             output.Write(buffer, 0, count);
         }
         if (content.Headers.ContentLength is long expected && output.Length != expected) throw new ProviderContractException(ProviderError.InvalidResponse);

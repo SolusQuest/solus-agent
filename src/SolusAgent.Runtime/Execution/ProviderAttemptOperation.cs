@@ -5,7 +5,8 @@ using SolusAgent.Runtime.Api.Providers;
 namespace SolusAgent.Runtime.Execution;
 
 internal sealed record AttemptExecution(ProviderResponse? Response, RuntimeStop Stop, RuntimeStop SettlementStop,
-    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError, ProviderRetry? Retry, bool ClosureAcknowledged);
+    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError, ProviderRetry? Retry, bool ClosureAcknowledged,
+    ProviderLimitKind LimitKind = ProviderLimitKind.Unknown);
 
 // The reusable turn boundary. Tool/candidate handlers consume accepted data only after this operation has closed.
 internal static class ProviderAttemptOperation
@@ -20,6 +21,7 @@ internal static class ProviderAttemptOperation
         var invoked = false;
         ProviderOutcome? outcome = null;
         ProviderError? error = null;
+        var limitKind = ProviderLimitKind.Unknown;
         ProviderExchangeResult? result = null;
         ProviderResponse? accepted = null;
         UsageAttemptObservation observation = request.Observation.Snapshot();
@@ -83,6 +85,7 @@ internal static class ProviderAttemptOperation
                     // An associated returned observation can supply facts an interface extension did not stream.
                     // Once the local cut wins, only the already sealed channel is eligible instead.
                     observation = result.Observation;
+                    limitKind = result.LimitKind;
                 }
             }
         }
@@ -105,12 +108,12 @@ internal static class ProviderAttemptOperation
                 else stop = cut.Check();
             }
             catch (ProviderContractException exception)
-            { outcome = ProviderOutcome.Rejected; error = exception.Error; }
+            { outcome = ProviderOutcome.Rejected; error = exception.Error; limitKind = exception.LimitKind; }
         }
 
         // Outcome/error describe this request's normalized exchange, including invalid interface returns or actual faults.
         // A still-pending operation has neither, and is represented only with its explicit local cut.
-        var settlement = new RuntimeSettlement(exposure, observation, stop, invoked, outcome, error, state.Accounting());
+        var settlement = new RuntimeSettlement(exposure, observation, stop, invoked, outcome, error, state.Accounting(), limitKind);
         var settlementStop = RuntimeStop.None;
         if (configuration.Hooks is { } closure && (enteredExposure || invoked))
             settlementStop = await DeliverSettlementAsync(state, closure, settlement).ConfigureAwait(false);
@@ -121,7 +124,7 @@ internal static class ProviderAttemptOperation
         var retry = stop == RuntimeStop.None && settlementStop == RuntimeStop.None
             && outcome == ProviderOutcome.Failed && error == ProviderError.ProviderFailed ? result?.Retry : null;
         var execution = new AttemptExecution(accepted, stop, settlementStop, outcome, error, retry,
-            configuration.Hooks is not null && (enteredExposure || invoked) && settlementStop is RuntimeStop.None or RuntimeStop.HostStopped);
+            configuration.Hooks is not null && (enteredExposure || invoked) && settlementStop is RuntimeStop.None or RuntimeStop.HostStopped, limitKind);
         state.RecordAttempt(request, execution);
         return execution;
     }

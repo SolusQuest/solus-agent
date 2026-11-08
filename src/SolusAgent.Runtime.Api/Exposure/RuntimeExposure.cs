@@ -159,7 +159,12 @@ public sealed class RuntimeSettlement
     /// <summary>Validates full association, original admission/provider phase and optional exchange outcome; does not implement accounting.</summary>
     public RuntimeSettlement(RuntimeExposure exposure, UsageAttemptObservation observation, RuntimeStop stop,
         bool providerInvoked, ProviderOutcome? providerOutcome = null, ProviderError? providerError = null,
-        RunAccountingSnapshot? accounting = null)
+        RunAccountingSnapshot? accounting = null) : this(exposure, observation, stop, providerInvoked, providerOutcome,
+            providerError, accounting, Providers.ProviderLimitKind.Unknown) { }
+    /// <summary>Preserves existing construction while accepting only explicit closed diagnostic evidence.</summary>
+    public RuntimeSettlement(RuntimeExposure exposure, UsageAttemptObservation observation, RuntimeStop stop,
+        bool providerInvoked, ProviderOutcome? providerOutcome, ProviderError? providerError,
+        RunAccountingSnapshot? accounting, ProviderLimitKind providerLimitKind)
     {
         Exposure = exposure ?? throw new ArgumentNullException(nameof(exposure));
         Observation = observation ?? throw new ArgumentNullException(nameof(observation));
@@ -179,7 +184,10 @@ public sealed class RuntimeSettlement
                 || stop == RuntimeStop.None || observation.Usage.Completeness != UsageCompleteness.Unavailable))
             || (providerInvoked && !providerOutcome.HasValue && !localCut))
             throw new ArgumentException("The settlement outcome is incoherent.");
-        Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError;
+        if (!Enum.IsDefined(providerLimitKind) || (providerLimitKind != Providers.ProviderLimitKind.Unknown &&
+            (!providerInvoked || providerError != Providers.ProviderError.LimitExceeded)))
+            throw new ArgumentOutOfRangeException(nameof(providerLimitKind));
+        Stop = stop; ProviderOutcome = providerOutcome; ProviderError = providerError; ProviderLimitKind = providerLimitKind;
         ProviderInvoked = providerInvoked;
         var before = exposure.Accounting;
         var settledById = accounting?.Attempts.ToDictionary(entry => entry.PhysicalAttemptId);
@@ -204,6 +212,8 @@ public sealed class RuntimeSettlement
     public ProviderOutcome? ProviderOutcome { get; }
     /// <summary>Gets actual provider error only when its exchange was invoked.</summary>
     public ProviderError? ProviderError { get; }
+    /// <summary>Gets associated closed limit evidence, or Unknown when absent.</summary>
+    public ProviderLimitKind ProviderLimitKind { get; }
     /// <summary>Gets the already settled Runtime ledger; delivery failure cannot roll back these facts.</summary>
     public RunAccountingSnapshot? Accounting { get; }
     /// <summary>Returns only the type name.</summary>
@@ -262,4 +272,20 @@ public interface IRuntimeExposureHooks
 /// <summary>Explicit ordinary diagnostic projection, omitting scope labels, live objects and all restricted payload.</summary>
 public sealed record RuntimeAttemptDiagnostic(Guid ExecutionId, Guid LogicalCallId, Guid PhysicalAttemptId, int AttemptNumber,
     RuntimeStop AdmissionStop, RuntimeStop SettlementStop, DispatchExposure Exposure, UsageCompleteness UsageCompleteness,
-    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError);
+    ProviderOutcome? ProviderOutcome, ProviderError? ProviderError)
+{
+    /// <summary>The original ten-field positional constructor and Deconstruct remain unchanged.</summary>
+    [System.Text.Json.Serialization.JsonConstructor]
+    public RuntimeAttemptDiagnostic(Guid executionId, Guid logicalCallId, Guid physicalAttemptId, int attemptNumber,
+        RuntimeStop admissionStop, RuntimeStop settlementStop, DispatchExposure exposure, UsageCompleteness usageCompleteness,
+        ProviderOutcome? providerOutcome, ProviderError? providerError, ProviderLimitKind providerLimitKind)
+        : this(executionId, logicalCallId, physicalAttemptId, attemptNumber, admissionStop, settlementStop,
+            exposure, usageCompleteness, providerOutcome, providerError)
+    {
+        if (!Enum.IsDefined(providerLimitKind) || (providerLimitKind != Providers.ProviderLimitKind.Unknown && providerError != Providers.ProviderError.LimitExceeded))
+            throw new ArgumentOutOfRangeException(nameof(providerLimitKind));
+        ProviderLimitKind = providerLimitKind;
+    }
+    /// <summary>Gets associated closed limit evidence, or Unknown when absent.</summary>
+    public ProviderLimitKind ProviderLimitKind { get; }
+}

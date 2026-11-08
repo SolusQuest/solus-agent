@@ -23,13 +23,13 @@ public sealed partial class ProviderResponse
         Scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Attempt = attempt ?? throw new ArgumentNullException(nameof(attempt));
         ProviderBoundary.Require(finish is ProviderFinish.Final or ProviderFinish.ToolCalls, ProviderError.InvalidResponse);
-        if (text is not null) ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes);
-        var copy = ProviderBoundary.Copy(calls, ProviderLimits.Tools);
+        if (text is not null) ProviderBoundary.Text(text, ProviderLimits.MaximumTextBytes, ProviderLimitKind.ResponseTextBytes);
+        var copy = ProviderBoundary.Copy(calls, ProviderLimits.Tools, ProviderLimitKind.ConstructionToolCallCount);
         ProviderBoundary.Require(finish == ProviderFinish.Final ? text is { Length: > 0 } && copy.Length == 0 : copy.Length != 0, ProviderError.InvalidResponse);
         ProviderBoundary.Require(copy.Select(call => call.CallId).Distinct(StringComparer.Ordinal).Count() == copy.Length, ProviderError.InvalidAssociation);
         if (continuation is not null) ProviderBoundary.Require(scope.Matches(continuation.Scope) && attempt.Matches(continuation.Origin), ProviderError.ContinuationMismatch);
         Finish = finish; Text = text; Calls = Array.AsReadOnly(copy); Continuation = continuation;
-        ProviderBoundary.Require(ByteCount <= ProviderLimits.MaximumResponseBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(ByteCount <= ProviderLimits.MaximumResponseBytes, ProviderError.LimitExceeded, ProviderLimitKind.ConstructionResponseBytes);
     }
     private ProviderResponse(ProviderResponse source)
     {
@@ -82,16 +82,17 @@ public sealed partial class ProviderResponse
     {
         ArgumentNullException.ThrowIfNull(request);
         ProviderBoundary.Require(Scope.Matches(request.Scope) && Attempt.Matches(request.Attempt), ProviderError.InvalidAssociation);
-        if (Text is not null) ProviderBoundary.Text(Text, request.Bounds.MaximumTextBytes);
+        if (Text is not null) ProviderBoundary.Text(Text, request.Bounds.MaximumTextBytes, ProviderLimitKind.ResponseTextBytes);
         if (Finish == ProviderFinish.ToolCorrection)
         {
             ProviderBoundary.Require(Correction is not null && Calls.Count == 0, ProviderError.InvalidResponse);
             Correction!.ValidateFor(this, request); return;
         }
-        ProviderBoundary.Require(Calls.Count <= request.Bounds.MaximumToolCalls && ByteCount <= request.Bounds.MaximumResponseBytes, ProviderError.LimitExceeded);
+        ProviderBoundary.Require(Calls.Count <= request.Bounds.MaximumToolCalls, ProviderError.LimitExceeded, ProviderLimitKind.RequestToolCallCount);
+        ProviderBoundary.Require(ByteCount <= request.Bounds.MaximumResponseBytes, ProviderError.LimitExceeded, ProviderLimitKind.RequestResponseBytes);
         if (Continuation is not null)
         {
-            ProviderBoundary.Require(Continuation.ByteCount <= request.Bounds.MaximumContinuationBytes, ProviderError.LimitExceeded);
+            ProviderBoundary.Require(Continuation.ByteCount <= request.Bounds.MaximumContinuationBytes, ProviderError.LimitExceeded, ProviderLimitKind.ResponseReplayFrameBytes);
             ProviderBoundary.Require(request.RequiredCapabilities.HasFlag(ProviderCapabilities.Continuation), ProviderError.UnsupportedCapability);
         }
         foreach (var call in Calls)

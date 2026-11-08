@@ -95,7 +95,7 @@ internal static class DeepSeekReplay
     {
         var count = StrictUtf8.GetByteCount(reasoning);
         if (count + 1 > Math.Min(request.Bounds.MaximumContinuationBytes, MaximumFrameBytes))
-            throw new ProviderContractException(ProviderError.LimitExceeded);
+            throw new ProviderContractException(ProviderError.LimitExceeded, ProviderLimitKind.ResponseReplayFrameBytes);
         var bytes = new byte[count + 1]; bytes[0] = 1; StrictUtf8.GetBytes(reasoning, bytes.AsSpan(1));
         return new(request.Scope, request.Attempt, bytes);
     }
