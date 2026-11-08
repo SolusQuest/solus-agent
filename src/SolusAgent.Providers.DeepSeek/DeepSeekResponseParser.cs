@@ -28,12 +28,12 @@ internal static class DeepSeekResponseParser
             Require(measured.Valid);
             ValidateTree(root);
             Shape(root, "id", "object", "model", "choices", "usage", "created", "system_fingerprint");
-            var id = Text(root.GetProperty("id"), 128);
+            var id = Text(root.GetProperty("id"), 128, ProviderLimitKind.ResponseIdentifierBytes);
             Require(id.Length != 0 && !id.Any(char.IsControl));
             Require(Text(root.GetProperty("object")) == "chat.completion");
             Require(Text(root.GetProperty("model")) == DeepSeekOptions.Model);
             if (root.TryGetProperty("created", out var created)) Require(created.TryGetInt64(out var time) && time >= 0);
-            if (root.TryGetProperty("system_fingerprint", out var fingerprint) && fingerprint.ValueKind != JsonValueKind.Null) _ = Text(fingerprint, 128);
+            if (root.TryGetProperty("system_fingerprint", out var fingerprint) && fingerprint.ValueKind != JsonValueKind.Null) _ = Text(fingerprint, 128, ProviderLimitKind.ResponseIdentifierBytes);
             var choices = root.GetProperty("choices");
             Require(choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() == 1);
             var choice = choices[0]; Shape(choice, "index", "message", "finish_reason", "logprobs");
@@ -50,7 +50,7 @@ internal static class DeepSeekResponseParser
             if (message.TryGetProperty("tool_calls", out var toolCalls) && toolCalls.ValueKind != JsonValueKind.Null)
             {
                 Require(toolCalls.ValueKind == JsonValueKind.Array);
-                if (toolCalls.GetArrayLength() > request.Bounds.MaximumToolCalls) throw new ProviderContractException(ProviderError.LimitExceeded);
+                if (toolCalls.GetArrayLength() > request.Bounds.MaximumToolCalls) throw new ProviderContractException(ProviderError.LimitExceeded, ProviderLimitKind.ResponseToolCallCount);
                 var ordinal = 0;
                 foreach (var call in toolCalls.EnumerateArray())
                 {
@@ -61,8 +61,8 @@ internal static class DeepSeekResponseParser
                     Require(Text(call.GetProperty("type")) == "function");
                     var function = call.GetProperty("function"); Shape(function, "name", "arguments");
                     // This adapter retains its independently selected response-ID profile.
-                    calls.Add(new(Text(call.GetProperty("id"), 128), Text(function.GetProperty("name"), ToolLimits.IdentifierCharacters),
-                        Text(function.GetProperty("arguments"), ToolLimits.PayloadBytes)));
+                    calls.Add(new(Text(call.GetProperty("id"), 128, ProviderLimitKind.ResponseIdentifierBytes), Text(function.GetProperty("name"), ToolLimits.IdentifierCharacters, ProviderLimitKind.ToolNameBytes),
+                        Text(function.GetProperty("arguments"), ToolLimits.PayloadBytes, ProviderLimitKind.ToolArgumentBytes)));
                 }
             }
             Require(finish == "stop" ? text is { Length: > 0 } && calls.Count == 0 : calls.Count != 0);
@@ -71,7 +71,7 @@ internal static class DeepSeekResponseParser
             if (request.Tools.Count != 0) Require(hasReasoning, ProviderError.ContinuationMismatch);
             if (hasReasoning)
             {
-                var reasoningText = Text(reasoning, DeepSeekReplay.MaximumFrameBytes);
+                var reasoningText = Text(reasoning, DeepSeekReplay.MaximumFrameBytes, ProviderLimitKind.ReasoningFrameBytes);
                 if (request.RequiredCapabilities.HasFlag(ProviderCapabilities.Continuation)) continuation = DeepSeekReplay.Encode(request, reasoningText);
             }
             return new(request.Scope, request.Attempt, finish == "stop" ? ProviderFinish.Final : ProviderFinish.ToolCalls, text, calls, continuation);
@@ -102,11 +102,11 @@ internal static class DeepSeekResponseParser
     }
     private static void Shape(JsonElement node, params string[] allowed)
     { Require(node.ValueKind == JsonValueKind.Object); foreach (var property in node.EnumerateObject()) Require(allowed.Contains(property.Name, StringComparer.Ordinal)); }
-    private static string Text(JsonElement value, int cap = ProviderLimits.TextBytes)
+    private static string Text(JsonElement value, int cap = ProviderLimits.TextBytes, ProviderLimitKind limitKind = ProviderLimitKind.ResponseTextBytes)
     {
         Require(value.ValueKind == JsonValueKind.String);
         var result = value.GetString()!;
-        if (StrictUtf8.GetByteCount(result) > cap) throw new ProviderContractException(ProviderError.LimitExceeded);
+        if (StrictUtf8.GetByteCount(result) > cap) throw new ProviderContractException(ProviderError.LimitExceeded, limitKind);
         return result;
     }
     private static void Require(bool condition, ProviderError error = ProviderError.InvalidResponse)

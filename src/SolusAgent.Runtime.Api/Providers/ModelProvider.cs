@@ -19,13 +19,31 @@ public enum ProviderOutcome
 /// <summary>Ordinary diagnostics containing only correlations and closed numeric/classification metadata.</summary>
 public sealed record ProviderDiagnostic(Guid ExecutionId, Guid LogicalCallId, Guid PhysicalAttemptId, int AttemptNumber,
     ProviderOutcome Outcome, ProviderError Error, DispatchExposure Exposure, UsageCompleteness UsageCompleteness, int AcceptedToolCalls,
-    ProviderRetryKind? RetryKind = null, TimeSpan? RetryAfter = null);
+    ProviderRetryKind? RetryKind = null, TimeSpan? RetryAfter = null)
+{
+    /// <summary>Preserves the original positional constructor and Deconstruct signature.</summary>
+    [System.Text.Json.Serialization.JsonConstructor]
+    public ProviderDiagnostic(Guid executionId, Guid logicalCallId, Guid physicalAttemptId, int attemptNumber,
+        ProviderOutcome outcome, ProviderError error, DispatchExposure exposure, UsageCompleteness usageCompleteness,
+        int acceptedToolCalls, ProviderRetryKind? retryKind, TimeSpan? retryAfter, ProviderLimitKind limitKind)
+        : this(executionId, logicalCallId, physicalAttemptId, attemptNumber, outcome, error, exposure, usageCompleteness,
+            acceptedToolCalls, retryKind, retryAfter)
+    {
+        if (!Enum.IsDefined(limitKind) || (limitKind != ProviderLimitKind.Unknown && error != ProviderError.LimitExceeded))
+            throw new ArgumentOutOfRangeException(nameof(limitKind));
+        LimitKind = limitKind;
+    }
+    /// <summary>Gets an authored closed limit kind, or Unknown when absent.</summary>
+    public ProviderLimitKind LimitKind { get; }
+}
 
 /// <summary>Exchange result retaining usage independently of payload acceptance.</summary>
 public sealed class ProviderExchangeResult
 {
     internal ProviderExchangeResult(ProviderScope scope, ProviderOutcome outcome, ProviderError error, UsageAttemptObservation observation, ProviderResponse? response = null,
-        ProviderRetry? retry = null)
+        ProviderRetry? retry = null) : this(scope, outcome, error, observation, response, retry, ProviderLimitKind.Unknown) { }
+    internal ProviderExchangeResult(ProviderScope scope, ProviderOutcome outcome, ProviderError error,
+        UsageAttemptObservation observation, ProviderResponse? response, ProviderRetry? retry, ProviderLimitKind limitKind)
     {
         ProviderBoundary.Require(Enum.IsDefined(outcome) && Enum.IsDefined(error)
             && (outcome == ProviderOutcome.Succeeded ? error == ProviderError.None && response is { Accepted: true }
@@ -33,9 +51,10 @@ public sealed class ProviderExchangeResult
             && (outcome != ProviderOutcome.Failed || error == ProviderError.ProviderFailed)
             && (outcome != ProviderOutcome.Cancelled || error == ProviderError.Cancelled)
             && (retry is null || outcome == ProviderOutcome.Failed && error == ProviderError.ProviderFailed), ProviderError.InvalidResponse);
-        Scope = scope; Outcome = outcome; Error = error; Observation = observation; Response = response; Retry = retry;
+        ProviderBoundary.Require(Enum.IsDefined(limitKind) && (limitKind == ProviderLimitKind.Unknown || error == ProviderError.LimitExceeded), ProviderError.InvalidResponse);
+        Scope = scope; Outcome = outcome; Error = error; Observation = observation; Response = response; Retry = retry; LimitKind = limitKind;
         Diagnostic = new(observation.ExecutionId, observation.LogicalCallId, observation.PhysicalAttemptId, observation.AttemptNumber,
-            outcome, error, observation.Exposure, observation.Usage.Completeness, response?.Calls.Count ?? 0, retry?.Kind, retry?.RetryAfter);
+            outcome, error, observation.Exposure, observation.Usage.Completeness, response?.Calls.Count ?? 0, retry?.Kind, retry?.RetryAfter, limitKind);
     }
     /// <summary>Gets restricted request provider/model association, including for payload-free failures.</summary>
     public ProviderScope Scope { get; }
@@ -43,6 +62,8 @@ public sealed class ProviderExchangeResult
     public ProviderOutcome Outcome { get; }
     /// <summary>Gets content-free error classification.</summary>
     public ProviderError Error { get; }
+    /// <summary>Gets an authored closed limit kind, or Unknown when absent.</summary>
+    public ProviderLimitKind LimitKind { get; }
     /// <summary>Gets captured usage/exposure even after later failure.</summary>
     public UsageAttemptObservation Observation { get; }
     /// <summary>Gets restricted accepted data only on success.</summary>
@@ -176,25 +197,26 @@ public abstract class ModelProvider : IModelProvider, IProviderRequestValidation
         UsageAttemptObservation observation;
         var outcome = ProviderOutcome.Succeeded;
         var error = ProviderError.None;
+        var limitKind = ProviderLimitKind.Unknown;
         ProviderRetry? retry = null;
         try { candidate = await ExchangeCoreAsync(request, capture, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken)
         { outcome = ProviderOutcome.Cancelled; error = ProviderError.Cancelled; }
-        catch (ProviderContractException exception) { outcome = ProviderOutcome.Rejected; error = exception.Error; }
+        catch (ProviderContractException exception) { outcome = ProviderOutcome.Rejected; error = exception.Error; limitKind = exception.LimitKind; }
         catch (ToolContractException) { outcome = ProviderOutcome.Rejected; error = ProviderError.InvalidResponse; }
         catch (ProviderFailureException exception)
         { outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed; retry = exception.Retry; }
         catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
         { outcome = ProviderOutcome.Failed; error = ProviderError.ProviderFailed; }
         finally { observation = capture.Seal(); }
-        if (error != ProviderError.None) return new(request.Scope, outcome, error, observation, retry: cancellationToken.IsCancellationRequested ? null : retry);
+        if (error != ProviderError.None) return new(request.Scope, outcome, error, observation, null, cancellationToken.IsCancellationRequested ? null : retry, limitKind);
         if (cancellationToken.IsCancellationRequested) return new(request.Scope, ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
         try
         {
             ProviderBoundary.Require(candidate is not null, ProviderError.InvalidResponse);
             candidate = candidate!.AdmitFor(request);
         }
-        catch (ProviderContractException exception) { return new(request.Scope, ProviderOutcome.Rejected, exception.Error, observation); }
+        catch (ProviderContractException exception) { return new(request.Scope, ProviderOutcome.Rejected, exception.Error, observation, null, null, exception.LimitKind); }
         // This final check is the acceptance cut; later cancellation cannot rewrite this immutable result.
         if (cancellationToken.IsCancellationRequested) return new(request.Scope, ProviderOutcome.Cancelled, ProviderError.Cancelled, observation);
         return new(request.Scope, ProviderOutcome.Succeeded, ProviderError.None, observation, candidate);

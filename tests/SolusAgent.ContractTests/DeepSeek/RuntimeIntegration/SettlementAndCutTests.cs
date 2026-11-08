@@ -20,6 +20,33 @@ namespace SolusAgent.ContractTests.DeepSeek.RuntimeIntegration;
 
 public sealed class SettlementAndCutTests
 {
+    [Theory]
+    [InlineData(false, ProviderLimitKind.ResponseToolCallCount)]
+    [InlineData(true, ProviderLimitKind.ResponseReplayFrameBytes)]
+    public async Task ClosedLimitKindSurvivesActualRuntimeSettlementWithoutToolEffects(bool continuation, ProviderLimitKind expected)
+    {
+        var hooks = new RuntimeHooks(); var tool = new EchoTool();
+        var body = continuation ? AdapterFixture.Response("synthetic-body-canary", new string('r', 256))
+            : AdapterFixture.Response(null, "short", "tool_calls", calls: [AdapterFixture.Call("one"), AdapterFixture.Call("two")]);
+        using var handler = FakeHandler.Reply(body); using var provider = AdapterFixture.Provider(handler);
+        var bounds = continuation ? new ProviderExchangeBounds(maximumContinuationBytes: 128) : new ProviderExchangeBounds(maximumToolCalls: 1);
+        var agent = RuntimeAgentFactory.Create(new(provider, [new(tool, new EchoCapability())], hooks, bounds), IntegrationFixture.Options());
+        var result = await agent.ExecuteAsync(RuntimeFixture.Request());
+        Assert.Equal(1, handler.Sends); Assert.Equal(0, tool.Invocations); Assert.Equal(0, result.CompletedWorkUnits);
+        var settlement = Assert.Single(hooks.Settlements);
+        Assert.True(settlement.ProviderInvoked); Assert.Equal(ProviderOutcome.Rejected, settlement.ProviderOutcome);
+        Assert.Equal(ProviderError.LimitExceeded, settlement.ProviderError); Assert.Equal(expected, settlement.ProviderLimitKind);
+        Assert.Equal(RuntimeStop.None, settlement.Stop); Assert.Equal(DispatchExposure.Dispatched, settlement.Observation.Exposure);
+        Assert.Equal(10, settlement.Observation.Usage.InputTokens); Assert.Equal(5, settlement.Observation.Usage.OutputTokens);
+        var ordinary = new RuntimeAttemptDiagnostic(settlement.Observation.ExecutionId, settlement.Observation.LogicalCallId,
+            settlement.Observation.PhysicalAttemptId, settlement.Observation.AttemptNumber, settlement.Stop, RuntimeStop.None,
+            settlement.Observation.Exposure, settlement.Observation.Usage.Completeness, settlement.ProviderOutcome, settlement.ProviderError,
+            settlement.ProviderLimitKind);
+        var serialized = JsonSerializer.Serialize(ordinary);
+        Assert.DoesNotContain(AdapterFixture.Credential, serialized); Assert.DoesNotContain("synthetic-body-canary", serialized);
+        Assert.Equal(expected, ordinary.ProviderLimitKind);
+    }
+
     private static RuntimeToolRegistration[] Bindings(CounterTool counter, CounterCapability counterCapability,
         IFunctionTool transform, IToolCapability transformCapability) =>
         [new(counter, counterCapability), new(transform, transformCapability)];

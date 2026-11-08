@@ -62,17 +62,56 @@ public enum ProviderError
     ObservationConflict,
 }
 
+/// <summary>Optional closed origin of a finite rejection; Unknown never asserts an unobserved bound.</summary>
+public enum ProviderLimitKind
+{
+    /// <summary>Closed Unknown bound origin.</summary>
+    Unknown = 0,
+    /// <summary>Closed ResponseDeclaredBodyBytes bound origin.</summary>
+    ResponseDeclaredBodyBytes,
+    /// <summary>Closed ResponseStreamBodyBytes bound origin.</summary>
+    ResponseStreamBodyBytes,
+    /// <summary>Closed ResponseToolCallCount bound origin.</summary>
+    ResponseToolCallCount,
+    /// <summary>Closed ResponseTextBytes bound origin.</summary>
+    ResponseTextBytes,
+    /// <summary>Closed ResponseIdentifierBytes bound origin.</summary>
+    ResponseIdentifierBytes,
+    /// <summary>Closed ToolNameBytes bound origin.</summary>
+    ToolNameBytes,
+    /// <summary>Closed ToolArgumentBytes bound origin.</summary>
+    ToolArgumentBytes,
+    /// <summary>Closed ReasoningFrameBytes bound origin.</summary>
+    ReasoningFrameBytes,
+    /// <summary>Closed ConstructionToolCallCount bound origin.</summary>
+    ConstructionToolCallCount,
+    /// <summary>Closed ConstructionResponseBytes bound origin.</summary>
+    ConstructionResponseBytes,
+    /// <summary>Closed RequestToolCallCount bound origin.</summary>
+    RequestToolCallCount,
+    /// <summary>Closed RequestResponseBytes bound origin.</summary>
+    RequestResponseBytes,
+    /// <summary>Closed ResponseReplayFrameBytes bound origin.</summary>
+    ResponseReplayFrameBytes,
+}
+
 /// <summary>Fixed rejection without the rejected value.</summary>
 public sealed class ProviderContractException : ArgumentException
 {
     /// <summary>Creates a content-free rejection.</summary>
-    public ProviderContractException(ProviderError error) : base("The provider boundary rejected input.")
+    public ProviderContractException(ProviderError error) : this(error, ProviderLimitKind.Unknown) { }
+    /// <summary>Creates a classified limit rejection without a rejected value or changed error category.</summary>
+    public ProviderContractException(ProviderError error, ProviderLimitKind limitKind) : base("The provider boundary rejected input.")
     {
         if (!Enum.IsDefined(error) || error == ProviderError.None) throw new ArgumentOutOfRangeException(nameof(error));
-        Error = error;
+        if (!Enum.IsDefined(limitKind) || (limitKind != ProviderLimitKind.Unknown && error != ProviderError.LimitExceeded))
+            throw new ArgumentOutOfRangeException(nameof(limitKind));
+        Error = error; LimitKind = limitKind;
     }
     /// <summary>Gets the closed classification.</summary>
     public ProviderError Error { get; }
+    /// <summary>Gets an authored closed limit origin, or Unknown when it was not captured.</summary>
+    public ProviderLimitKind LimitKind { get; }
 }
 
 internal static class ProviderBoundary
@@ -80,11 +119,14 @@ internal static class ProviderBoundary
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     internal static void Require(bool valid, ProviderError error)
     { if (!valid) throw new ProviderContractException(error); }
-    internal static string Text(string value, int limit)
+    internal static void Require(bool valid, ProviderError error, ProviderLimitKind limitKind)
+    { if (!valid) throw new ProviderContractException(error, limitKind); }
+    internal static string Text(string value, int limit) => Text(value, limit, ProviderLimitKind.Unknown);
+    internal static string Text(string value, int limit, ProviderLimitKind limitKind)
     {
         ArgumentNullException.ThrowIfNull(value);
-        Require(value.Length <= limit, ProviderError.LimitExceeded);
-        try { Require(StrictUtf8.GetByteCount(value) <= limit, ProviderError.LimitExceeded); }
+        Require(value.Length <= limit, ProviderError.LimitExceeded, limitKind);
+        try { Require(StrictUtf8.GetByteCount(value) <= limit, ProviderError.LimitExceeded, limitKind); }
         catch (EncoderFallbackException) { throw new ProviderContractException(ProviderError.InvalidEncoding); }
         return value;
     }
@@ -101,12 +143,13 @@ internal static class ProviderBoundary
         catch (OverflowException) { throw new ProviderContractException(ProviderError.LimitExceeded); }
         Require(total <= limit, ProviderError.LimitExceeded);
     }
-    internal static T[] Copy<T>(IReadOnlyList<T> values, int limit) where T : class
+    internal static T[] Copy<T>(IReadOnlyList<T> values, int limit) where T : class => Copy(values, limit, ProviderLimitKind.Unknown);
+    internal static T[] Copy<T>(IReadOnlyList<T> values, int limit, ProviderLimitKind limitKind) where T : class
     {
         ArgumentNullException.ThrowIfNull(values);
         var count = values.Count;
         Require(count >= 0, ProviderError.InvalidInput);
-        Require(count <= limit, ProviderError.LimitExceeded);
+        Require(count <= limit, ProviderError.LimitExceeded, limitKind);
         var copy = new T[count];
         for (var i = 0; i < copy.Length; i++) copy[i] = values[i] ?? throw new ProviderContractException(ProviderError.InvalidInput);
         return copy;

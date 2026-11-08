@@ -1,4 +1,8 @@
 using System.Text.Json;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Net;
+using SolusAgent.Runtime.Api.Exposure;
 using SolusAgent.Api.Usage;
 using SolusAgent.ContractTests.Architecture;
 using SolusAgent.Providers.DeepSeek;
@@ -9,6 +13,135 @@ namespace SolusAgent.ContractTests.DeepSeek.Adapter;
 
 public sealed class ProviderBoundaryTests
 {
+    [Theory]
+    [InlineData("tool-count", ProviderLimitKind.ResponseToolCallCount, true)]
+    [InlineData("continuation", ProviderLimitKind.ResponseReplayFrameBytes, true)]
+    [InlineData("content", ProviderLimitKind.ResponseTextBytes, true)]
+    [InlineData("identifier", ProviderLimitKind.ResponseIdentifierBytes, true)]
+    [InlineData("declared-body", ProviderLimitKind.ResponseDeclaredBodyBytes, false)]
+    [InlineData("stream-body", ProviderLimitKind.ResponseStreamBodyBytes, false)]
+    public async Task ClosedLimitKindsRetainOriginalErrorUsageDispatchAndNoPayload(string mode, ProviderLimitKind expected, bool coreKnown)
+    {
+        var bounds = mode == "continuation" ? new ProviderExchangeBounds(maximumContinuationBytes: 128)
+            : new ProviderExchangeBounds(maximumToolCalls: 1);
+        var body = mode == "tool-count"
+            ? AdapterFixture.Response(null, "short", "tool_calls", calls: [AdapterFixture.Call("one"), AdapterFixture.Call("two")])
+            : AdapterFixture.Response(mode == "content" ? new string('x', ProviderLimits.TextBytes + 1) : "synthetic-body-canary",
+                mode == "continuation" ? new string('r', 256) : "short");
+        if (mode == "identifier") { var root = JsonNode.Parse(body)!; root["id"] = new string('i', 129); body = root.ToJsonString(); }
+        var cap = mode.EndsWith("body", StringComparison.Ordinal) ? Encoding.UTF8.GetByteCount(body) - 1 : 524288;
+        using var handler = mode == "stream-body"
+            ? new FakeHandler((_, _) =>
+            {
+                var content = new UnmeasuredContent(Encoding.UTF8.GetBytes(body));
+                content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+            }) : FakeHandler.Reply(body);
+        using var provider = AdapterFixture.Provider(handler, responseCap: cap);
+        var result = await provider.ExchangeAsync(AdapterFixture.Request(tools: [AdapterFixture.Tool()], bounds: bounds));
+        Assert.Equal(ProviderOutcome.Rejected, result.Outcome); Assert.Equal(ProviderError.LimitExceeded, result.Error);
+        Assert.Equal(expected, result.LimitKind); Assert.Equal(expected, result.Diagnostic.LimitKind);
+        Assert.Null(result.Response); Assert.Equal(0, result.Diagnostic.AcceptedToolCalls); Assert.Equal(1, handler.Sends);
+        Assert.Equal(DispatchExposure.Dispatched, result.Observation.Exposure);
+        Assert.Equal(coreKnown, result.Observation.Usage.InputTokens.HasValue && result.Observation.Usage.OutputTokens.HasValue);
+        if (coreKnown) { Assert.Equal(10, result.Observation.Usage.InputTokens); Assert.Equal(5, result.Observation.Usage.OutputTokens); }
+        var diagnostic = JsonSerializer.Serialize(result.Diagnostic);
+        Assert.DoesNotContain(AdapterFixture.Credential, diagnostic); Assert.DoesNotContain("synthetic-body-canary", diagnostic);
+        Assert.DoesNotContain(new string('r', 32), diagnostic);
+    }
+
+    [Fact]
+    public async Task ClosedLimitAggregateExactBoundaryAndOldConstructorsRemainHonest()
+    {
+        var body = AdapterFixture.Response("synthetic-body-canary", "short");
+        using var handler = FakeHandler.Reply(body); using var provider = AdapterFixture.Provider(handler);
+        var first = await provider.ExchangeAsync(AdapterFixture.Request());
+        Assert.Equal(ProviderOutcome.Succeeded, first.Outcome); Assert.Equal(ProviderLimitKind.Unknown, first.LimitKind);
+        var size = first.Response!.PayloadByteCount;
+        var exact = await provider.ExchangeAsync(AdapterFixture.Request(bounds: new(maximumResponseBytes: size)));
+        Assert.Equal(ProviderOutcome.Succeeded, exact.Outcome); Assert.Equal(ProviderLimitKind.Unknown, exact.Diagnostic.LimitKind);
+        var request = AdapterFixture.Request(bounds: new(maximumResponseBytes: size - 1));
+        var rejected = await provider.ExchangeAsync(request);
+        Assert.Equal(ProviderError.LimitExceeded, rejected.Error); Assert.Equal(ProviderLimitKind.RequestResponseBytes, rejected.LimitKind);
+        Assert.Equal(10, rejected.Observation.Usage.InputTokens); Assert.Equal(5, rejected.Observation.Usage.OutputTokens);
+        var exposure = new RuntimeExposure(request.Scope, request.Attempt, ExposureStrength.Volatile);
+        var oldSettlement = new RuntimeSettlement(exposure, rejected.Observation, RuntimeStop.None, true, rejected.Outcome, rejected.Error);
+        Assert.Equal(ProviderLimitKind.Unknown, oldSettlement.ProviderLimitKind);
+        var oldDiagnostic = new ProviderDiagnostic(request.Attempt.ExecutionId, request.Attempt.LogicalCallId, request.Attempt.PhysicalAttemptId,
+            request.Attempt.AttemptNumber, rejected.Outcome, rejected.Error, rejected.Observation.Exposure, rejected.Observation.Usage.Completeness, 0);
+        var (_, _, _, _, outcome, error, _, _, _, _, _) = oldDiagnostic;
+        Assert.Equal(rejected.Outcome, outcome); Assert.Equal(rejected.Error, error); Assert.Equal(ProviderLimitKind.Unknown, oldDiagnostic.LimitKind);
+        Assert.Equal(ProviderLimitKind.Unknown, new ProviderContractException(ProviderError.LimitExceeded).LimitKind);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProviderContractException(ProviderError.LimitExceeded, (ProviderLimitKind)999));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProviderContractException(ProviderError.InvalidResponse, ProviderLimitKind.RequestResponseBytes));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RuntimeSettlement(exposure, rejected.Observation, RuntimeStop.None, true,
+            rejected.Outcome, rejected.Error, null, (ProviderLimitKind)999));
+    }
+
+    [Fact]
+    public async Task ClosedLimitGeneratedResponseReplayUsesItsExactMeasuredFrameBoundary()
+    {
+        var body = AdapterFixture.Response("synthetic-body-canary", new string('r', 256));
+        using var handler = FakeHandler.Reply(body); using var provider = AdapterFixture.Provider(handler);
+        var first = await provider.ExchangeAsync(AdapterFixture.Request(tools: [AdapterFixture.Tool()]));
+        Assert.Equal(ProviderOutcome.Succeeded, first.Outcome);
+        var length = first.Response!.Continuation!.CopyReplayBytes().Length;
+        var exact = await provider.ExchangeAsync(AdapterFixture.Request(tools: [AdapterFixture.Tool()],
+            bounds: new(maximumContinuationBytes: length)));
+        Assert.Equal(ProviderOutcome.Succeeded, exact.Outcome); Assert.Equal(ProviderLimitKind.Unknown, exact.LimitKind);
+        var below = await provider.ExchangeAsync(AdapterFixture.Request(tools: [AdapterFixture.Tool()],
+            bounds: new(maximumContinuationBytes: length - 1)));
+        Assert.Equal(ProviderOutcome.Rejected, below.Outcome); Assert.Equal(ProviderError.LimitExceeded, below.Error);
+        Assert.Equal(ProviderLimitKind.ResponseReplayFrameBytes, below.LimitKind);
+        Assert.Equal(10, below.Observation.Usage.InputTokens); Assert.Equal(5, below.Observation.Usage.OutputTokens);
+        Assert.Equal(0, below.Diagnostic.AcceptedToolCalls); Assert.Equal(3, handler.Sends);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void ClosedLimitDiagnosticJsonRoundTripPreservesOldFieldsAndValidNewKind(bool provider, bool includeKind)
+    {
+        var execution = Guid.NewGuid(); var logical = Guid.NewGuid(); var physical = Guid.NewGuid();
+        var expectedKind = includeKind ? ProviderLimitKind.ResponseReplayFrameBytes : ProviderLimitKind.Unknown;
+        if (provider)
+        {
+            var value = new ProviderDiagnostic(execution, logical, physical, 1, ProviderOutcome.Rejected,
+                ProviderError.LimitExceeded, DispatchExposure.Dispatched, UsageCompleteness.Complete, 0, null, null,
+                ProviderLimitKind.ResponseReplayFrameBytes);
+            var json = JsonSerializer.SerializeToNode(value)!.AsObject();
+            if (!includeKind) Assert.True(json.Remove("LimitKind"));
+            var restored = JsonSerializer.Deserialize<ProviderDiagnostic>(json.ToJsonString())!;
+            Assert.Equal(execution, restored.ExecutionId); Assert.Equal(logical, restored.LogicalCallId); Assert.Equal(physical, restored.PhysicalAttemptId);
+            Assert.Equal(1, restored.AttemptNumber); Assert.Equal(ProviderOutcome.Rejected, restored.Outcome);
+            Assert.Equal(ProviderError.LimitExceeded, restored.Error); Assert.Equal(DispatchExposure.Dispatched, restored.Exposure);
+            Assert.Equal(UsageCompleteness.Complete, restored.UsageCompleteness); Assert.Equal(0, restored.AcceptedToolCalls);
+            Assert.Null(restored.RetryKind); Assert.Null(restored.RetryAfter); Assert.Equal(expectedKind, restored.LimitKind);
+        }
+        else
+        {
+            var value = new RuntimeAttemptDiagnostic(execution, logical, physical, 1, RuntimeStop.None, RuntimeStop.None,
+                DispatchExposure.Dispatched, UsageCompleteness.Complete, ProviderOutcome.Rejected, ProviderError.LimitExceeded,
+                ProviderLimitKind.ResponseReplayFrameBytes);
+            var json = JsonSerializer.SerializeToNode(value)!.AsObject();
+            if (!includeKind) Assert.True(json.Remove("ProviderLimitKind"));
+            var restored = JsonSerializer.Deserialize<RuntimeAttemptDiagnostic>(json.ToJsonString())!;
+            Assert.Equal(execution, restored.ExecutionId); Assert.Equal(logical, restored.LogicalCallId); Assert.Equal(physical, restored.PhysicalAttemptId);
+            Assert.Equal(1, restored.AttemptNumber); Assert.Equal(RuntimeStop.None, restored.AdmissionStop); Assert.Equal(RuntimeStop.None, restored.SettlementStop);
+            Assert.Equal(DispatchExposure.Dispatched, restored.Exposure); Assert.Equal(UsageCompleteness.Complete, restored.UsageCompleteness);
+            Assert.Equal(ProviderOutcome.Rejected, restored.ProviderOutcome); Assert.Equal(ProviderError.LimitExceeded, restored.ProviderError);
+            Assert.Equal(expectedKind, restored.ProviderLimitKind);
+        }
+    }
+
+    private sealed class UnmeasuredContent(byte[] bytes) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(bytes).AsTask();
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+    }
+
     [Fact]
     public void ActualProviderEvaluatesOnlyRuntimeApiNoPackagesAndNoRuntimeAssemblyEdge()
     {
