@@ -101,8 +101,8 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
       const text = newRecord();
       expect(await action(text), 'stored', 'none'); expect(await action(text), 'duplicate', 'none');
       expect(await action(text.replace('1.0-test', '2.0-collision')), 'failed', 'identity_conflict');
-      const exact = (await backend.writer.query(`select usage = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions,
-        execution = ($1::jsonb)->'execution' as execution, outcome = ($1::jsonb)->'outcome' as outcome from public.telemetry_events where event_id=$2`, [text, event(text)])).rows[0];
+      const exact = (await backend.writer.query(`select public.telemetry_event_json(e)->'usage' = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions,
+        public.telemetry_event_json(e)->'execution' = ($1::jsonb)->'execution' as execution, public.telemetry_event_json(e)->'outcome' = ($1::jsonb)->'outcome' as outcome from public.telemetry_events e where event_id=$2`, [text, event(text)])).rows[0];
       assert.deepEqual(exact, { usage: true, extensions: true, execution: true, outcome: true });
       assert.ok(text.includes('9223372036854775807')); assert.ok(text.includes('null'));
     });
@@ -169,7 +169,7 @@ test('actual Action → verified built Linux CLI → controlled HTTPS → real S
       const actualOsBoundary = await action(maximum.toString(), {}, { spawnError: true }); assert.equal(actualOsBoundary.error?.code, 'E2BIG');
       const filename = join(backend.owned, 'maximum.json'); await writeFile(filename, maximum);
       expect(await action('', { 'INPUT_TELEMETRY-JSON-FILE': filename }), 'stored', 'none');
-      const equivalent = (await backend.writer.query("select usage = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions from public.telemetry_events where event_id=$2", [maximum.toString(), event(maximum.toString())])).rows[0];
+      const equivalent = (await backend.writer.query("select public.telemetry_event_json(e)->'usage' = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions from public.telemetry_events e where event_id=$2", [maximum.toString(), event(maximum.toString())])).rows[0];
       assert.deepEqual(equivalent, { usage: true, extensions: true });
       await writeFile(filename, Buffer.concat([maximum, Buffer.from(' ')])); expect(await action('', { 'INPUT_TELEMETRY-JSON-FILE': filename }), 'failed', 'record_too_large');
     });
