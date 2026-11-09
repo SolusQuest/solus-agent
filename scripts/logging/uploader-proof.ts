@@ -86,8 +86,8 @@ export async function uploaderProof(products: any[], manifest: any, archive: Buf
       assert.deepEqual(await upload(wire), { 'delivery-status': 'stored', 'diagnostic-code': 'none' });
       assert.deepEqual(await upload(wire), { 'delivery-status': 'duplicate', 'diagnostic-code': 'none' });
       const record = JSON.parse(wire);
-      const row = (await backend.writer.query(`select usage = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions,
-        execution = ($1::jsonb)->'execution' as execution, outcome = ($1::jsonb)->'outcome' as outcome from public.telemetry_events where event_id=$2`, [wire, record.eventId])).rows[0];
+      const row = (await backend.writer.query(`select public.telemetry_event_json(e)->'usage' = ($1::jsonb)->'usage' as usage, extensions = ($1::jsonb)->'extensions' as extensions,
+        public.telemetry_event_json(e)->'execution' = ($1::jsonb)->'execution' as execution, public.telemetry_event_json(e)->'outcome' = ($1::jsonb)->'outcome' as outcome from public.telemetry_events e where event_id=$2`, [wire, record.eventId])).rows[0];
       assert.deepEqual(row, { usage: true, extensions: true, execution: true, outcome: true });
       assert.equal(record.usage.runs.length, 3); assert.equal(record.extensions.caller.team, 'synthetic');
       if (record.product === 'scribe') {

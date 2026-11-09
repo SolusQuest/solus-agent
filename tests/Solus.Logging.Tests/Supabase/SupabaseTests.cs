@@ -33,10 +33,12 @@ public sealed class SupabaseTests
     }
     private static TelemetryRecord Fixture() => SyntheticTelemetry.Consume(File.ReadAllText(Path.Combine(Root, "tests/Solus.Logging.Tests/Supabase/telemetry-v1.json")));
 
-    [Fact]
-    public async Task FixedRpcRequestUsesExplicitHeadersAndCompleteAdmittedJsonWithoutCoercion()
+    [Theory]
+    [InlineData("telemetry-v1.json")]
+    [InlineData("telemetry-multiple-runs-v1.json")]
+    public async Task FixedRpcRequestUsesExplicitHeadersAndCompleteAdmittedJsonWithoutCoercion(string fixtureName)
     {
-        var record = Fixture();
+        var record = SyntheticTelemetry.Consume(File.ReadAllText(Path.Combine(Root, "tests/Solus.Logging.Tests/Supabase", fixtureName)));
         var wire = SyntheticTelemetry.Wire(record);
         var handler = new Handler(async (request, token) =>
         {
@@ -55,6 +57,18 @@ public sealed class SupabaseTests
             Assert.Equal("9223372036854775807", run.GetProperty("inputTokens").GetProperty("value").GetString());
             Assert.Equal(JsonValueKind.Null, run.GetProperty("outputTokens").GetProperty("value").ValueKind);
             Assert.Equal("overflow", run.GetProperty("providerCounters")[0].GetProperty("observation").GetProperty("coverage").GetString());
+            if (fixtureName == "telemetry-multiple-runs-v1.json")
+            {
+                var runs = root.GetProperty("event").GetProperty("usage").GetProperty("runs");
+                Assert.Equal(3, runs.GetArrayLength());
+                Assert.Equal("0", runs[1].GetProperty("inputTokens").GetProperty("value").GetString());
+                Assert.Equal("partial", runs[1].GetProperty("inputTokens").GetProperty("coverage").GetString());
+                Assert.Equal("overflow", runs[1].GetProperty("outputTokens").GetProperty("coverage").GetString());
+                Assert.Equal(JsonValueKind.Null, runs[1].GetProperty("tools").ValueKind);
+                Assert.Equal(JsonValueKind.Object, runs[2].GetProperty("tools").ValueKind);
+                Assert.Equal("unavailable", runs[2].GetProperty("inventoryCoverage").GetString());
+                Assert.Equal(JsonValueKind.Null, runs[2].GetProperty("physicalAttempts").ValueKind);
+            }
             Assert.Equal("你好😀", root.GetProperty("event").GetProperty("extensions").GetProperty("scribe").GetProperty("nested")[3].GetProperty("text").GetString());
             return Response();
         });

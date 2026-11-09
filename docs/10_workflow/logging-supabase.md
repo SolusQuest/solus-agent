@@ -52,26 +52,68 @@ Oversized or unparsable transient error bodies cannot establish a permanent mach
 
 ## Operator-applied schema and identity
 
-The operator reviews and explicitly applies [001_telemetry.sql](../../database/logging/001_telemetry.sql) to the selected existing Supabase database. It is an initial transactional schema, intentionally failing on already-existing objects rather than silently accepting drift. It requires existing Supabase `anon`/`authenticated` roles and `auth.uid()`. It creates no user, key, token or hosted resource. Normal delivery never applies migrations. The final `NOTIFY pgrst, 'reload schema'` refreshes the existing Data API schema cache; the RPC must be visible there before ingest.
+The operator reviews and explicitly applies [001_telemetry.sql](../../database/logging/001_telemetry.sql) for a clean installation. It is one transactional initial baseline, intentionally failing on existing objects rather than silently accepting drift. It requires existing Supabase `anon`/`authenticated` roles and `auth.uid()`, and creates no user, key, token or hosted resource. Normal delivery never applies migrations. The final `NOTIFY pgrst, 'reload schema'` refreshes the existing Data API cache.
 
-Each stored row has a unique database-generated `bigint` column, `id`, for inspection. A writer can read it on owned rows. Retries and conflicts preserve the first stored ID. Sequence allocation can leave gaps and does not guarantee commit order. The RPC accepts the producer’s event UUID and returns the existing scalar status.
+An initialized database needs a separately reviewed conversion, not a replay of the clean baseline. Inspect its current catalog, dependencies, grants, policies, sequence and row inventory; test conversion with populated legacy rows even when the selected target is empty. Preserve writer/event identity, numeric IDs, receipts, timestamp residuals and complete event content, and verify equality before removing superseded JSON columns. Bound locks, statements and affected rows; reject unexpected drift or unconvertible data. Any migration-bookkeeping change belongs in that exact reviewed operation. No reset, Auth/session/key/settings change or deletion permission follows from this baseline. Historical qualification describes its original schema and revision.
 
-The fixed table is `public.telemetry_events`, keyed by `(writer_id, event_id)`. `writer_id` defaults to `auth.uid()` and `received_at` is server assigned. The migration explicitly revokes broad default grants on its table, identity sequence and function and restores all-column `SELECT` under RLS plus column-scoped `INSERT`. Clients cannot insert `id`, `writer_id` or `received_at`, or manipulate the identity sequence; no update/delete privileges are granted to anonymous or authenticated roles. Anonymous execution/read/write is denied. RLS enables and forces own-writer insert/read policies; correlation labels in the event are never authorization claims. The intended dedicated user is scoped to its own rows, as is every other authenticated identity; there is no custom identity allowlist.
+The existing `public` table/RPC placement remains the project boundary. Both tables have enabled and forced RLS, explicit own-writer read/insert policies, and minimal column grants. This change does not add an exposed schema or a privileged delivery path.
 
-`public.ingest_telemetry(event jsonb)` is `SECURITY INVOKER`, volatile, with an empty fixed search path and qualified references. It validates the essential exact v1 envelope/shapes and relies on Contracts for detailed run/extension admission. It does not duplicate every neutral measurement/accounting invariant in SQL. Unknown envelope fields, supplied writer identity, unsupported schema and missing/null structured fields fail without inserting a partial row.
+| Table | Stored facts and identity |
+| --- | --- |
+| `telemetry_events` | One immutable invocation, keyed by `(writer_id, event_id)`, with a unique database-generated bigint `id`, server receipt, product/invocation/time metadata, typed `repository`, `workflow_run_id`, `run_attempt`, `job`, `invocation_key`, `outcome_kind`, `outcome_code`, `usage_inventory_coverage`, immutable `run_count`, and JSONB `extensions`. |
+| `telemetry_runs` | One current run at a 1-based `ordinal`, referencing the event's bigint `event_row_id` and writer. Unique `(event_row_id, ordinal)` and `(event_row_id, execution_id)` preserve order and event-scoped execution identity. Typed fields retain inventory, independent input/output values and coverage, logical/physical counts, tool counts and settlement. `provider_counters`, `accounting` and `estimated_costs` remain JSONB. |
 
-The function attempts `INSERT ... ON CONFLICT DO NOTHING`, then compares the existing typed scalars and complete JSONB values in a separate statement. Under the selected ordinary `READ COMMITTED` Data API transaction, a concurrent loser waits for the first insert and then observes the committed winner. Equal immutable content returns `duplicate`; differing content raises fixed SQLSTATE `23505`, mapped by PostgREST to HTTP 409. Nothing is updated. JSONB object ordering and numeric spelling are semantic; array ordering, missing members and JSON null remain distinct. The server-assigned `id` and `received_at` are excluded from duplicate equality and remain stable across retries.
+`workflow_run_id` is text even when it looks numeric. Token, logical, physical and tool counts are nullable bigint. Null is never substituted with zero; input and output coverage are independent. Cost/accounting strings and provider relationships remain unchanged inside their JSONB collections. No whole-envelope or whole-run shadow is retained. `execution_fields`, `outcome_code_present`, run `optional_fields` and `tools_present` preserve omitted/null/object/empty-collection distinctions. `execution_id_text` preserves the original nested UUID string for equality; its generated UUID projection supplies typed uniqueness. An execution UUID may recur in another event or under another writer.
 
-`execution`, `outcome`, `usage` and `extensions` are stored whole as JSONB. Canonical Int64/accounting/decimal strings, nulls, coverage, provider relationships and nested caller/product namespaces remain intact. PostgreSQL JSONB cannot represent every admitted JSON string/number (for example escaped NUL); such delivery fails explicitly, without dropping or replacing data.
+Writers can read generated IDs on their own rows. Duplicate/conflicting deliveries preserve the first ID and `received_at`. Identity allocation may leave gaps and does not guarantee commit order. Ordinary roles cannot insert or change event IDs generated by the database, writer ownership or receipt time, manipulate the identity sequence, or update/delete/truncate either table. A run may reference its owned parent's generated ID; it cannot forge that identity. Anonymous table/function access is denied. Correlation labels and JSON content confer no authority.
 
-PostgreSQL timestamp precision is one microsecond; telemetry supports seven fractional digits. `occurred_at` stores the first six digits after truncation before casting, and `occurred_at_residual_tick` stores the seventh digit (0–9). Both participate in collision equality. Reconstruct the original UTC instant with the microsecond timestamp plus its residual tick; the following readback returns seven fractional digits without rounding across a second/day boundary:
+The run foreign key includes both parent ID and writer, independently preventing cross-writer association. An invoker insert trigger checks parent visibility and the ordinal bound. A deferred event constraint trigger requires exactly `run_count` children at commit. Unique ordinals within `1..run_count` therefore establish complete, dense membership. No ordinal remains available after a complete event commits, so ordinary callers cannot append a later run. Ordinary direct SQL may create a complete owned event in one transaction; incomplete transactions fail. No caller-settable session flag distinguishes trusted RPC writes.
+
+`public.ingest_telemetry(event jsonb)` remains volatile, `SECURITY INVOKER`, with an empty fixed search path and qualified references. It projects the existing v1 object, inserts the parent and all runs in one data-modifying statement, and supports both immediate and deferred constraint timing. A failing child leaves no parent or orphan runs. The writer/event conflict arbiter is nondeferrable. A concurrent loser waits at that unique key and reads the complete committed winner in a separate `READ COMMITTED` statement.
+
+Equal immutable content returns `duplicate`; different content raises fixed SQLSTATE `23505` / `telemetry_identity_conflict`, which PostgREST maps to HTTP 409. Comparison includes all event facts and all runs in ordinal order, every retained JSON value and structural-presence distinction. No row is updated. JSONB object key order and equivalent numeric spelling remain semantic; arrays, absent properties, explicit null and retained strings remain distinct. Server IDs and receipt times are excluded from equality.
+
+The SQL layer checks exact mapped object fields, projection types, required relational constraints and core count/coverage consistency. Unknown members at decomposed boundaries reject rather than disappear. A duplicate execution UUID within a candidate run array is a schema rejection (`22023`), not an existing-event identity conflict. Contracts remains the detailed provider/accounting/extension admission owner; the RPC is not a replacement for `TelemetryJson`. PostgreSQL JSONB cannot represent every admitted JSON value, such as escaped NUL; delivery fails explicitly without dropping data. The transport and its 256 KiB record limit remain unchanged.
+
+## Typed queries and lossless readback
+
+Writer-prefixed indexes support product/time, repository/workflow/attempt, and outcome/time filtering. Run keys support ordered event joins and event-scoped UUID uniqueness; a writer/event index supports child ownership queries. These indexes serve the demonstrated paths rather than indexing every label or JSON field.
 
 ```sql
-select id, event_id,
-    to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')
-        || occurred_at_residual_tick || '+00:00' as occurred_at_exact,
-    execution, outcome, usage, extensions, received_at
-from public.telemetry_events;
+select e.id, e.event_id, e.repository, e.workflow_run_id, e.outcome_kind,
+    r.ordinal, r.execution_id, r.input_tokens, r.input_coverage,
+    r.output_tokens, r.output_coverage, r.physical_attempts
+from public.telemetry_events e
+join public.telemetry_runs r on r.event_row_id = e.id
+where e.repository = 'synthetic/repository'
+    and e.workflow_run_id = '9007199254740993'
+    and e.run_attempt = 2 and e.outcome_kind = 'partial'
+order by e.id, r.ordinal;
+```
+
+An invocation total requires complete membership and complete measurement coverage in that dimension for every run. A known subtotal from partial measurements is not that total. PostgreSQL `sum(bigint)` returns exact numeric, avoiding Int64 overflow across runs. Input/output remain independent; no provider counters enter either sum. Complete empty membership establishes zero, while unavailable or partial membership does not.
+
+```sql
+select e.id,
+    case when e.usage_inventory_coverage = 'complete'
+        and count(r.ordinal) filter (where r.input_coverage = 'complete') = count(r.ordinal)
+        then coalesce(sum(r.input_tokens), 0) end as complete_input_total,
+    case when e.usage_inventory_coverage = 'complete'
+        and count(r.ordinal) filter (where r.output_coverage = 'complete') = count(r.ordinal)
+        then coalesce(sum(r.output_tokens), 0) end as complete_output_total
+from public.telemetry_events e
+left join public.telemetry_runs r on r.event_row_id = e.id
+group by e.id, e.usage_inventory_coverage;
+```
+
+PostgreSQL timestamps have microsecond precision. `occurred_at` stores six fractional digits after truncation before casting; `occurred_at_residual_tick` stores the seventh digit. Both participate in equality. The invoker `telemetry_event_json` helper reconstructs the logical v1 content from the typed row and owned ordered runs, preserving all values and presence distinctions. It normalizes only the original event UUID/UTC timestamp equivalence; it does not store a second payload. Helper execution grants are explicit, and all database reads remain subject to the caller's RLS.
+
+```sql
+select e.id, e.received_at,
+    to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')
+        || e.occurred_at_residual_tick || '+00:00' as occurred_at_exact,
+    public.telemetry_event_json(e) as event
+from public.telemetry_events e;
 ```
 
 ## Deterministic validation
@@ -88,7 +130,7 @@ node scripts/logging/verify-storage.ts --local
 
 The verifier runs the platform package's standard binary setup even if npm install scripts were disabled. Run as a non-root user; it never creates OS users. It owns a unique ignored cluster directory and synthetic local password, listens only on an ephemeral loopback TCP port, closes its connections and stops/deletes its cluster in `finally`. A missing/incompatible runtime fails validation rather than skipping it.
 
-The real SQL tests seed broad Supabase-like default grants, apply the actual migration, and use non-owner/non-BYPASSRLS identities. They prove effective privileges, first/duplicate/collision behavior, writer isolation, anonymous/forgery/update/delete denial, exact structured readback and seventh-digit preservation. Separate sessions hold the first insert uncommitted and observe the competing session waiting on a database lock before releasing it, proving actual overlap. The same JSON fixture is admitted through the .NET contract and used for the real SQL readback.
+The real SQL tests seed broad Supabase-like default grants, apply the actual baseline, and use non-owner/non-BYPASSRLS identities. They prove both tables' effective privileges, complete multi-run readback, immutable field/order/presence conflicts, direct incomplete-commit and append rejection, both constraint timings, exact counts, coverage-aware aggregates and seventh-digit preservation. Separate sessions observe an actual lock wait before releasing the winner, including duplicate, order/detail conflict and winner-rollback paths. Shared single-run and multi-run fixtures are admitted through the .NET contract and used for SQL readback. SQL role tests model a trusted request identity; they do not authenticate a hosted JWT.
 
 Ordinary Logging CI runs the complete Logging suite and the real disposable verifier on Ubuntu 24.04, plus existing Agent architecture checks. Controlled HTTP tests exercise actual adapter request/response handling, retries, body stalls and cancellation. Native PostgreSQL plus a synthetic `auth.uid()` fixture proves database semantics; it does not authenticate hosted JWT signatures or qualify an operator's deployed Supabase/PostgREST configuration. Published-package installation, live Supabase delivery and service readback remain separately authorized L1 work.
 
