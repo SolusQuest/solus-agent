@@ -44,6 +44,13 @@ class LocalAdmission(unittest.TestCase):
             source, inputs = root / 'source', root / 'inputs'
             source.mkdir(); inputs.mkdir()
             (source / 'action.mjs').write_text('// synthetic archive-boundary fixture\n')
+            schema = source / 'database/logging/001_telemetry.sql'
+            schema.parent.mkdir(parents=True)
+            original_schema = b'-- original accepted schema\n'
+            schema.write_bytes(original_schema)
+            current_schema = root / 'database/logging/001_telemetry.sql'
+            current_schema.parent.mkdir(parents=True)
+            current_schema.write_bytes(b'-- incompatible current checkout schema\n')
             def git(*args):
                 return subprocess.check_output(
                     ['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
@@ -63,7 +70,13 @@ class LocalAdmission(unittest.TestCase):
             old_root, old_sdk = bridge.ROOT, bridge.SDK_SHA512
             try:
                 bridge.ROOT = root; bridge.SDK_SHA512 = hashlib.sha512(sdk.read_bytes()).hexdigest()
-                bridge.verify_inputs(source, inputs, sdk)
+                admitted_schema = bridge.verify_inputs(source, inputs, sdk)
+                self.assertEqual(admitted_schema, original_schema)
+                self.assertNotEqual(admitted_schema, current_schema.read_bytes())
+                schema.write_bytes(b'-- changed after admission\n')
+                self.assertEqual(admitted_schema, original_schema)
+                with self.assertRaisesRegex(ValueError, 'clean'): bridge.verify_inputs(source, inputs, sdk)
+                git('checkout', '--', 'database/logging/001_telemetry.sql')
                 (source / 'action.mjs').write_text('// changed\n')
                 with self.assertRaisesRegex(ValueError, 'clean'): bridge.verify_inputs(source, inputs, sdk)
                 git('checkout', '--', 'action.mjs')

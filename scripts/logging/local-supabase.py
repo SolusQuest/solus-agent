@@ -24,6 +24,8 @@ def verify_inputs(source,inputs,sdk):
  for name,digest in m['action']['files'].items():
   if hashlib.sha256((source/name).read_bytes()).hexdigest()!=digest:raise ValueError('original Action bytes mismatch')
  if hashlib.sha512(sdk.read_bytes()).hexdigest()!=SDK_SHA512:raise ValueError('exact official SDK109 hash mismatch')
+ # Historical reproduction uses the admitted candidate's schema, not this checkout's evolving storage.
+ return (source/'database/logging/001_telemetry.sql').read_bytes()
 
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
@@ -37,7 +39,7 @@ def main():
  context=subprocess.check_output(['docker','context','show'],text=True).strip()
  endpoint=subprocess.check_output(['docker','context','inspect',context,'--format','{{.Endpoints.docker.Host}}'],text=True).strip();require_local_endpoint(endpoint)
  SOURCE=pathlib.Path(args.source).resolve();INPUTS=pathlib.Path(args.inputs).resolve()
- verify_inputs(SOURCE,INPUTS,pathlib.Path(args.sdk).resolve())
+ baseline=verify_inputs(SOURCE,INPUTS,pathlib.Path(args.sdk).resolve())
  cache=pathlib.Path(args.cache).resolve();cache.mkdir(parents=True,exist_ok=True,mode=0o700)
  for name,digest in CONFIG_SHA256.items():
   f=cache/('official-'+name)
@@ -148,7 +150,7 @@ def main():
   else:raise RuntimeError('database-readiness-limit')
   q=compose('exec','-T','db','psql','-h','127.0.0.1','-U','postgres','-At','-v','ON_ERROR_STOP=1','-c',"select 'auth.uid()='||'auth.uid()'::regprocedure::text;select rolname from pg_roles where rolname in ('authenticated','anon','supabase_auth_admin','authenticator') order by rolname;")
   assert b'auth.uid()=' in q.stdout and b'authenticated' in q.stdout
-  compose('exec','-T','db','psql','-h','127.0.0.1','-U','postgres','-v','ON_ERROR_STOP=1',input=(ROOT/'database/logging/001_telemetry.sql').read_bytes())
+  compose('exec','-T','db','psql','-h','127.0.0.1','-U','postgres','-v','ON_ERROR_STOP=1',input=baseline)
   compose('up','-d','auth','rest','api-gw','gateway','runner')
   compose('exec','-T','runner','node','/harness/driver.mjs','prepare',timeout=600)
   compose('exec','-T','runner','node','/harness/driver.mjs','main',timeout=600)

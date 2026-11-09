@@ -56,6 +56,8 @@ The operator reviews and explicitly applies [001_telemetry.sql](../../database/l
 
 An initialized database needs a separately reviewed conversion, not a replay of the clean baseline. Inspect its current catalog, dependencies, grants, policies, sequence and row inventory; test conversion with populated legacy rows even when the selected target is empty. Preserve writer/event identity, numeric IDs, receipts, timestamp residuals and complete event content, and verify equality before removing superseded JSON columns. Bound locks, statements and affected rows; reject unexpected drift or unconvertible data. Any migration-bookkeeping change belongs in that exact reviewed operation. No reset, Auth/session/key/settings change or deletion permission follows from this baseline. Historical qualification describes its original schema and revision.
 
+The opt-in historical local Supabase reproduction installs the schema captured from its verified, clean accepted-candidate checkout. Its original readback driver and oracle remain paired with that legacy schema; it does not install the current typed baseline or establish qualification for the current storage model.
+
 The existing `public` table/RPC placement remains the project boundary. Both tables have enabled and forced RLS, explicit own-writer read/insert policies, and minimal column grants. This change does not add an exposed schema or a privileged delivery path.
 
 | Table | Stored facts and identity |
